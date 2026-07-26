@@ -1,0 +1,46 @@
+/**
+ * These arguments were used when this file was generated. They will be automatically applied on subsequent loads
+ * via the GUI or CLI. Run CLI with '--help' for additional information on how to override these arguments.
+ */
+//@cliArgs --device "MSPM0G351X" --package "LQFP-100(PZ)" --part "Default"
+//@v2CliArgs --device "MSPM0G3519" --package "LQFP-100(PZ)"
+// @cliArgs --board /ti/boards/LP_MSPM0G3519 --rtos nortos
+
+/**
+ * Import the modules used in this configuration.
+ */
+const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
+
+/**
+ * Write custom configuration values to the imported modules.
+ * MCLK = 80 MHz via SYSOSC (32 MHz) -> SYSPLL CLK2X
+ */
+const divider5       = system.clockTree["PLL_CLK1_DIV"];
+divider5.divideValue = 4;
+
+const divider6       = system.clockTree["PLL_CLK2X_DIV"];
+divider6.divideValue = 4;
+
+const divider7       = system.clockTree["PLL_PDIV"];
+divider7.divideValue = 2;
+
+const divider9       = system.clockTree["UDIV"];
+divider9.divideValue = 2;
+
+const multiplier2         = system.clockTree["PLL_QDIV"];
+multiplier2.multiplyValue = 10;
+
+const mux8       = system.clockTree["HSCLKMUX"];
+mux8.inputSelect = "HSCLKMUX_SYSPLL2X";
+
+const Board = scripting.addModule("/ti/driverlib/Board", {}, false);
+
+SYSCTL.MCLKSource            = "HSCLK";
+SYSCTL.SYSPLL_CLK1En         = true;
+SYSCTL.SYSPLL_CLK2XEn        = true;
+SYSCTL.SYSPLL_CLK2XDiv       = 1;
+SYSCTL.HSCLKSource           = "SYSPLLCLK2X";
+SYSCTL.validateClkStatus     = true;
+SYSCTL.SYSPLL_Qdiv           = 5;
+SYSCTL.forceDefaultClkConfig = true;
+SYSCTL.clockTreeEn           = true;
