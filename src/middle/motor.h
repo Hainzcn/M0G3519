@@ -11,11 +11,11 @@ void motor_brake(void);
 void motor_stop(void);
 
 /*
- * 预留闭环控制扩展位置：
- * 后续接入编码器（左轮占位引脚 B10/B11/B9，右轮占位引脚 A26/B27/A27，详见 docs/pin/pin.md）后，
- * 可在本层新增例如 motor_set_target_rpm() 的闭环入口，内部维护速度 PID/前馈，
- * 计算结果仍通过 motor_set_speed() 下发到 hardware 层，无需改动 hardware 层接口。
- * 当前阶段仅做开环占空比映射，不依赖编码器硬件。
+ * 编码器已接入（正交 QEI，见 encoder.c / docs/pin/pin.md）：
+ * 左轮 TIMG8（B10/B11），右轮 TIMG9（B7/B9）。
+ * 后续可在本层新增 motor_set_target_rpm() 等闭环入口，读取 encoder_get_*_count()，
+ * 计算结果仍通过 motor_set_speed() 下发到 hardware 层。
+ * 当前 motor_set_speed() 仍为开环直通映射。
  */
 
 #endif

@@ -1,4 +1,5 @@
 #include "motor.h"
+#include "encoder.h"
 #include "motor_hw.h"
 
 static int32 motor_clamp_speed(int32 speed)
@@ -17,6 +18,7 @@ static int32 motor_clamp_speed(int32 speed)
 void motor_init(void)
 {
     motor_hw_init();
+    encoder_init();
     motor_stop();
 }
 
