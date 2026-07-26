@@ -158,7 +158,7 @@ void pwm_init (pwm_channel_enum pin, const uint32 freq, const uint32 duty)
     }
     else
     {
-        timer_obj->COUNTERREGS.CCCTL_01[channel_index % 2] = (channel_index << GPTIMER_CCCTL_23_CC2SELU_OFS) | (channel_index << GPTIMER_CCCTL_23_CC2SELD_OFS);
+        timer_obj->COUNTERREGS.CCCTL_23[channel_index % 2] = (channel_index << GPTIMER_CCCTL_23_CC2SELU_OFS) | (channel_index << GPTIMER_CCCTL_23_CC2SELD_OFS);
         timer_obj->COUNTERREGS.CCACT_23[channel_index % 2] = GPTIMER_CCACT_23_ZACT_CCP_HIGH | GPTIMER_CCACT_23_CUACT_CCP_LOW;
     }
 

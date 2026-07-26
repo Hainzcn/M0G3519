@@ -37,3 +37,8 @@ void heartbeat_process(void)
         heartbeat_send();
     }
 }
+
+uint32 heartbeat_get_ms(void)
+{
+    return heartbeat_hw_get_ms();
+}

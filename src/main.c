@@ -12,5 +12,6 @@ int main(void)
     while (1)
     {
         heartbeat_app_process();
+        motor_app_demo_process();
     }
 }
