@@ -9,8 +9,7 @@
  * 电机型号 GM37-520，11 线增量式编码器，减速比 30:1；线数/减速比常量见 encoder.h。
  * 逐飞库 encoder_quad_init() 仅支持 TIM_G8、TIM_G9 两路 QEI，与 TIM_A0 PWM 无冲突。
  *
- * 正交（AB 相）模式只需 2 根信号线 + 编码器电源/地；第三根引脚（如 B27）
- * 常见于 Index(Z) 相，本工程 QEI 不接入。
+ * TIMG8/TIMG9 QEI 计数器为 16 位（LOAD=65535），读取值为 0~65535 无符号原始计数。
  */
 
 typedef enum
@@ -21,7 +20,7 @@ typedef enum
 } encoder_hw_index_enum;
 
 void encoder_hw_init(void);
-int16 encoder_hw_get_count(encoder_hw_index_enum encoder);
+uint16 encoder_hw_get_raw_count(encoder_hw_index_enum encoder);
 void encoder_hw_clear_count(encoder_hw_index_enum encoder);
 
 #endif

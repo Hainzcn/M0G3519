@@ -71,11 +71,13 @@ A/B 相在软件里只区分「接 CCP0 还是 CCP1」；接反了只会导致�
 | QEI 倍频 | ×4（正交 AB 相硬件解码） |
 | 输出轴每转计数 | 11 × 4 × 30 = **1320** counts/rev |
 
-逐飞库仅提供 `encoder_get_count()` 原始计数，**无现成 RPM API**；`src/middle/encoder.c` 在心跳周期内对计数差分并换算为输出轴转速（RPM）：
+逐飞库仅提供 `encoder_get_count()` 原始计数，**无现成 RPM API**；`src/middle/encoder.c` 在心跳周期内对 16 位原始计数做**环形差分**（`(int16)(now - last)`），累加到 `int32` 总里程，并换算为输出轴转速（RPM）：
 
 `rpm = Δcount × 60000 / (1320 × period_ms)`
 
-实现见 `src/hardware/encoder_hw.c`（`encoder_quad_init`）、`src/middle/encoder.c`（`encoder_update_speed` / `encoder_get_*_rpm`）；`motor_init()` 内已调用 `encoder_init()`，当前仍开环驱动，转速供监控与后续闭环使用。
+硬件 16 位计数约每 50 圈（输出轴）回绕一次；中间层差分/累加已处理回绕，可长时间运行。清零调用 `encoder_clear_*_count()`。
+
+实现见 `src/hardware/encoder_hw.c`（`encoder_quad_init`）、`src/middle/encoder.c`（`encoder_update_speed` / `encoder_get_*_rpm` / `encoder_get_*_total_count`）；`motor_init()` 内已调用 `encoder_init()`，当前仍开环驱动，转速供监控与后续闭环使用。
 
 ## 程序状态指示灯与心跳串口（已实现）
 

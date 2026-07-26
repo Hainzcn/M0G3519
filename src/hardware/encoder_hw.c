@@ -24,14 +24,15 @@ void encoder_hw_init(void)
     encoder_quad_init(ENCODER_HW_RIGHT_TIMER, ENCODER_HW_RIGHT_CH1, ENCODER_HW_RIGHT_CH2);
 }
 
-int16 encoder_hw_get_count(encoder_hw_index_enum encoder)
+uint16 encoder_hw_get_raw_count(encoder_hw_index_enum encoder)
 {
     if (ENCODER_HW_NUM <= encoder)
     {
         return 0;
     }
 
-    return encoder_get_count(encoder_hw_timer_index[encoder]);
+    /* 库函数返回 int16，但位型与 16 位硬件计数一致；转为 uint16 恢复 0~65535 原始值。 */
+    return (uint16)encoder_get_count(encoder_hw_timer_index[encoder]);
 }
 
 void encoder_hw_clear_count(encoder_hw_index_enum encoder)

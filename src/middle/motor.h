@@ -13,8 +13,8 @@ void motor_stop(void);
 /*
  * 编码器已接入（正交 QEI，见 encoder.c / docs/pin/pin.md）：
  * 左轮 TIMG8（B10/B11），右轮 TIMG9（B7/B9）。
- * 后续可在本层新增 motor_set_target_rpm() 等闭环入口，读取 encoder_get_*_count()，
- * 计算结果仍通过 motor_set_speed() 下发到 hardware 层。
+ * 后续可在本层新增 motor_set_target_rpm() 等闭环入口，读取 encoder_get_*_rpm() /
+ * encoder_get_*_total_count()，计算结果仍通过 motor_set_speed() 下发到 hardware 层。
  * 当前 motor_set_speed() 仍为开环直通映射。
  */
 
