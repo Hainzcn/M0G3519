@@ -1,0 +1,67 @@
+<html>
+<body>
+<pre>
+<h1>µVision Build Log</h1>
+<h2>Tool Versions:</h2>
+IDE-Version: ¦ÌVision V5.43.1.0
+Copyright (C) 2025 ARM Ltd and ARM Germany GmbH. All rights reserved.
+License Information: 1 1, 1, LIC=BUURY-IIXRY-KPCZY-IHGS8-H5EI1-NXTPV
+ 
+Tool Versions:
+Toolchain:       MDK-ARM Plus  Version: 5.43.0.0
+Toolchain Path:  A:\Program Files (x86)\Keil_v5\ARM\ARMCLANG\Bin
+C Compiler:      ArmClang.exe V6.24
+Assembler:       Armasm.exe V6.24
+Linker/Locator:  ArmLink.exe V6.24
+Library Manager: ArmAr.exe V6.24
+Hex Converter:   FromElf.exe V6.24
+CPU DLL:         SARMCM3.DLL V5.43.0.0
+Dialog DLL:      DARMCM1.DLL V1.19.6.0
+Target DLL:      CMSIS_AGDI.dll V1.33.24.0
+Dialog DLL:      TARMCM1.DLL V1.14.6.0
+ 
+<h2>Project:</h2>
+C:\Users\Hainzcn\Desktop\programs\3519\keil\M0G3519_nortos_keil.uvprojx
+Project File Date:  07/26/2026
+
+<h2>Output:</h2>
+*** Using Compiler 'V6.24', folder: 'A:\Program Files (x86)\Keil_v5\ARM\ARMCLANG\Bin'
+Build target 'M0G3519_nortos_keil'
+Before Build - User command #1: cmd.exe /C "C:\Users\Hainzcn\Desktop\programs\3519\keil\syscfg.bat 'C:\Users\Hainzcn\Desktop\programs\3519\keil\' M0G3519.syscfg"
+Using Sysconfig Tool from "A:\ti\sysconfig_1.28.0\sysconfig_cli.bat"
+"Update the file located at <sdk path>/tools/keil/syscfg.bat to use a different version"
+Missing argument: --board or --device must be specified
+Usage:
+ cli [--product <file>] [--board <board>] [--device <device>] [--package <package>] [--variant <variant>] [--script <file>] [--output <path>] [--context <context>] [--enableResourceAllocationSetup]
+ cli --help
+ cli --version
+ example: cli --product <sdk_root>/.metadata/product.json --device MSPM0G3505 --package "VQFN-32(RHB)" --script project/example.syscfg --output project/debug 
+ Note that the all arguments other than '--help' and '--version' may also be 
+ specified via the script with an embedded @cliArgs comment directive. 
+ E.g. // @cliArgs -d MSP432P401R
+ If an argument is embedded in a script and explicitly specified via the CLI
+ then precedence is given to the CLI arguments. Additionally, specifying 
+ "--board" or "--device" on the CLI will override any "--board" and "--device"
+  arguments specified in the script.
+  Note that --script can be supplied multiple times, as long as each --script
+  is associated with a --context.  All arguments supplied after a --script
+  apply to that script, and only certain arguments are script-specific.
+  
+../src/main.c(1): error: 'heartbeat_app.h' file not found
+    1 | #include "heartbeat_app.h"
+      |          ^~~~~~~~~~~~~~~~~
+1 error generated.
+compiling main.c...
+./ti_msp_dl_config.c(41): warning: In file included from...
+.\ti_msp_dl_config.h(54): error: 'ti/devices/msp/msp.h' file not found
+   54 | #include <ti/devices/msp/msp.h>
+      |          ^~~~~~~~~~~~~~~~~~~~~~
+1 error generated.
+compiling ti_msp_dl_config.c...
+assembling startup_mspm0g351x_uvision.s...
+".\Objects\M0G3519_nortos_keil.axf" - 2 Error(s), 0 Warning(s).
+Target not created.
+Build Time Elapsed:  00:00:03
+</pre>
+</body>
+</html>
