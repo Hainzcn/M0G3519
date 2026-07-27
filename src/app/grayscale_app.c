@@ -6,7 +6,7 @@
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
 
-#define GRAYSCALE_APP_DEBUG_PERIOD_MS   (500)
+#define GRAYSCALE_APP_DEBUG_PERIOD_MS   (1000)
 
 static uint32 grayscale_app_last_print_ms;
 static uint32 grayscale_app_print_count;
@@ -26,7 +26,7 @@ void grayscale_app_process(void)
 
     grayscale_process();
 
-    if (!grayscale_is_scan_ready())
+    if (!grayscale_take_scan_ready())
     {
         return;
     }

@@ -162,6 +162,31 @@ A/B 相在软件里只区分「接 CCP0 还是 CCP1」；接反了只会导致�
 
 其中 `v0`~`v7` 对应 X1~X8 探头，值为 0 或 1（厂家说明：灯亮/检测到为 1）。传感器联调阶段建议将 `motor_app.c` 中 `MOTOR_APP_DEMO_ENABLE` 设为 `0`，避免电机转动干扰读数。
 
+## 六轴 IMU 模块（UART，已实现）
+
+模块内置姿态解算，通过 **UART 主动推送** 角速度、姿态角、加速度、四元数等二进制帧；MCU 使用 **UART1** 接收，**UART0** 仍专用于心跳/调试输出。
+
+| 模块信号 | MCU 引脚 | 方向 | 说明 |
+| --- | --- | --- | --- |
+| VCC | 5V | — | 手册典型 5V（3.3~16V） |
+| GND | GND | — | 与 MCU 共地 |
+| RX | A8 (PA8) | MCU → 模块 | UART1 TX，TTL |
+| TX | A9 (PA9) | 模块 → MCU | UART1 RX，TTL |
+
+通信参数：**115200-8-N-1**（与模块出厂默认一致）。读帧格式见 `docs/6轴数据手册(串口通信）.pdf`：`0x5A | TYPE | 8 数据字节 | SUM`。
+
+软件分层：
+
+- `src/hardware/imu_hw.c/h` — UART1 RX 中断 + 512B FIFO；init 阶段阻塞发写寄存器命令
+- `src/middle/imu.c/h` — 11 字节帧状态机、校验、物理量换算；`IMU_ENABLE_GYRO/ANGLE/ACCEL/QUAT` 开关宏
+- `src/app/imu_app.c/h` — 上电 500 ms 等待；可选 Yaw 归零（`IMU_APP_YAW_ZERO_ON_BOOT`）；主循环 `imu_process()`
+
+串口调试（UART0）：除 `[hb]` / `[gs]` 外，每 200 ms 输出 `[imu]` 行，字段随 `IMU_ENABLE_*` 宏裁剪，例如：
+
+`[imu],<序号>,roll,pitch,yaw,wx,wy,wz,ax,ay,az,q0,q1,q2,q3`
+
+联调注意：模块 TX 必须接 MCU A9（RX），A8 接模块 RX；若仅有 `[hb]` 无 `[imu]`，检查交叉接线、115200 波特率及模块是否被改为其他波特率。
+
 ## 第三方库位置
 
 `@docs/MSPM0G3519_Library` 中的开源库已复制一份到 `src/MSPM0G3519_Library`，工程实际编译使用 `src/` 下的这份拷贝（详见 `keil/.eide/eide.yml`）。`docs/MSPM0G3519_Library` 保留作为原始参考，两者内容目前一致；后续如需升级库版本，请只更新 `src/MSPM0G3519_Library` 并同步说明，避免两份代码长期不一致。

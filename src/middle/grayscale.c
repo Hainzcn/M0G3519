@@ -100,3 +100,14 @@ uint8 grayscale_is_scan_ready(void)
 {
     return grayscale_scan_ready;
 }
+
+uint8 grayscale_take_scan_ready(void)
+{
+    if (0u == grayscale_scan_ready)
+    {
+        return 0u;
+    }
+
+    grayscale_scan_ready = 0u;
+    return 1u;
+}
