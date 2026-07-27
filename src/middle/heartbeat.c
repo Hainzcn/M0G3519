@@ -5,22 +5,21 @@
 #include "heartbeat_hw.h"
 #include "zf_common_typedef.h"
 
-static volatile uint32 heartbeat_tick_count = 0;
-
 static void heartbeat_send(void)
 {
     char message[64];
     int32 left_rpm;
     int32 right_rpm;
+    uint32 sequence;
 
     heartbeat_hw_led_toggle();
 
-    heartbeat_tick_count ++;
     encoder_update_speed(HEARTBEAT_PERIOD_MS);
     left_rpm  = encoder_get_left_rpm();
     right_rpm = encoder_get_right_rpm();
-    snprintf(message, sizeof(message), "[hb] %lu,%ld,%ld\r\n",
-             (unsigned long)heartbeat_tick_count, (long)left_rpm, (long)right_rpm);
+    sequence  = heartbeat_hw_get_sequence();
+    snprintf(message, sizeof(message), "[hb] %u,%d,%d\r\n",
+             (unsigned int)sequence, (int)left_rpm, (int)right_rpm);
     heartbeat_hw_uart_send_string(message);
 }
 

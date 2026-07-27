@@ -10,6 +10,7 @@
 static volatile uint32 heartbeat_hw_tick_ms = 0;
 static volatile uint32 heartbeat_hw_pending_ticks = 0;
 static volatile uint32 heartbeat_hw_ms = 0;
+static volatile uint32 heartbeat_hw_sequence = 0;
 static uint32 heartbeat_hw_period_ms = 0;
 
 void heartbeat_hw_init(uint32 tick_period_ms)
@@ -21,6 +22,7 @@ void heartbeat_hw_init(uint32 tick_period_ms)
     heartbeat_hw_tick_ms = 0;
     heartbeat_hw_pending_ticks = 0;
     heartbeat_hw_ms = 0;
+    heartbeat_hw_sequence = 0;
     SysTick_Config(CPUCLK_FREQ / (1000 / HEARTBEAT_HW_SYSTICK_PERIOD_MS));
 }
 
@@ -58,6 +60,11 @@ uint32 heartbeat_hw_get_ms(void)
     return heartbeat_hw_ms;
 }
 
+uint32 heartbeat_hw_get_sequence(void)
+{
+    return heartbeat_hw_sequence;
+}
+
 // SysTick 中断仅累积周期标志；不执行 UART 发送等可能阻塞的操作。
 void SysTick_Handler(void)
 {
@@ -70,5 +77,6 @@ void SysTick_Handler(void)
         {
             heartbeat_hw_pending_ticks ++;
         }
+        heartbeat_hw_sequence ++;
     }
 }

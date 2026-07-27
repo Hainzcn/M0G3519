@@ -1,3 +1,4 @@
+#include "grayscale_app.h"
 #include "heartbeat_app.h"
 #include "motor_app.h"
 #include "zf_common_clock.h"
@@ -8,10 +9,12 @@ int main(void)
 
     heartbeat_app_init();              // 先启动串口心跳，便于联调
     motor_app_init();
+    grayscale_app_init();
 
     while (1)
     {
         heartbeat_app_process();
         motor_app_demo_process();
+        grayscale_app_process();
     }
 }

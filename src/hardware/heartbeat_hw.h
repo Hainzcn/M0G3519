@@ -18,5 +18,6 @@ void heartbeat_hw_led_toggle(void);
 void heartbeat_hw_uart_send_string(const char *str);
 uint8 heartbeat_hw_take_tick(void);    // 有待处理周期时返回 1，并原子地取走一个周期
 uint32 heartbeat_hw_get_ms(void);      // 自 SysTick 启动以来的毫秒计数，供非阻塞定时使用
+uint32 heartbeat_hw_get_sequence(void); // 心跳周期计数，在 SysTick ISR 中递增
 
 #endif
