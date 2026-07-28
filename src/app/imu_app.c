@@ -161,7 +161,7 @@ void imu_app_process(void)
     gyro  = imu_get_gyro();
 
     snprintf(message, sizeof(message),
-             "[to] %u,%.2f,%.2f\r\n",
+             "[imu] %u,%.2f,%.2f\r\n",
              (unsigned int)imu_app_print_count,
              (double)angle->yaw, (double)gyro->wz);
     heartbeat_hw_uart_send_string(message);
