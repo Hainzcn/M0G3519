@@ -6,48 +6,118 @@
 #include "imu.h"
 #include "oled.h"
 
-#define OLED_APP_REFRESH_PERIOD_MS      (500)
-#define OLED_APP_GS_BAR_Y               (56)
-#define OLED_APP_GS_BAR_H               (8)
+#include "string.h"
+
+/*
+ * I2C 400 kHz 下整屏 1024 B 推送约 25 ms，单页约 3 ms。
+ * 循迹条按页字节直写帧缓冲（非逐像素、非字模），数值区 6x8 字模亦直写页缓冲；
+ * 仅在数据变化时推送 I2C，避免无效刷新。
+ */
+#define OLED_APP_GS_PERIOD_MS           (50)
+#define OLED_APP_TEXT_PERIOD_MS         (100)
+
+#define OLED_APP_PAGE_TITLE             (0)
+#define OLED_APP_PAGE_YAW               (1)
+#define OLED_APP_PAGE_RPM               (3)
+#define OLED_APP_PAGE_GS                (7)
+
 #define OLED_APP_GS_BLOCK_W             (OLED_HW_WIDTH / GRAYSCALE_CHANNELS)
 
-static uint32 oled_app_last_refresh_ms;
+#define OLED_APP_YAW_VALUE_X            (30)
+#define OLED_APP_LEFT_RPM_VALUE_X       (12)
+#define OLED_APP_RIGHT_RPM_VALUE_X      (76)
+#define OLED_APP_RPM_VALUE_W            (42)
 
-static void oled_app_draw_gs_bar(const uint8 *values)
+static uint32 oled_app_last_gs_ms;
+static uint32 oled_app_last_text_ms;
+
+static uint8  oled_app_gs_cache[GRAYSCALE_CHANNELS];
+static int32  oled_app_yaw_cache;
+static int32  oled_app_left_rpm_cache;
+static int32  oled_app_right_rpm_cache;
+
+static void oled_app_draw_static_labels(void)
 {
-    uint8 ch;
-    uint8 x0;
-    uint8 x;
-    uint8 y;
+    oled_show_string(0, OLED_APP_PAGE_TITLE, "MSPM0G3519", OLED_FONT_6X8);
+    oled_show_string(0, OLED_APP_PAGE_YAW, "Yaw:", OLED_FONT_6X8);
+    oled_show_string(0, OLED_APP_PAGE_RPM, "L:", OLED_FONT_6X8);
+    oled_show_string(64, OLED_APP_PAGE_RPM, "R:", OLED_FONT_6X8);
+}
 
-    for (ch = 0; ch < GRAYSCALE_CHANNELS; ch ++)
+static uint8 oled_app_render_gs(const uint8 *values)
+{
+    if (0 == memcmp(values, oled_app_gs_cache, GRAYSCALE_CHANNELS))
     {
-        if (0u == values[ch])
-        {
-            continue;
-        }
-
-        x0 = (uint8)(ch * OLED_APP_GS_BLOCK_W);
-        for (x = x0; x < (x0 + OLED_APP_GS_BLOCK_W); x ++)
-        {
-            for (y = OLED_APP_GS_BAR_Y; y < (OLED_APP_GS_BAR_Y + OLED_APP_GS_BAR_H); y ++)
-            {
-                oled_set_pixel(x, y, 1);
-            }
-        }
+        return 0;
     }
+
+    memcpy(oled_app_gs_cache, values, GRAYSCALE_CHANNELS);
+    oled_fill_page_bar(OLED_APP_PAGE_GS, values, GRAYSCALE_CHANNELS, OLED_APP_GS_BLOCK_W);
+    return 1;
+}
+
+static uint8 oled_app_render_text(void)
+{
+    const imu_angle_t *angle;
+    int32 yaw;
+    int32 left_rpm;
+    int32 right_rpm;
+
+    angle     = imu_get_angle();
+    yaw       = (int32)angle->yaw;
+    left_rpm  = encoder_get_left_rpm();
+    right_rpm = encoder_get_right_rpm();
+
+    if ((yaw == oled_app_yaw_cache) &&
+        (left_rpm == oled_app_left_rpm_cache) &&
+        (right_rpm == oled_app_right_rpm_cache))
+    {
+        return 0;
+    }
+
+    oled_app_yaw_cache       = yaw;
+    oled_app_left_rpm_cache  = left_rpm;
+    oled_app_right_rpm_cache = right_rpm;
+
+    oled_clear_page_segment(OLED_APP_PAGE_YAW, OLED_APP_YAW_VALUE_X,
+                            (uint8)(OLED_HW_WIDTH - OLED_APP_YAW_VALUE_X));
+    oled_clear_page_segment(OLED_APP_PAGE_RPM, OLED_APP_LEFT_RPM_VALUE_X,
+                            OLED_APP_RPM_VALUE_W);
+    oled_clear_page_segment(OLED_APP_PAGE_RPM, OLED_APP_RIGHT_RPM_VALUE_X,
+                            OLED_APP_RPM_VALUE_W);
+
+    oled_show_int(OLED_APP_YAW_VALUE_X, OLED_APP_PAGE_YAW, yaw, OLED_FONT_6X8);
+    oled_show_int(OLED_APP_LEFT_RPM_VALUE_X, OLED_APP_PAGE_RPM, left_rpm, OLED_FONT_6X8);
+    oled_show_int(OLED_APP_RIGHT_RPM_VALUE_X, OLED_APP_PAGE_RPM, right_rpm, OLED_FONT_6X8);
+    return 1;
 }
 
 void oled_app_init(void)
 {
-    oled_init();
-    oled_app_last_refresh_ms = heartbeat_get_ms();
+    const uint8 *gs_values;
+    uint32       now_ms;
+
+    oled_hw_init();
+    oled_clear();
+
+    now_ms = heartbeat_get_ms();
+    oled_app_last_gs_ms   = now_ms;
+    oled_app_last_text_ms = now_ms;
+
+    memset(oled_app_gs_cache, 0xFF, GRAYSCALE_CHANNELS);
+    oled_app_yaw_cache       = 0x7FFFFFFF;
+    oled_app_left_rpm_cache  = 0x7FFFFFFF;
+    oled_app_right_rpm_cache = 0x7FFFFFFF;
+
+    oled_app_draw_static_labels();
+    oled_app_render_text();
+    gs_values = grayscale_get_values();
+    oled_app_render_gs(gs_values);
+    oled_refresh();
 }
 
 void oled_app_process(void)
 {
-    const imu_angle_t *angle;
-    const uint8       *gs;
     uint32 now_ms;
 
     if (0 == oled_is_ready())
@@ -56,26 +126,22 @@ void oled_app_process(void)
     }
 
     now_ms = heartbeat_get_ms();
-    if ((now_ms - oled_app_last_refresh_ms) < OLED_APP_REFRESH_PERIOD_MS)
+
+    if ((now_ms - oled_app_last_text_ms) >= OLED_APP_TEXT_PERIOD_MS)
     {
-        return;
+        oled_app_last_text_ms = now_ms;
+        if (oled_app_render_text())
+        {
+            oled_refresh_pages(OLED_APP_PAGE_YAW, OLED_APP_PAGE_RPM);
+        }
     }
 
-    oled_app_last_refresh_ms = now_ms;
-
-    oled_clear();
-    oled_show_string(0, 0, "MSPM0G3519", OLED_FONT_6X8);
-
-    angle = imu_get_angle();
-    oled_show_string(0, 1, "Yaw:", OLED_FONT_6X8);
-    oled_show_int(30, 1, (int32)angle->yaw, OLED_FONT_6X8);
-
-    oled_show_string(0, 3, "L:", OLED_FONT_6X8);
-    oled_show_int(12, 3, encoder_get_left_rpm(), OLED_FONT_6X8);
-    oled_show_string(64, 3, "R:", OLED_FONT_6X8);
-    oled_show_int(76, 3, encoder_get_right_rpm(), OLED_FONT_6X8);
-
-    gs = grayscale_get_values();
-    oled_app_draw_gs_bar(gs);
-    oled_refresh();
+    if ((now_ms - oled_app_last_gs_ms) >= OLED_APP_GS_PERIOD_MS)
+    {
+        oled_app_last_gs_ms = now_ms;
+        if (oled_app_render_gs(grayscale_get_values()))
+        {
+            oled_refresh_pages(OLED_APP_PAGE_GS, OLED_APP_PAGE_GS);
+        }
+    }
 }

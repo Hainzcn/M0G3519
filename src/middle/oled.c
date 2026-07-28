@@ -1,5 +1,6 @@
 #include "oled.h"
 
+#include "string.h"
 #include "zf_common_font.h"
 
 #define OLED_BUFFER_SIZE            (OLED_HW_WIDTH * OLED_HW_PAGE_COUNT)
@@ -30,12 +31,7 @@ uint8 oled_is_ready(void)
 
 void oled_clear(void)
 {
-    uint32 index;
-
-    for (index = 0; index < OLED_BUFFER_SIZE; index ++)
-    {
-        oled_buffer[index] = 0;
-    }
+    memset(oled_buffer, 0, OLED_BUFFER_SIZE);
 }
 
 void oled_set_pixel(uint8 x, uint8 y, uint8 on)
@@ -108,6 +104,8 @@ void oled_show_char(uint8 x, uint8 page, char chr, uint8 font)
     }
     else
     {
+        uint16 base = (uint16)page * OLED_HW_WIDTH;
+
         for (col = 0; col < 6; col ++)
         {
             if ((uint16)x + col >= OLED_HW_WIDTH)
@@ -115,8 +113,7 @@ void oled_show_char(uint8 x, uint8 page, char chr, uint8 font)
                 break;
             }
 
-            oled_draw_font_column((uint8)(x + col), (uint8)(page * 8),
-                                  ascii_font_6x8[index][col]);
+            oled_buffer[base + x + col] = ascii_font_6x8[index][col];
         }
     }
 }
@@ -187,9 +184,82 @@ void oled_show_int(uint8 x, uint8 page, int32 value, uint8 font)
     }
 }
 
-void oled_refresh(void)
+void oled_clear_area(uint8 x, uint8 y, uint8 w, uint8 h)
+{
+    uint8 dx;
+    uint8 dy;
+
+    for (dy = 0; dy < h; dy ++)
+    {
+        for (dx = 0; dx < w; dx ++)
+        {
+            oled_set_pixel((uint8)(x + dx), (uint8)(y + dy), 0);
+        }
+    }
+}
+
+void oled_clear_page(uint8 page)
+{
+    if (page >= OLED_HW_PAGE_COUNT)
+    {
+        return;
+    }
+
+    memset(oled_buffer + ((uint32)page * OLED_HW_WIDTH), 0, OLED_HW_WIDTH);
+}
+
+void oled_clear_page_segment(uint8 page, uint8 x, uint8 w)
+{
+    if (page >= OLED_HW_PAGE_COUNT)
+    {
+        return;
+    }
+
+    if ((uint16)x + w > OLED_HW_WIDTH)
+    {
+        if (x >= OLED_HW_WIDTH)
+        {
+            return;
+        }
+
+        w = (uint8)(OLED_HW_WIDTH - x);
+    }
+
+    memset(oled_buffer + ((uint32)page * OLED_HW_WIDTH) + x, 0, w);
+}
+
+void oled_fill_page_bar(uint8 page, const uint8 *values, uint8 count, uint8 block_width)
+{
+    uint8  ch;
+    uint8 *row;
+
+    if ((page >= OLED_HW_PAGE_COUNT) || (NULL == values) || (0u == count) || (0u == block_width))
+    {
+        return;
+    }
+
+    row = oled_buffer + ((uint32)page * OLED_HW_WIDTH);
+    for (ch = 0; ch < count; ch ++)
+    {
+        memset(row + ((uint32)ch * block_width),
+               values[ch] ? 0xFFu : 0x00u,
+               block_width);
+    }
+}
+
+static void oled_refresh_page_range(uint8 page_start, uint8 page_end)
 {
     if (0 == oled_hw_is_ready())
+    {
+        return;
+    }
+
+    if (page_start > page_end)
+    {
+        return;
+    }
+
+    if (page_end >= OLED_HW_PAGE_COUNT)
     {
         return;
     }
@@ -200,7 +270,18 @@ void oled_refresh(void)
     oled_hw_write_cmd(0x00);
     oled_hw_write_cmd(0x7F);
     oled_hw_write_cmd(0x22);
-    oled_hw_write_cmd(0x00);
-    oled_hw_write_cmd(0x07);
-    oled_hw_write_data(oled_buffer, OLED_BUFFER_SIZE);
+    oled_hw_write_cmd(page_start);
+    oled_hw_write_cmd(page_end);
+    oled_hw_write_data(oled_buffer + ((uint32)page_start * OLED_HW_WIDTH),
+                       (uint32)(page_end - page_start + 1u) * OLED_HW_WIDTH);
+}
+
+void oled_refresh(void)
+{
+    oled_refresh_page_range(0, (uint8)(OLED_HW_PAGE_COUNT - 1u));
+}
+
+void oled_refresh_pages(uint8 page_start, uint8 page_end)
+{
+    oled_refresh_page_range(page_start, page_end);
 }
