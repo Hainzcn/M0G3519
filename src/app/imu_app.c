@@ -12,6 +12,10 @@
 #define IMU_APP_DEBUG_PERIOD_MS        (1000)
 #define IMU_APP_WAIT_DEBUG_PERIOD_MS   (2000)
 
+#define IMU_REG_KEY                    (0x13)
+#define IMU_REG_SAVE                   (0x00)
+#define IMU_REG_YAW_ZERO               (0x15)
+
 #ifndef IMU_APP_YAW_ZERO_ON_BOOT
 #define IMU_APP_YAW_ZERO_ON_BOOT       (0)
 #endif
@@ -44,7 +48,10 @@ void imu_app_init(void)
 
 static uint8 imu_app_has_required_data(void)
 {
-    return imu_is_type_ready(IMU_FLAG_ANGLE);
+    uint8 flags = imu_get_update_flags();
+
+    return ((flags & (IMU_FLAG_ANGLE | IMU_FLAG_GYRO)) ==
+            (IMU_FLAG_ANGLE | IMU_FLAG_GYRO)) ? 1u : 0u;
 }
 
 static void imu_app_print_wait_if_needed(uint32 now_ms)
@@ -60,7 +67,7 @@ static void imu_app_print_wait_if_needed(uint32 now_ms)
     imu_app_last_wait_print_ms = now_ms;
     flags = imu_get_update_flags();
     snprintf(message, sizeof(message),
-             "[imu],0,wait,flags=0x%02X\r\n", (unsigned int)flags);
+             "[imu] 0,wait,flags=0x%02X\r\n", (unsigned int)flags);
     heartbeat_hw_uart_send_string(message);
 }
 
@@ -87,7 +94,7 @@ static void imu_app_run_setup_state_machine(void)
             break;
 
         case IMU_APP_STATE_YAW_UNLOCK:
-            imu_hw_write_reg(0x13, (int16)0x8E5F);
+            imu_hw_write_reg(IMU_REG_KEY, (int16)0x8E5F);
             imu_app_state          = IMU_APP_STATE_YAW_CMD;
             imu_app_state_start_ms = now_ms;
             break;
@@ -98,7 +105,7 @@ static void imu_app_run_setup_state_machine(void)
                 break;
             }
 
-            imu_hw_write_reg(0x0A, (int16)0x0400);
+            imu_hw_write_reg(IMU_REG_YAW_ZERO, 0);
             imu_app_state          = IMU_APP_STATE_YAW_SAVE;
             imu_app_state_start_ms = now_ms;
             break;
@@ -109,7 +116,7 @@ static void imu_app_run_setup_state_machine(void)
                 break;
             }
 
-            imu_hw_write_reg(0x00, 0);
+            imu_hw_write_reg(IMU_REG_SAVE, 0);
             imu_app_state = IMU_APP_STATE_RUNNING;
             break;
 
@@ -121,11 +128,10 @@ static void imu_app_run_setup_state_machine(void)
 
 void imu_app_process(void)
 {
-    char message[96];
+    char message[64];
     const imu_angle_t *angle;
-    const imu_accel_t *accel;
+    const imu_gyro_t  *gyro;
     uint32 now_ms;
-    uint8 flags;
 
     imu_app_run_setup_state_machine();
 
@@ -152,24 +158,11 @@ void imu_app_process(void)
     imu_app_print_count ++;
 
     angle = imu_get_angle();
-    accel = imu_get_accel();
-    flags = imu_get_update_flags();
+    gyro  = imu_get_gyro();
 
-    if ((flags & IMU_FLAG_ACCEL) != 0u)
-    {
-        snprintf(message, sizeof(message),
-                 "[imu],%u,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n",
-                 (unsigned int)imu_app_print_count,
-                 (double)angle->roll, (double)angle->pitch, (double)angle->yaw,
-                 (double)accel->ax, (double)accel->ay, (double)accel->az);
-    }
-    else
-    {
-        snprintf(message, sizeof(message),
-                 "[imu],%u,%.2f,%.2f,%.2f\r\n",
-                 (unsigned int)imu_app_print_count,
-                 (double)angle->roll, (double)angle->pitch, (double)angle->yaw);
-    }
-
+    snprintf(message, sizeof(message),
+             "[to] %u,%.2f,%.2f\r\n",
+             (unsigned int)imu_app_print_count,
+             (double)angle->yaw, (double)gyro->wz);
     heartbeat_hw_uart_send_string(message);
 }

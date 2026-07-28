@@ -93,3 +93,22 @@ UART0 ◄── heartbeat_hw ◄── imu_app [imu] 调试（200 ms）
 - UART1 TX 超时；RX 中断在 boot 等待后由 `imu_hw_rx_enable()` 开启
 - `IMU_APP_YAW_ZERO_ON_BOOT` 默认 `0`
 - 主栈 256 B → 2 KB；`[imu]` 改为整数（×100 或 ×1000）输出
+
+## 9. 单轴协议修正（2026-07-28）
+
+**现象**：TTL 直连模块可见 `0xAA` / `0xBB` 帧，MCU 侧长期 `[imu],0,wait,flags=0x00`。
+
+**根因**：实际模块为 **单轴**（`docs/数据手册(串口通信).pdf`），读帧为 **5 字节**（`0x5A | TYPE | 2×data | SUM`）；首版按 **六轴 11 字节**（8 数据字节）解析，RX 流在首帧后即失步。
+
+**修正**：
+
+| 项目 | 六轴（旧） | 单轴（现） |
+| --- | --- | --- |
+| 帧长 | 11 B | 5 B |
+| 0xAA | Wx,Wy,Wz | 仅 Wz |
+| 0xBB | Roll,Pitch,Yaw | 仅 Yaw |
+| Yaw 归零 | 0x0A=0x0400 | **0x15=0x0000** |
+
+- `imu.c/h`：5 字节 FSM；删除 accel/quat API
+- `imu_app.c`：`[imu],seq,yaw,wz`；就绪需 `IMU_FLAG_ANGLE | IMU_FLAG_GYRO`
+- 手册：`docs/数据手册(串口通信).pdf`

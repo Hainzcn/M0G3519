@@ -42,7 +42,7 @@ void grayscale_app_process(void)
     values = grayscale_get_values();
 
     snprintf(message, sizeof(message),
-             "[gs],%u,%u,%u,%u,%u,%u,%u,%u,%u\r\n",
+             "[gs] %u,%u,%u,%u,%u,%u,%u,%u,%u\r\n",
              (unsigned int)grayscale_app_print_count,
              (unsigned int)values[0], (unsigned int)values[1],
              (unsigned int)values[2], (unsigned int)values[3],
