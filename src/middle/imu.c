@@ -1,5 +1,6 @@
 #include "imu.h"
 
+#include "heartbeat.h"
 #include "imu_hw.h"
 
 typedef enum
@@ -11,11 +12,13 @@ typedef enum
 } imu_parse_state_enum;
 
 #define IMU_FRAME_DATA_SIZE        (2)
-#define IMU_PROCESS_MAX_BYTES      (0)   /* 0 = drain entire RX ring each call */
+#define IMU_PROCESS_MAX_BYTES      (0)
 
 static imu_gyro_t imu_gyro_data;
 static imu_angle_t imu_angle_data;
 static uint8 imu_update_flags;
+static uint32 imu_last_gyro_ms;
+static uint32 imu_last_angle_ms;
 
 static imu_parse_state_enum imu_parse_state;
 static uint8 imu_frame_type;
@@ -54,6 +57,61 @@ static uint8 imu_angle_in_range(float yaw)
     return ((yaw < -limit) || (limit < yaw)) ? 0u : 1u;
 }
 
+static uint8 imu_type_is_fresh(uint8 flag)
+{
+    uint32 now_ms = heartbeat_get_ms();
+
+    if ((flag & IMU_FLAG_GYRO) != 0u)
+    {
+        if ((0u == (imu_update_flags & IMU_FLAG_GYRO)) ||
+            ((now_ms - imu_last_gyro_ms) > IMU_STALE_TIMEOUT_MS))
+        {
+            return 0u;
+        }
+    }
+
+    if ((flag & IMU_FLAG_ANGLE) != 0u)
+    {
+        if ((0u == (imu_update_flags & IMU_FLAG_ANGLE)) ||
+            ((now_ms - imu_last_angle_ms) > IMU_STALE_TIMEOUT_MS))
+        {
+            return 0u;
+        }
+    }
+
+    return 1u;
+}
+
+static void imu_invalidate_all(void)
+{
+    imu_gyro_data.wz   = 0.0f;
+    imu_angle_data.yaw = 0.0f;
+    imu_update_flags   = 0u;
+    imu_last_gyro_ms   = 0u;
+    imu_last_angle_ms  = 0u;
+    imu_parse_state    = IMU_PARSE_SYNC;
+    imu_frame_index    = 0;
+}
+
+static void imu_check_stale(void)
+{
+    uint32 now_ms = heartbeat_get_ms();
+
+    if ((0u != (imu_update_flags & IMU_FLAG_GYRO)) &&
+        ((now_ms - imu_last_gyro_ms) > IMU_STALE_TIMEOUT_MS))
+    {
+        imu_update_flags &= (uint8)(~IMU_FLAG_GYRO);
+        imu_gyro_data.wz = 0.0f;
+    }
+
+    if ((0u != (imu_update_flags & IMU_FLAG_ANGLE)) &&
+        ((now_ms - imu_last_angle_ms) > IMU_STALE_TIMEOUT_MS))
+    {
+        imu_update_flags &= (uint8)(~IMU_FLAG_ANGLE);
+        imu_angle_data.yaw = 0.0f;
+    }
+}
+
 static void imu_decode_gyro(const uint8 *data)
 {
     float wz;
@@ -68,6 +126,7 @@ static void imu_decode_gyro(const uint8 *data)
 
     imu_gyro_data.wz = wz;
     imu_update_flags |= IMU_FLAG_GYRO;
+    imu_last_gyro_ms  = heartbeat_get_ms();
 }
 
 static void imu_decode_angle(const uint8 *data)
@@ -83,7 +142,8 @@ static void imu_decode_angle(const uint8 *data)
     }
 
     imu_angle_data.yaw = yaw;
-    imu_update_flags |= IMU_FLAG_ANGLE;
+    imu_update_flags  |= IMU_FLAG_ANGLE;
+    imu_last_angle_ms   = heartbeat_get_ms();
 }
 
 static void imu_handle_frame(uint8 type, const uint8 *data)
@@ -159,19 +219,18 @@ static void imu_feed_byte(uint8 byte)
 void imu_init(void)
 {
     imu_hw_init();
-
-    imu_gyro_data.wz   = 0.0f;
-    imu_angle_data.yaw = 0.0f;
-
-    imu_update_flags = 0;
-    imu_parse_state  = IMU_PARSE_SYNC;
-    imu_frame_index  = 0;
+    imu_invalidate_all();
 }
 
 void imu_process(void)
 {
     uint8 byte;
     uint8 count = 0;
+
+    if (0u != imu_hw_take_rx_error())
+    {
+        imu_invalidate_all();
+    }
 
     while (imu_hw_read_byte(&byte))
     {
@@ -182,6 +241,8 @@ void imu_process(void)
             break;
         }
     }
+
+    imu_check_stale();
 }
 
 const imu_gyro_t *imu_get_gyro(void)
@@ -196,6 +257,7 @@ const imu_angle_t *imu_get_angle(void)
 
 uint8 imu_get_update_flags(void)
 {
+    imu_check_stale();
     return imu_update_flags;
 }
 
@@ -206,6 +268,7 @@ void imu_get_snapshot(imu_snapshot_t *snapshot)
         return;
     }
 
+    imu_check_stale();
     snapshot->gyro  = imu_gyro_data;
     snapshot->angle = imu_angle_data;
     snapshot->flags = imu_update_flags;
@@ -213,5 +276,11 @@ void imu_get_snapshot(imu_snapshot_t *snapshot)
 
 uint8 imu_is_type_ready(uint8 flag)
 {
-    return ((imu_update_flags & flag) != 0u) ? 1u : 0u;
+    imu_check_stale();
+    return ((0u != (imu_update_flags & flag)) && imu_type_is_fresh(flag)) ? 1u : 0u;
+}
+
+uint8 imu_is_online(void)
+{
+    return imu_is_type_ready((uint8)(IMU_FLAG_GYRO | IMU_FLAG_ANGLE));
 }

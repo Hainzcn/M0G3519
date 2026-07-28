@@ -87,12 +87,22 @@ static uint8 oled_hw_transfer(const uint8 *data, uint32 len)
         timeout --;
     }
 
+    if (0u == timeout)
+    {
+        return 0u;
+    }
+
     timeout = 4000000u;
     while ((0u != (DL_I2C_getControllerStatus(I2C_OLED_INST) &
                     DL_I2C_CONTROLLER_STATUS_BUSY)) &&
            (timeout > 0u))
     {
         timeout --;
+    }
+
+    if (0u == timeout)
+    {
+        return 0u;
     }
 
     if (0u != (DL_I2C_getControllerStatus(I2C_OLED_INST) &
@@ -168,12 +178,22 @@ static uint8 oled_hw_write_payload(const uint8 *data, uint32 len, uint8 ctrl)
         timeout --;
     }
 
+    if (0u == timeout)
+    {
+        return 0u;
+    }
+
     timeout = 8000000u;
     while ((0u != (DL_I2C_getControllerStatus(I2C_OLED_INST) &
                     DL_I2C_CONTROLLER_STATUS_BUSY)) &&
            (timeout > 0u))
     {
         timeout --;
+    }
+
+    if (0u == timeout)
+    {
+        return 0u;
     }
 
     if (0u != (DL_I2C_getControllerStatus(I2C_OLED_INST) &
@@ -185,7 +205,7 @@ static uint8 oled_hw_write_payload(const uint8 *data, uint32 len, uint8 ctrl)
     return (sent >= len) ? 1u : 0u;
 }
 
-static void oled_hw_send_init_table(void)
+static uint8 oled_hw_send_init_table(void)
 {
     static const uint8 init_table[] =
     {
@@ -210,8 +230,13 @@ static void oled_hw_send_init_table(void)
 
     for (index = 0; index < sizeof(init_table); index ++)
     {
-        oled_hw_write_cmd(init_table[index]);
+        if (0u == oled_hw_write_cmd(init_table[index]))
+        {
+            return 0u;
+        }
     }
+
+    return 1u;
 }
 
 static uint8 oled_hw_probe(void)
@@ -234,7 +259,11 @@ void oled_hw_init(void)
         return;
     }
 
-    oled_hw_send_init_table();
+    if (0u == oled_hw_send_init_table())
+    {
+        return;
+    }
+
     oled_hw_ready = 1u;
 }
 
@@ -243,13 +272,19 @@ uint8 oled_hw_is_ready(void)
     return oled_hw_ready;
 }
 
-void oled_hw_write_cmd(uint8 cmd)
+uint8 oled_hw_write_cmd(uint8 cmd)
 {
     uint8 frame[2];
 
     frame[0] = OLED_HW_I2C_CTRL_CMD;
     frame[1] = cmd;
-    (void)oled_hw_transfer(frame, sizeof(frame));
+    if (0u == oled_hw_transfer(frame, sizeof(frame)))
+    {
+        oled_hw_ready = 0u;
+        return 0u;
+    }
+
+    return 1u;
 }
 
 void oled_hw_write_data(const uint8 *data, uint32 len)

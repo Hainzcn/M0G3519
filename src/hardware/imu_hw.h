@@ -11,12 +11,14 @@
  */
 
 #define IMU_HW_RX_FIFO_SIZE        (512)
-#define IMU_HW_TX_TIMEOUT_CYCLES   (8000000u)   /* 约 100 ms @ 80 MHz */
+#define IMU_HW_TX_TIMEOUT_CYCLES   (8000000u)
 
 void imu_hw_init(void);
 void imu_hw_rx_enable(void);
 uint8 imu_hw_read_byte(uint8 *byte);
 uint8 imu_hw_write_frame(const uint8 *frame, uint8 len);
 uint8 imu_hw_write_reg(uint8 addr, int16 value);
+uint32 imu_hw_get_overflow_count(void);
+uint8 imu_hw_take_rx_error(void);
 
 #endif

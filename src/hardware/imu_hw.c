@@ -5,6 +5,8 @@
 static uint8 imu_hw_rx_buffer[IMU_HW_RX_FIFO_SIZE];
 static volatile uint16 imu_hw_rx_head;
 static volatile uint16 imu_hw_rx_tail;
+static volatile uint32 imu_hw_rx_overflow_count;
+static volatile uint8 imu_hw_rx_error;
 static uint8 imu_hw_rx_irq_enabled;
 
 static uint8 imu_hw_wait_tx_ready(void)
@@ -21,9 +23,11 @@ static uint8 imu_hw_wait_tx_ready(void)
 
 void imu_hw_init(void)
 {
-    imu_hw_rx_head         = 0;
-    imu_hw_rx_tail         = 0;
-    imu_hw_rx_irq_enabled  = 0;
+    imu_hw_rx_head            = 0;
+    imu_hw_rx_tail            = 0;
+    imu_hw_rx_overflow_count  = 0;
+    imu_hw_rx_error           = 0;
+    imu_hw_rx_irq_enabled     = 0;
 }
 
 void imu_hw_rx_enable(void)
@@ -116,10 +120,31 @@ void UART1_IRQHandler(void)
                     imu_hw_rx_buffer[head] = rx_byte;
                     imu_hw_rx_head           = next;
                 }
+                else
+                {
+                    imu_hw_rx_overflow_count ++;
+                    imu_hw_rx_error = 1u;
+                }
             }
             break;
 
         default:
             break;
     }
+}
+
+uint32 imu_hw_get_overflow_count(void)
+{
+    return imu_hw_rx_overflow_count;
+}
+
+uint8 imu_hw_take_rx_error(void)
+{
+    if (0u == imu_hw_rx_error)
+    {
+        return 0u;
+    }
+
+    imu_hw_rx_error = 0u;
+    return 1u;
 }

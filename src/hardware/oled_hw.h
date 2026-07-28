@@ -24,7 +24,7 @@
 
 void  oled_hw_init(void);
 uint8 oled_hw_is_ready(void);
-void  oled_hw_write_cmd(uint8 cmd);
+uint8 oled_hw_write_cmd(uint8 cmd);
 void  oled_hw_write_data(const uint8 *data, uint32 len);
 
 #endif

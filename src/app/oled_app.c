@@ -62,20 +62,31 @@ static uint8 oled_app_render_text(void)
     int32 yaw;
     int32 left_rpm;
     int32 right_rpm;
+    uint8 yaw_ready;
 
     angle     = imu_get_angle();
-    yaw       = (int32)angle->yaw;
+    yaw_ready = imu_is_type_ready(IMU_FLAG_ANGLE);
+    yaw       = yaw_ready ? (int32)angle->yaw : 0;
     left_rpm  = encoder_get_left_rpm();
     right_rpm = encoder_get_right_rpm();
 
-    if ((yaw == oled_app_yaw_cache) &&
+    if (yaw_ready &&
+        (yaw == oled_app_yaw_cache) &&
         (left_rpm == oled_app_left_rpm_cache) &&
         (right_rpm == oled_app_right_rpm_cache))
     {
         return 0;
     }
 
-    oled_app_yaw_cache       = yaw;
+    if (!yaw_ready &&
+        (0x7FFFFFFEL == oled_app_yaw_cache) &&
+        (left_rpm == oled_app_left_rpm_cache) &&
+        (right_rpm == oled_app_right_rpm_cache))
+    {
+        return 0;
+    }
+
+    oled_app_yaw_cache       = yaw_ready ? yaw : 0x7FFFFFFEL;
     oled_app_left_rpm_cache  = left_rpm;
     oled_app_right_rpm_cache = right_rpm;
 
@@ -86,7 +97,15 @@ static uint8 oled_app_render_text(void)
     oled_clear_page_segment(OLED_APP_PAGE_RPM, OLED_APP_RIGHT_RPM_VALUE_X,
                             OLED_APP_RPM_VALUE_W);
 
-    oled_show_int(OLED_APP_YAW_VALUE_X, OLED_APP_PAGE_YAW, yaw, OLED_FONT_6X8);
+    if (yaw_ready)
+    {
+        oled_show_int(OLED_APP_YAW_VALUE_X, OLED_APP_PAGE_YAW, yaw, OLED_FONT_6X8);
+    }
+    else
+    {
+        oled_show_string(OLED_APP_YAW_VALUE_X, OLED_APP_PAGE_YAW, "---", OLED_FONT_6X8);
+    }
+
     oled_show_int(OLED_APP_LEFT_RPM_VALUE_X, OLED_APP_PAGE_RPM, left_rpm, OLED_FONT_6X8);
     oled_show_int(OLED_APP_RIGHT_RPM_VALUE_X, OLED_APP_PAGE_RPM, right_rpm, OLED_FONT_6X8);
     return 1;

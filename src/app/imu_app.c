@@ -48,10 +48,7 @@ void imu_app_init(void)
 
 static uint8 imu_app_has_required_data(void)
 {
-    uint8 flags = imu_get_update_flags();
-
-    return ((flags & (IMU_FLAG_ANGLE | IMU_FLAG_GYRO)) ==
-            (IMU_FLAG_ANGLE | IMU_FLAG_GYRO)) ? 1u : 0u;
+    return imu_is_online();
 }
 
 static void imu_app_print_wait_if_needed(uint32 now_ms)

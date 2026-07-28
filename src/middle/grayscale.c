@@ -1,6 +1,7 @@
 #include "grayscale.h"
 
-#include "ti_msp_dl_config.h"
+#include "grayscale_hw.h"
+#include "zf_driver_timer.h"
 
 typedef enum
 {
@@ -9,30 +10,19 @@ typedef enum
     GRAYSCALE_STATE_READ,
 } grayscale_state_enum;
 
+#define GRAYSCALE_SETTLE_TIMER         (TIM_G7)
+
 static uint8 grayscale_values[GRAYSCALE_CHANNELS];
 static uint8 grayscale_scan_ready;
 static uint8 grayscale_channel;
 static grayscale_state_enum grayscale_state;
-static uint32 grayscale_settle_start_val;
+static uint16 grayscale_settle_start_us;
 
-static uint32 grayscale_systick_ticks_elapsed(uint32 start_val, uint32 now_val)
+static uint8 grayscale_settle_elapsed(uint16 start_us)
 {
-    uint32 load = SysTick->LOAD;
+    uint16 elapsed_us = (uint16)(timer_get(GRAYSCALE_SETTLE_TIMER) - start_us);
 
-    if (now_val <= start_val)
-    {
-        return start_val - now_val;
-    }
-
-    return start_val + (load - now_val);
-}
-
-static uint8 grayscale_settle_elapsed(uint32 start_val)
-{
-    uint32 elapsed_ticks = grayscale_systick_ticks_elapsed(start_val, SysTick->VAL);
-    uint32 required_ticks = (uint32)GRAYSCALE_HW_SETTLE_US * (CPUCLK_FREQ / 1000000u);
-
-    return (elapsed_ticks >= required_ticks) ? 1u : 0u;
+    return (elapsed_us >= (uint16)GRAYSCALE_HW_SETTLE_US) ? 1u : 0u;
 }
 
 void grayscale_init(void)
@@ -40,6 +30,8 @@ void grayscale_init(void)
     uint8 i;
 
     grayscale_hw_init();
+    timer_init(GRAYSCALE_SETTLE_TIMER, TIMER_US);
+    timer_start(GRAYSCALE_SETTLE_TIMER);
 
     for (i = 0; i < GRAYSCALE_CHANNELS; i++)
     {
@@ -57,12 +49,12 @@ void grayscale_process(void)
     {
         case GRAYSCALE_STATE_SELECT:
             grayscale_hw_select_channel(grayscale_channel);
-            grayscale_settle_start_val = SysTick->VAL;
+            grayscale_settle_start_us = timer_get(GRAYSCALE_SETTLE_TIMER);
             grayscale_state = GRAYSCALE_STATE_WAIT_SETTLE;
             break;
 
         case GRAYSCALE_STATE_WAIT_SETTLE:
-            if (!grayscale_settle_elapsed(grayscale_settle_start_val))
+            if (!grayscale_settle_elapsed(grayscale_settle_start_us))
             {
                 return;
             }

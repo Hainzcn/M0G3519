@@ -24,6 +24,7 @@
 #define IMU_GYRO_SCALE_DPS         (2000.0f)
 #define IMU_GYRO_RANGE_DPS         (400.0f)
 #define IMU_ANGLE_RANGE_DEG        (180.0f)
+#define IMU_STALE_TIMEOUT_MS       (200u)
 
 typedef struct
 {
@@ -50,5 +51,6 @@ const imu_angle_t *imu_get_angle(void);
 uint8 imu_get_update_flags(void);
 void imu_get_snapshot(imu_snapshot_t *snapshot);
 uint8 imu_is_type_ready(uint8 flag);
+uint8 imu_is_online(void);
 
 #endif
