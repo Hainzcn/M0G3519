@@ -85,6 +85,22 @@ extern "C" {
 bool SYSCFG_DL_SYSCTL_SYSPLL_init(void);
 
 
+
+/* Defines for I2C_OLED */
+#define I2C_OLED_INST                                                       I2C0
+#define I2C_OLED_INST_IRQHandler                                 I2C0_IRQHandler
+#define I2C_OLED_INST_INT_IRQN                                     I2C0_INT_IRQn
+#define I2C_OLED_BUS_SPEED_HZ                                             400000
+#define GPIO_I2C_OLED_SDA_PORT                                             GPIOB
+#define GPIO_I2C_OLED_SDA_PIN                                      DL_GPIO_PIN_1
+#define GPIO_I2C_OLED_IOMUX_SDA                                  (IOMUX_PINCM13)
+#define GPIO_I2C_OLED_IOMUX_SDA_FUNC                   IOMUX_PINCM13_PF_I2C0_SDA
+#define GPIO_I2C_OLED_SCL_PORT                                             GPIOB
+#define GPIO_I2C_OLED_SCL_PIN                                      DL_GPIO_PIN_0
+#define GPIO_I2C_OLED_IOMUX_SCL                                  (IOMUX_PINCM12)
+#define GPIO_I2C_OLED_IOMUX_SCL_FUNC                   IOMUX_PINCM12_PF_I2C0_SCL
+
+
 /* Defines for UART_0 */
 #define UART_0_INST                                                        UART0
 #define UART_0_INST_FREQUENCY                                            5000000
@@ -130,6 +146,7 @@ void SYSCFG_DL_SYSCTL_init(void);
 void SYSCFG_DL_SYSCTL_CLK_init(void);
 
 bool SYSCFG_DL_SYSCTL_SYSPLL_init(void);
+void SYSCFG_DL_I2C_OLED_init(void);
 void SYSCFG_DL_UART_0_init(void);
 void SYSCFG_DL_UART_1_init(void);
 

@@ -2,6 +2,7 @@
 #include "heartbeat_app.h"
 #include "imu_app.h"
 #include "motor_app.h"
+#include "oled_app.h"
 #include "zf_common_clock.h"
 
 int main(void)
@@ -12,6 +13,7 @@ int main(void)
     motor_app_init();
     grayscale_app_init();
     imu_app_init();
+    oled_app_init();
 
     while (1)
     {
@@ -19,5 +21,6 @@ int main(void)
         motor_app_demo_process();
         grayscale_app_process();
         imu_app_process();
+        oled_app_process();
     }
 }

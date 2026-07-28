@@ -194,6 +194,31 @@ A/B 相在软件里只区分「接 CCP0 还是 CCP1」；接反了只会导致�
 
 联调注意：模块 TX 必须接 MCU A9（RX），A8 接模块 RX；若仅有 `[hb]` 无 `[imu]`，检查交叉接线、115200 波特率及模块是否被改为其他波特率。
 
+## OLED 显示模块（GME12864-49，已实现）
+
+0.96 寸 **128×64** 单色 OLED，4 针 I2C（控制器 SSD1306/兼容），使用 **硬件 I2C0**（400 kHz，SysConfig 初始化）。
+
+| 模块信号 | MCU 引脚 | 说明 |
+| --- | --- | --- |
+| VCC | 3.3V | 模块亦兼容 5V（板载 LDO） |
+| GND | GND | 与 MCU 共地 |
+| SCL | B0 (PB0) | I2C0_SCL（硬件 I2C） |
+| SDA | B1 (PB1) | I2C0_SDA（硬件 I2C） |
+
+**PB12/PB13 不支持 I2C 硬件复用**，若此前按软件 I2C 接在 B12/B13，请改接到 **B0/B1**。
+
+I2C 7 位地址默认 **0x3C**；若屏不亮且 SA0 已接高，可在 `oled_hw.h` 将 `OLED_HW_I2C_ADDR` 改为 **0x3D**。
+
+软件分层：
+
+- `src/hardware/oled_hw.c/h` — 硬件 I2C0 + SSD1306 初始化/写命令/写显存
+- `src/middle/oled.c/h` — 1 KB 帧缓冲、6×8/8×16 字库显示、刷新
+- `src/app/oled_app.c/h` — 每 500 ms 刷新：标题、Yaw、左右 RPM、八路循迹指示
+
+上电后若 I2C 无 ACK（模块未接或地址错误），`oled_app_process()` 自动跳过，不影响心跳/电机/IMU 等功能。
+
+与现有外设无冲突（B0/B1 为 I2C0；避开 B0/B1 用户按键区；A0/A1 已作电机 PWM）。
+
 ## 第三方库位置
 
 `@docs/MSPM0G3519_Library` 中的开源库已复制一份到 `src/MSPM0G3519_Library`，工程实际编译使用 `src/` 下的这份拷贝（详见 `keil/.eide/eide.yml`）。`docs/MSPM0G3519_Library` 保留作为原始参考，两者内容目前一致；后续如需升级库版本，请只更新 `src/MSPM0G3519_Library` 并同步说明，避免两份代码长期不一致。
