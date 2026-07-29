@@ -19,7 +19,6 @@ static uint8 heartbeat_hw_tx_buffer[HEARTBEAT_HW_TX_FIFO_SIZE];
 static volatile uint16 heartbeat_hw_tx_head;
 static volatile uint16 heartbeat_hw_tx_tail;
 static volatile uint32 heartbeat_hw_tx_drop_count;
-static uint8 heartbeat_hw_tx_irq_enabled;
 
 static uint16 heartbeat_hw_tx_next_index(uint16 index)
 {
@@ -31,29 +30,6 @@ static uint8 heartbeat_hw_tx_has_data(void)
     return (heartbeat_hw_tx_head != heartbeat_hw_tx_tail) ? 1u : 0u;
 }
 
-static void heartbeat_hw_uart_tx_start_if_needed(void)
-{
-    if ((0u != heartbeat_hw_tx_irq_enabled) || (0u == heartbeat_hw_tx_has_data()))
-    {
-        return;
-    }
-
-    NVIC_ClearPendingIRQ(UART_0_INST_INT_IRQN);
-    NVIC_SetPriority(UART_0_INST_INT_IRQN, 3);
-    DL_UART_Main_enableInterrupt(UART_0_INST, DL_UART_MAIN_INTERRUPT_TX);
-    NVIC_EnableIRQ(UART_0_INST_INT_IRQN);
-    heartbeat_hw_tx_irq_enabled = 1u;
-}
-
-static void heartbeat_hw_uart_tx_stop_if_empty(void)
-{
-    if (0u == heartbeat_hw_tx_has_data())
-    {
-        DL_UART_Main_disableInterrupt(UART_0_INST, DL_UART_MAIN_INTERRUPT_TX);
-        heartbeat_hw_tx_irq_enabled = 0u;
-    }
-}
-
 static void heartbeat_hw_uart_tx_send_one(void)
 {
     uint16 tail;
@@ -63,7 +39,7 @@ static void heartbeat_hw_uart_tx_send_one(void)
         return;
     }
 
-    if (true == DL_UART_isBusy(UART_0_INST))
+    if (true == DL_UART_Main_isTXFIFOFull(UART_0_INST))
     {
         return;
     }
@@ -107,7 +83,6 @@ void heartbeat_hw_init(uint32 tick_period_ms)
     heartbeat_hw_tx_head       = 0;
     heartbeat_hw_tx_tail       = 0;
     heartbeat_hw_tx_drop_count = 0;
-    heartbeat_hw_tx_irq_enabled = 0u;
     SysTick_Config(CPUCLK_FREQ / (1000 / HEARTBEAT_HW_SYSTICK_PERIOD_MS));
 }
 
@@ -123,23 +98,15 @@ void heartbeat_hw_uart_send_string(const char *str)
         heartbeat_hw_uart_enqueue_byte((uint8)(*str));
         str ++;
     }
-
-    heartbeat_hw_uart_tx_start_if_needed();
 }
 
 void heartbeat_hw_uart_tx_pump(void)
 {
-    while (0u != heartbeat_hw_tx_has_data())
+    while ((0u != heartbeat_hw_tx_has_data()) &&
+           (false == DL_UART_Main_isTXFIFOFull(UART_0_INST)))
     {
-        if (true == DL_UART_isBusy(UART_0_INST))
-        {
-            break;
-        }
-
         heartbeat_hw_uart_tx_send_one();
     }
-
-    heartbeat_hw_uart_tx_stop_if_empty();
 }
 
 void heartbeat_hw_uart_flush_blocking(void)
@@ -189,24 +156,6 @@ uint32 heartbeat_hw_get_ms(void)
 uint32 heartbeat_hw_get_sequence(void)
 {
     return heartbeat_hw_sequence;
-}
-
-void UART0_IRQHandler(void)
-{
-    switch (DL_UART_Main_getPendingInterrupt(UART_0_INST))
-    {
-        case DL_UART_MAIN_IIDX_TX:
-            while ((0u != heartbeat_hw_tx_has_data()) &&
-                   (false == DL_UART_isBusy(UART_0_INST)))
-            {
-                heartbeat_hw_uart_tx_send_one();
-            }
-            heartbeat_hw_uart_tx_stop_if_empty();
-            break;
-
-        default:
-            break;
-    }
 }
 
 void SysTick_Handler(void)

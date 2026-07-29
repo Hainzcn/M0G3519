@@ -1,6 +1,7 @@
 #include "grayscale.h"
 
 #include "grayscale_hw.h"
+#include "heartbeat.h"
 #include "zf_driver_timer.h"
 
 typedef enum
@@ -17,12 +18,19 @@ static uint8 grayscale_scan_ready;
 static uint8 grayscale_channel;
 static grayscale_state_enum grayscale_state;
 static uint16 grayscale_settle_start_us;
+static uint32 grayscale_settle_start_ms;
 
-static uint8 grayscale_settle_elapsed(uint16 start_us)
+static uint8 grayscale_settle_elapsed(uint16 start_us, uint32 start_ms)
 {
     uint16 elapsed_us = (uint16)(timer_get(GRAYSCALE_SETTLE_TIMER) - start_us);
 
-    return (elapsed_us >= (uint16)GRAYSCALE_HW_SETTLE_US) ? 1u : 0u;
+    if (elapsed_us >= (uint16)GRAYSCALE_HW_SETTLE_US)
+    {
+        return 1u;
+    }
+
+    /* Never leave the scanner stuck if the dedicated timer stops advancing. */
+    return ((heartbeat_get_ms() - start_ms) >= 1u) ? 1u : 0u;
 }
 
 void grayscale_init(void)
@@ -50,11 +58,13 @@ void grayscale_process(void)
         case GRAYSCALE_STATE_SELECT:
             grayscale_hw_select_channel(grayscale_channel);
             grayscale_settle_start_us = timer_get(GRAYSCALE_SETTLE_TIMER);
+            grayscale_settle_start_ms = heartbeat_get_ms();
             grayscale_state = GRAYSCALE_STATE_WAIT_SETTLE;
             break;
 
         case GRAYSCALE_STATE_WAIT_SETTLE:
-            if (!grayscale_settle_elapsed(grayscale_settle_start_us))
+            if (!grayscale_settle_elapsed(grayscale_settle_start_us,
+                                          grayscale_settle_start_ms))
             {
                 return;
             }

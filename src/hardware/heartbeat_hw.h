@@ -10,7 +10,7 @@
  *   节拍来源 -> Cortex-M0+ SysTick 1 ms 中断（不占用电机 PWM 的 TIM_A0）
  *
  * UART0 由 SysConfig 生成并在 clock_init()->SYSCFG_DL_init() 中初始化；
- * TX 使用环形缓冲非阻塞发送，主循环或 TX 中断逐字节泵出。
+ * TX 使用环形缓冲非阻塞发送，由主循环按硬件 FIFO 空位批量泵出。
  */
 
 #define HEARTBEAT_HW_TX_FIFO_SIZE      (256)
