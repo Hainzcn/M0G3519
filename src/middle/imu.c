@@ -5,160 +5,106 @@
 
 typedef enum
 {
-    IMU_PARSE_SYNC = 0,
-    IMU_PARSE_TYPE,
+    IMU_PARSE_SYNC_1 = 0,
+    IMU_PARSE_SYNC_2,
+    IMU_PARSE_ID,
+    IMU_PARSE_LENGTH,
     IMU_PARSE_DATA,
-    IMU_PARSE_SUM,
+    IMU_PARSE_CHECKSUM,
 } imu_parse_state_enum;
 
-#define IMU_FRAME_DATA_SIZE        (2)
-#define IMU_PROCESS_MAX_BYTES      (0)
+#define IMU_ANGLE_DATA_SIZE          (6u)
+#define IMU_ACCEL_GYRO_DATA_SIZE     (12u)
+#define IMU_PROCESS_CHUNK_SIZE       (64u)
+#define IMU_PROCESS_MAX_BYTES        (128u)
 
-static imu_gyro_t imu_gyro_data;
 static imu_angle_t imu_angle_data;
+static imu_accel_t imu_accel_data;
 static uint8 imu_update_flags;
-static uint32 imu_last_gyro_ms;
 static uint32 imu_last_angle_ms;
+static uint32 imu_last_accel_ms;
 
 static imu_parse_state_enum imu_parse_state;
-static uint8 imu_frame_type;
-static uint8 imu_frame_data[IMU_FRAME_DATA_SIZE];
+static uint8 imu_frame_id;
+static uint8 imu_frame_length;
+static uint8 imu_frame_data[IMU_FRAME_MAX_DATA_SIZE];
 static uint8 imu_frame_index;
 static uint8 imu_checksum;
 
+static uint32 imu_good_frame_count;
+static uint32 imu_bad_frame_count;
+static uint32 imu_ignored_frame_count;
+
 static int16 imu_combine_int16(uint8 low, uint8 high)
 {
-    return (int16)((int16)((int16)high << 8) | low);
+    uint16 raw = (uint16)low | ((uint16)high << 8);
+    return (int16)raw;
 }
 
-static uint8 imu_calc_checksum(uint8 type, const uint8 *data)
+static void imu_parser_reset(void)
 {
-    uint8 sum = (uint8)(IMU_FRAME_HEADER + type + data[0] + data[1]);
-
-    return sum;
-}
-
-static uint8 imu_is_valid_type(uint8 type)
-{
-    return (uint8)((IMU_TYPE_GYRO == type) || (IMU_TYPE_ANGLE == type));
-}
-
-static uint8 imu_gyro_in_range(float wz)
-{
-    const float limit = IMU_GYRO_RANGE_DPS;
-
-    return ((wz < -limit) || (limit < wz)) ? 0u : 1u;
-}
-
-static uint8 imu_angle_in_range(float yaw)
-{
-    const float limit = IMU_ANGLE_RANGE_DEG;
-
-    return ((yaw < -limit) || (limit < yaw)) ? 0u : 1u;
-}
-
-static uint8 imu_type_is_fresh(uint8 flag)
-{
-    uint32 now_ms = heartbeat_get_ms();
-
-    if ((flag & IMU_FLAG_GYRO) != 0u)
-    {
-        if ((0u == (imu_update_flags & IMU_FLAG_GYRO)) ||
-            ((now_ms - imu_last_gyro_ms) > IMU_STALE_TIMEOUT_MS))
-        {
-            return 0u;
-        }
-    }
-
-    if ((flag & IMU_FLAG_ANGLE) != 0u)
-    {
-        if ((0u == (imu_update_flags & IMU_FLAG_ANGLE)) ||
-            ((now_ms - imu_last_angle_ms) > IMU_STALE_TIMEOUT_MS))
-        {
-            return 0u;
-        }
-    }
-
-    return 1u;
-}
-
-static void imu_invalidate_all(void)
-{
-    imu_gyro_data.wz   = 0.0f;
-    imu_angle_data.yaw = 0.0f;
-    imu_update_flags   = 0u;
-    imu_last_gyro_ms   = 0u;
-    imu_last_angle_ms  = 0u;
-    imu_parse_state    = IMU_PARSE_SYNC;
-    imu_frame_index    = 0;
-}
-
-static void imu_check_stale(void)
-{
-    uint32 now_ms = heartbeat_get_ms();
-
-    if ((0u != (imu_update_flags & IMU_FLAG_GYRO)) &&
-        ((now_ms - imu_last_gyro_ms) > IMU_STALE_TIMEOUT_MS))
-    {
-        imu_update_flags &= (uint8)(~IMU_FLAG_GYRO);
-        imu_gyro_data.wz = 0.0f;
-    }
-
-    if ((0u != (imu_update_flags & IMU_FLAG_ANGLE)) &&
-        ((now_ms - imu_last_angle_ms) > IMU_STALE_TIMEOUT_MS))
-    {
-        imu_update_flags &= (uint8)(~IMU_FLAG_ANGLE);
-        imu_angle_data.yaw = 0.0f;
-    }
-}
-
-static void imu_decode_gyro(const uint8 *data)
-{
-    float wz;
-    int16 raw_wz = imu_combine_int16(data[0], data[1]);
-
-    wz = (float)raw_wz / 32768.0f * IMU_GYRO_SCALE_DPS;
-
-    if (!imu_gyro_in_range(wz))
-    {
-        return;
-    }
-
-    imu_gyro_data.wz = wz;
-    imu_update_flags |= IMU_FLAG_GYRO;
-    imu_last_gyro_ms  = heartbeat_get_ms();
+    imu_parse_state = IMU_PARSE_SYNC_1;
+    imu_frame_index = 0u;
+    imu_checksum = 0u;
 }
 
 static void imu_decode_angle(const uint8 *data)
 {
-    float yaw;
-    int16 raw_yaw = imu_combine_int16(data[0], data[1]);
+    imu_angle_data.roll =
+        (float)imu_combine_int16(data[0], data[1]) * IMU_ANGLE_SCALE_DEG;
+    imu_angle_data.pitch =
+        (float)imu_combine_int16(data[2], data[3]) * IMU_ANGLE_SCALE_DEG;
+    imu_angle_data.yaw =
+        (float)imu_combine_int16(data[4], data[5]) * IMU_ANGLE_SCALE_DEG;
 
-    yaw = (float)raw_yaw / 32768.0f * IMU_ANGLE_RANGE_DEG;
-
-    if (!imu_angle_in_range(yaw))
-    {
-        return;
-    }
-
-    imu_angle_data.yaw = yaw;
-    imu_update_flags  |= IMU_FLAG_ANGLE;
-    imu_last_angle_ms   = heartbeat_get_ms();
+    imu_last_angle_ms = heartbeat_get_ms();
+    imu_update_flags |= IMU_FLAG_ANGLE;
 }
 
-static void imu_handle_frame(uint8 type, const uint8 *data)
+static void imu_decode_accel(const uint8 *data)
 {
-    switch (type)
+    imu_accel_data.ax =
+        (float)imu_combine_int16(data[0], data[1]) * IMU_ACCEL_SCALE_MPS2;
+    imu_accel_data.ay =
+        (float)imu_combine_int16(data[2], data[3]) * IMU_ACCEL_SCALE_MPS2;
+    imu_accel_data.az =
+        (float)imu_combine_int16(data[4], data[5]) * IMU_ACCEL_SCALE_MPS2;
+
+    imu_last_accel_ms = heartbeat_get_ms();
+    imu_update_flags |= IMU_FLAG_ACCEL;
+}
+
+static void imu_dispatch_frame(void)
+{
+    switch (imu_frame_id)
     {
-        case IMU_TYPE_GYRO:
-            imu_decode_gyro(data);
+        case IMU_FRAME_TYPE_ANGLE:
+            if (IMU_ANGLE_DATA_SIZE == imu_frame_length)
+            {
+                imu_decode_angle(imu_frame_data);
+                imu_good_frame_count++;
+            }
+            else
+            {
+                imu_bad_frame_count++;
+            }
             break;
 
-        case IMU_TYPE_ANGLE:
-            imu_decode_angle(data);
+        case IMU_FRAME_TYPE_ACCEL_GYRO:
+            if (IMU_ACCEL_GYRO_DATA_SIZE == imu_frame_length)
+            {
+                /* The final six gyro bytes are intentionally not converted. */
+                imu_decode_accel(imu_frame_data);
+                imu_good_frame_count++;
+            }
+            else
+            {
+                imu_bad_frame_count++;
+            }
             break;
 
         default:
+            imu_ignored_frame_count++;
             break;
     }
 }
@@ -167,92 +113,152 @@ static void imu_feed_byte(uint8 byte)
 {
     switch (imu_parse_state)
     {
-        case IMU_PARSE_SYNC:
+        case IMU_PARSE_SYNC_1:
             if (IMU_FRAME_HEADER == byte)
             {
-                imu_parse_state = IMU_PARSE_TYPE;
+                imu_checksum = byte;
+                imu_parse_state = IMU_PARSE_SYNC_2;
             }
             break;
 
-        case IMU_PARSE_TYPE:
-            if (imu_is_valid_type(byte))
+        case IMU_PARSE_SYNC_2:
+            if (IMU_FRAME_HEADER == byte)
             {
-                imu_frame_type  = byte;
-                imu_frame_index = 0;
-                imu_parse_state = IMU_PARSE_DATA;
-            }
-            else if (IMU_FRAME_HEADER == byte)
-            {
-                imu_parse_state = IMU_PARSE_TYPE;
+                imu_checksum = (uint8)(imu_checksum + byte);
+                imu_parse_state = IMU_PARSE_ID;
             }
             else
             {
-                imu_parse_state = IMU_PARSE_SYNC;
+                imu_parser_reset();
             }
+            break;
+
+        case IMU_PARSE_ID:
+            imu_frame_id = byte;
+            imu_checksum = (uint8)(imu_checksum + byte);
+            imu_parse_state = IMU_PARSE_LENGTH;
+            break;
+
+        case IMU_PARSE_LENGTH:
+            if (byte > IMU_FRAME_MAX_DATA_SIZE)
+            {
+                imu_bad_frame_count++;
+                imu_parser_reset();
+                break;
+            }
+
+            imu_frame_length = byte;
+            imu_frame_index = 0u;
+            imu_checksum = (uint8)(imu_checksum + byte);
+            imu_parse_state =
+                (0u == byte) ? IMU_PARSE_CHECKSUM : IMU_PARSE_DATA;
             break;
 
         case IMU_PARSE_DATA:
             imu_frame_data[imu_frame_index] = byte;
             imu_frame_index++;
+            imu_checksum = (uint8)(imu_checksum + byte);
 
-            if (IMU_FRAME_DATA_SIZE <= imu_frame_index)
+            if (imu_frame_index >= imu_frame_length)
             {
-                imu_checksum = imu_calc_checksum(imu_frame_type, imu_frame_data);
-                imu_parse_state = IMU_PARSE_SUM;
+                imu_parse_state = IMU_PARSE_CHECKSUM;
             }
             break;
 
-        case IMU_PARSE_SUM:
+        case IMU_PARSE_CHECKSUM:
             if (imu_checksum == byte)
             {
-                imu_handle_frame(imu_frame_type, imu_frame_data);
+                imu_dispatch_frame();
             }
-            imu_parse_state = IMU_PARSE_SYNC;
+            else
+            {
+                imu_bad_frame_count++;
+            }
+            imu_parser_reset();
             break;
 
         default:
-            imu_parse_state = IMU_PARSE_SYNC;
+            imu_parser_reset();
             break;
+    }
+}
+
+static void imu_check_stale(void)
+{
+    uint32 now_ms = heartbeat_get_ms();
+
+    if ((0u != (imu_update_flags & IMU_FLAG_ANGLE)) &&
+        ((now_ms - imu_last_angle_ms) > IMU_STALE_TIMEOUT_MS))
+    {
+        imu_update_flags &= (uint8)(~IMU_FLAG_ANGLE);
+    }
+
+    if ((0u != (imu_update_flags & IMU_FLAG_ACCEL)) &&
+        ((now_ms - imu_last_accel_ms) > IMU_STALE_TIMEOUT_MS))
+    {
+        imu_update_flags &= (uint8)(~IMU_FLAG_ACCEL);
     }
 }
 
 void imu_init(void)
 {
     imu_hw_init();
-    imu_invalidate_all();
+
+    imu_angle_data.roll = 0.0f;
+    imu_angle_data.pitch = 0.0f;
+    imu_angle_data.yaw = 0.0f;
+    imu_accel_data.ax = 0.0f;
+    imu_accel_data.ay = 0.0f;
+    imu_accel_data.az = 0.0f;
+    imu_update_flags = 0u;
+    imu_last_angle_ms = 0u;
+    imu_last_accel_ms = 0u;
+    imu_good_frame_count = 0u;
+    imu_bad_frame_count = 0u;
+    imu_ignored_frame_count = 0u;
+    imu_parser_reset();
 }
 
 void imu_process(void)
 {
-    uint8 byte;
-    uint8 count = 0;
+    uint8 buffer[IMU_PROCESS_CHUNK_SIZE];
+    uint16 total = 0u;
+    uint16 count;
+    uint16 i;
 
     if (0u != imu_hw_take_rx_error())
     {
-        imu_invalidate_all();
+        imu_bad_frame_count++;
+        imu_parser_reset();
     }
 
-    while (imu_hw_read_byte(&byte))
+    do
     {
-        imu_feed_byte(byte);
+        uint16 remaining = (uint16)(IMU_PROCESS_MAX_BYTES - total);
+        uint16 request = (remaining < IMU_PROCESS_CHUNK_SIZE)
+            ? remaining
+            : IMU_PROCESS_CHUNK_SIZE;
 
-        if ((0u != IMU_PROCESS_MAX_BYTES) && (IMU_PROCESS_MAX_BYTES <= ++count))
+        count = imu_hw_read(buffer, request);
+        for (i = 0u; i < count; i++)
         {
-            break;
+            imu_feed_byte(buffer[i]);
         }
+        total = (uint16)(total + count);
     }
+    while ((0u != count) && (total < IMU_PROCESS_MAX_BYTES));
 
     imu_check_stale();
-}
-
-const imu_gyro_t *imu_get_gyro(void)
-{
-    return &imu_gyro_data;
 }
 
 const imu_angle_t *imu_get_angle(void)
 {
     return &imu_angle_data;
+}
+
+const imu_accel_t *imu_get_accel(void)
+{
+    return &imu_accel_data;
 }
 
 uint8 imu_get_update_flags(void)
@@ -269,18 +275,35 @@ void imu_get_snapshot(imu_snapshot_t *snapshot)
     }
 
     imu_check_stale();
-    snapshot->gyro  = imu_gyro_data;
     snapshot->angle = imu_angle_data;
+    snapshot->accel = imu_accel_data;
     snapshot->flags = imu_update_flags;
+    snapshot->angle_time_ms = imu_last_angle_ms;
+    snapshot->accel_time_ms = imu_last_accel_ms;
 }
 
 uint8 imu_is_type_ready(uint8 flag)
 {
     imu_check_stale();
-    return ((0u != (imu_update_flags & flag)) && imu_type_is_fresh(flag)) ? 1u : 0u;
+    return ((imu_update_flags & flag) == flag) ? 1u : 0u;
 }
 
 uint8 imu_is_online(void)
 {
-    return imu_is_type_ready((uint8)(IMU_FLAG_GYRO | IMU_FLAG_ANGLE));
+    return imu_is_type_ready((uint8)(IMU_FLAG_ANGLE | IMU_FLAG_ACCEL));
+}
+
+uint32 imu_get_good_frame_count(void)
+{
+    return imu_good_frame_count;
+}
+
+uint32 imu_get_bad_frame_count(void)
+{
+    return imu_bad_frame_count;
+}
+
+uint32 imu_get_ignored_frame_count(void)
+{
+    return imu_ignored_frame_count;
 }

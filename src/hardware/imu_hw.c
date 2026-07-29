@@ -2,6 +2,10 @@
 
 #include "ti_msp_dl_config.h"
 
+#if ((IMU_HW_RX_FIFO_SIZE & IMU_HW_RX_FIFO_MASK) != 0u)
+#error "IMU_HW_RX_FIFO_SIZE must be a power of two"
+#endif
+
 static uint8 imu_hw_rx_buffer[IMU_HW_RX_FIFO_SIZE];
 static volatile uint16 imu_hw_rx_head;
 static volatile uint16 imu_hw_rx_tail;
@@ -62,8 +66,35 @@ uint8 imu_hw_read_byte(uint8 *byte)
     }
 
     *byte = imu_hw_rx_buffer[tail];
-    imu_hw_rx_tail = (uint16)((tail + 1u) % IMU_HW_RX_FIFO_SIZE);
+    imu_hw_rx_tail = (uint16)((tail + 1u) & IMU_HW_RX_FIFO_MASK);
     return 1;
+}
+
+uint16 imu_hw_read(uint8 *buffer, uint16 max_length)
+{
+    uint16 count = 0u;
+
+    if (NULL == buffer)
+    {
+        return 0u;
+    }
+
+    while (count < max_length)
+    {
+        uint16 head = imu_hw_rx_head;
+        uint16 tail = imu_hw_rx_tail;
+
+        if (head == tail)
+        {
+            break;
+        }
+
+        buffer[count] = imu_hw_rx_buffer[tail];
+        imu_hw_rx_tail = (uint16)((tail + 1u) & IMU_HW_RX_FIFO_MASK);
+        count++;
+    }
+
+    return count;
 }
 
 uint8 imu_hw_write_frame(const uint8 *frame, uint8 len)
@@ -87,19 +118,6 @@ uint8 imu_hw_write_frame(const uint8 *frame, uint8 len)
     return 1;
 }
 
-uint8 imu_hw_write_reg(uint8 addr, int16 value)
-{
-    uint8 frame[5];
-
-    frame[0] = 0x55;
-    frame[1] = 0xAA;
-    frame[2] = addr;
-    frame[3] = (uint8)(value & 0xFF);
-    frame[4] = (uint8)((value >> 8) & 0xFF);
-
-    return imu_hw_write_frame(frame, 5);
-}
-
 void UART1_IRQHandler(void)
 {
     uint8 rx_byte;
@@ -113,7 +131,7 @@ void UART1_IRQHandler(void)
             {
                 rx_byte = (uint8)DL_UART_Main_receiveData(UART_1_INST);
                 head    = imu_hw_rx_head;
-                next    = (uint16)((head + 1u) % IMU_HW_RX_FIFO_SIZE);
+                next    = (uint16)((head + 1u) & IMU_HW_RX_FIFO_MASK);
 
                 if (next != imu_hw_rx_tail)
                 {
