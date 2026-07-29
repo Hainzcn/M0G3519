@@ -7,6 +7,7 @@
 #define OLED_FONT_8X16              (1)
 
 void  oled_init(void);
+void  oled_process(void);
 uint8 oled_is_ready(void);
 void  oled_clear(void);
 void  oled_set_pixel(uint8 x, uint8 y, uint8 on);

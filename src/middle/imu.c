@@ -15,8 +15,7 @@ typedef enum
 
 #define IMU_ANGLE_DATA_SIZE          (6u)
 #define IMU_ACCEL_GYRO_DATA_SIZE     (12u)
-#define IMU_PROCESS_CHUNK_SIZE       (64u)
-#define IMU_PROCESS_MAX_BYTES        (128u)
+#define IMU_PROCESS_MAX_BLOCKS       (3u)
 
 static imu_angle_t imu_angle_data;
 static imu_accel_t imu_accel_data;
@@ -221,9 +220,9 @@ void imu_init(void)
 
 void imu_process(void)
 {
-    uint8 buffer[IMU_PROCESS_CHUNK_SIZE];
-    uint16 total = 0u;
-    uint16 count;
+    const uint8 *block;
+    uint16 length;
+    uint8 blocks = 0u;
     uint16 i;
 
     if (0u != imu_hw_take_rx_error())
@@ -232,21 +231,21 @@ void imu_process(void)
         imu_parser_reset();
     }
 
-    do
+    while (blocks < IMU_PROCESS_MAX_BLOCKS)
     {
-        uint16 remaining = (uint16)(IMU_PROCESS_MAX_BYTES - total);
-        uint16 request = (remaining < IMU_PROCESS_CHUNK_SIZE)
-            ? remaining
-            : IMU_PROCESS_CHUNK_SIZE;
-
-        count = imu_hw_read(buffer, request);
-        for (i = 0u; i < count; i++)
+        block = imu_hw_acquire_block(&length);
+        if (NULL == block)
         {
-            imu_feed_byte(buffer[i]);
+            break;
         }
-        total = (uint16)(total + count);
+
+        for (i = 0u; i < length; i++)
+        {
+            imu_feed_byte(block[i]);
+        }
+        imu_hw_release_block(block);
+        blocks++;
     }
-    while ((0u != count) && (total < IMU_PROCESS_MAX_BYTES));
 
     imu_check_stale();
 }

@@ -9,6 +9,7 @@
 /bin
 /obj
 /out
+/Event.dot
 
 # eide template
 *.ept

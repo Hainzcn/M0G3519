@@ -23,8 +23,12 @@
 #define OLED_HW_I2C_ADDR            (0x3C)
 
 void  oled_hw_init(void);
+void  oled_hw_process(void);
 uint8 oled_hw_is_ready(void);
+uint8 oled_hw_is_busy(void);
 uint8 oled_hw_write_cmd(uint8 cmd);
-void  oled_hw_write_data(const uint8 *data, uint32 len);
+uint8 oled_hw_write_cmds(const uint8 *commands, uint8 len);
+uint8 oled_hw_write_data(const uint8 *data, uint32 len);
+uint32 oled_hw_get_error_count(void);
 
 #endif
