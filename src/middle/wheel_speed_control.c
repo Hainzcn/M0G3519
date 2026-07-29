@@ -13,6 +13,7 @@ typedef struct
     float ka;
     float target_rpm;
     float previous_target_rpm;
+    float applied_output;
     float encoder_sign;
 } wheel_controller_t;
 
@@ -38,6 +39,19 @@ static int32 wheel_round_to_int(float value)
     return (int32)(value + ((value >= 0.0f) ? 0.5f : -0.5f));
 }
 
+static float wheel_slew(float current, float target, float max_delta)
+{
+    if (target > (current + max_delta))
+    {
+        return current + max_delta;
+    }
+    if (target < (current - max_delta))
+    {
+        return current - max_delta;
+    }
+    return target;
+}
+
 static void wheel_init_one(wheel_controller_t *wheel,
                            const control_pid_config_t *pid_config,
                            float ks, float kv, float ka, float encoder_sign)
@@ -48,6 +62,7 @@ static void wheel_init_one(wheel_controller_t *wheel,
     wheel->ka = ka;
     wheel->target_rpm = 0.0f;
     wheel->previous_target_rpm = 0.0f;
+    wheel->applied_output = 0.0f;
     wheel->encoder_sign = encoder_sign;
 }
 
@@ -107,6 +122,8 @@ void wheel_speed_control_reset(void)
     wheel_right.target_rpm = 0.0f;
     wheel_left.previous_target_rpm = 0.0f;
     wheel_right.previous_target_rpm = 0.0f;
+    wheel_left.applied_output = 0.0f;
+    wheel_right.applied_output = 0.0f;
     wheel_status.left_target_rpm = 0.0f;
     wheel_status.right_target_rpm = 0.0f;
     wheel_status.left_duty = 0;
@@ -126,6 +143,7 @@ void wheel_speed_control_update(uint32 period_ms, uint8 enabled)
     float dt_s;
     float left_output;
     float right_output;
+    float max_output_delta;
 
     if (0u == period_ms)
     {
@@ -150,11 +168,16 @@ void wheel_speed_control_update(uint32 period_ms, uint8 enabled)
                                    wheel_status.left_measured_rpm, dt_s);
     right_output = wheel_update_one(&wheel_right,
                                     wheel_status.right_measured_rpm, dt_s);
+    max_output_delta = WHEEL_PWM_SLEW_DUTY_PER_S * dt_s;
+    wheel_left.applied_output = wheel_slew(wheel_left.applied_output,
+        left_output, max_output_delta);
+    wheel_right.applied_output = wheel_slew(wheel_right.applied_output,
+        right_output, max_output_delta);
 
     wheel_status.left_target_rpm = wheel_left.target_rpm;
     wheel_status.right_target_rpm = wheel_right.target_rpm;
-    wheel_status.left_duty = wheel_round_to_int(left_output);
-    wheel_status.right_duty = wheel_round_to_int(right_output);
+    wheel_status.left_duty = wheel_round_to_int(wheel_left.applied_output);
+    wheel_status.right_duty = wheel_round_to_int(wheel_right.applied_output);
     wheel_status.left_saturated = wheel_left.pid.saturated;
     wheel_status.right_saturated = wheel_right.pid.saturated;
     motor_set_speed(wheel_status.left_duty, wheel_status.right_duty);

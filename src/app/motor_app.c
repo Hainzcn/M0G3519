@@ -61,6 +61,11 @@ void motor_app_init(void)
     motor_app_last_debug_ms = motor_app_last_control_ms;
     motor_app_test_left_rpm = 0.0f;
     motor_app_test_right_rpm = 0.0f;
+
+    if (0u != MOTOR_APP_AUTO_START_LINE_FOLLOW)
+    {
+        motor_app_set_line_follow_enabled(1u);
+    }
 }
 
 void motor_app_process(void)

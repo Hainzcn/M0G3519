@@ -12,8 +12,8 @@ int main(void)
     clock_init(SYSTEM_CLOCK_80M);
 
     heartbeat_app_init();
-    motor_app_init();
     grayscale_app_init();
+    motor_app_init();
     imu_app_init();
     oled_app_init();
 
