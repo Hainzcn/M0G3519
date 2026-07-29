@@ -7,6 +7,17 @@
 
 static uint8 oled_buffer[OLED_BUFFER_SIZE];
 
+typedef enum
+{
+    OLED_REFRESH_IDLE = 0,
+    OLED_REFRESH_COMMAND_WAIT,
+    OLED_REFRESH_DATA_WAIT,
+} oled_refresh_state_enum;
+
+static uint8 oled_pending_pages;
+static uint8 oled_refresh_page;
+static oled_refresh_state_enum oled_refresh_state;
+
 static uint8 oled_font_index(char chr)
 {
     if ((chr < ' ') || (chr > '~'))
@@ -19,9 +30,80 @@ static uint8 oled_font_index(char chr)
 
 void oled_init(void)
 {
+    oled_pending_pages = 0u;
+    oled_refresh_page = 0u;
+    oled_refresh_state = OLED_REFRESH_IDLE;
     oled_hw_init();
     oled_clear();
     oled_refresh();
+}
+
+void oled_process(void)
+{
+    static const uint8 page_commands_prefix[] =
+    {
+        0x20, 0x00,
+        0x21, 0x00, 0x7F,
+        0x22,
+    };
+    uint8 commands[8];
+    uint8 page;
+
+    oled_hw_process();
+    if (0u == oled_hw_is_ready())
+    {
+        oled_refresh_state = OLED_REFRESH_IDLE;
+        return;
+    }
+
+    if (0u != oled_hw_is_busy())
+    {
+        return;
+    }
+
+    if (OLED_REFRESH_COMMAND_WAIT == oled_refresh_state)
+    {
+        if (0u != oled_hw_write_data(
+                oled_buffer + ((uint32)oled_refresh_page * OLED_HW_WIDTH),
+                OLED_HW_WIDTH))
+        {
+            oled_refresh_state = OLED_REFRESH_DATA_WAIT;
+        }
+        return;
+    }
+
+    if (OLED_REFRESH_DATA_WAIT == oled_refresh_state)
+    {
+        oled_refresh_state = OLED_REFRESH_IDLE;
+    }
+
+    if ((OLED_REFRESH_IDLE != oled_refresh_state) ||
+        (0u == oled_pending_pages))
+    {
+        return;
+    }
+
+    for (page = 0u; page < OLED_HW_PAGE_COUNT; page++)
+    {
+        if (0u != (oled_pending_pages & (uint8)(1u << page)))
+        {
+            oled_pending_pages &= (uint8)(~(uint8)(1u << page));
+            oled_refresh_page = page;
+            break;
+        }
+    }
+
+    memcpy(commands, page_commands_prefix, sizeof(page_commands_prefix));
+    commands[6] = oled_refresh_page;
+    commands[7] = oled_refresh_page;
+    if (0u != oled_hw_write_cmds(commands, sizeof(commands)))
+    {
+        oled_refresh_state = OLED_REFRESH_COMMAND_WAIT;
+    }
+    else
+    {
+        oled_pending_pages |= (uint8)(1u << oled_refresh_page);
+    }
 }
 
 uint8 oled_is_ready(void)
@@ -249,11 +331,6 @@ void oled_fill_page_bar(uint8 page, const uint8 *values, uint8 count, uint8 bloc
 
 static void oled_refresh_page_range(uint8 page_start, uint8 page_end)
 {
-    if (0 == oled_hw_is_ready())
-    {
-        return;
-    }
-
     if (page_start > page_end)
     {
         return;
@@ -264,16 +341,11 @@ static void oled_refresh_page_range(uint8 page_start, uint8 page_end)
         return;
     }
 
-    oled_hw_write_cmd(0x20);
-    oled_hw_write_cmd(0x00);
-    oled_hw_write_cmd(0x21);
-    oled_hw_write_cmd(0x00);
-    oled_hw_write_cmd(0x7F);
-    oled_hw_write_cmd(0x22);
-    oled_hw_write_cmd(page_start);
-    oled_hw_write_cmd(page_end);
-    oled_hw_write_data(oled_buffer + ((uint32)page_start * OLED_HW_WIDTH),
-                       (uint32)(page_end - page_start + 1u) * OLED_HW_WIDTH);
+    while (page_start <= page_end)
+    {
+        oled_pending_pages |= (uint8)(1u << page_start);
+        page_start++;
+    }
 }
 
 void oled_refresh(void)

@@ -53,6 +53,7 @@ SYSCONFIG_WEAK void SYSCFG_DL_init(void)
     SYSCFG_DL_I2C_OLED_init();
     SYSCFG_DL_UART_0_init();
     SYSCFG_DL_UART_1_init();
+    SYSCFG_DL_DMA_init();
     SYSCFG_DL_SYSCTL_CLK_init();
 }
 
@@ -67,12 +68,14 @@ SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
     DL_UART_Main_reset(UART_0_INST);
     DL_UART_Main_reset(UART_1_INST);
 
+
     DL_GPIO_enablePower(GPIOA);
     DL_GPIO_enablePower(GPIOB);
     DL_GPIO_enablePower(GPIOC);
     DL_I2C_enablePower(I2C_OLED_INST);
     DL_UART_Main_enablePower(UART_0_INST);
     DL_UART_Main_enablePower(UART_1_INST);
+
     delay_cycles(POWER_STARTUP_DELAY);
 }
 
@@ -236,7 +239,9 @@ SYSCONFIG_WEAK void SYSCFG_DL_I2C_OLED_init(void) {
 
     DL_I2C_setClockConfig(I2C_OLED_INST,
         (DL_I2C_ClockConfig *) &gI2C_OLEDClockConfig);
-    DL_I2C_disableAnalogGlitchFilter(I2C_OLED_INST);
+    DL_I2C_setAnalogGlitchFilterPulseWidth(I2C_OLED_INST,
+        DL_I2C_ANALOG_GLITCH_FILTER_WIDTH_50NS);
+    DL_I2C_enableAnalogGlitchFilter(I2C_OLED_INST);
 
     /* Configure Controller Mode */
     DL_I2C_resetControllerTransfer(I2C_OLED_INST);
@@ -312,7 +317,37 @@ SYSCONFIG_WEAK void SYSCFG_DL_UART_1_init(void)
     DL_UART_Main_setBaudRateDivisor(UART_1_INST, UART_1_IBRD_5_MHZ_115200_BAUD, UART_1_FBRD_5_MHZ_115200_BAUD);
 
 
+    /* Configure Interrupts */
+    DL_UART_Main_enableInterrupt(UART_1_INST,
+                                 DL_UART_MAIN_INTERRUPT_DMA_DONE_RX);
+
+    /* Configure DMA Receive Event */
+    DL_UART_Main_enableDMAReceiveEvent(UART_1_INST, DL_UART_DMA_INTERRUPT_RX);
+    /* Configure FIFOs */
+    DL_UART_Main_enableFIFOs(UART_1_INST);
+    DL_UART_Main_setRXFIFOThreshold(UART_1_INST, DL_UART_RX_FIFO_LEVEL_ONE_ENTRY);
+    DL_UART_Main_setTXFIFOThreshold(UART_1_INST, DL_UART_TX_FIFO_LEVEL_1_2_EMPTY);
 
     DL_UART_Main_enable(UART_1_INST);
 }
+
+static const DL_DMA_Config gDMA_IMU_RXConfig = {
+    .transferMode   = DL_DMA_SINGLE_TRANSFER_MODE,
+    .extendedMode   = DL_DMA_NORMAL_MODE,
+    .destIncrement  = DL_DMA_ADDR_INCREMENT,
+    .srcIncrement   = DL_DMA_ADDR_UNCHANGED,
+    .destWidth      = DL_DMA_WIDTH_BYTE,
+    .srcWidth       = DL_DMA_WIDTH_BYTE,
+    .trigger        = UART_1_INST_DMA_TRIGGER,
+    .triggerType    = DL_DMA_TRIGGER_TYPE_EXTERNAL,
+};
+
+SYSCONFIG_WEAK void SYSCFG_DL_DMA_IMU_RX_init(void)
+{
+    DL_DMA_initChannel(DMA, DMA_IMU_RX_CHAN_ID , (DL_DMA_Config *) &gDMA_IMU_RXConfig);
+}
+SYSCONFIG_WEAK void SYSCFG_DL_DMA_init(void){
+    SYSCFG_DL_DMA_IMU_RX_init();
+}
+
 

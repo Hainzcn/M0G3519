@@ -10,5 +10,6 @@ void grayscale_process(void);
 const uint8 *grayscale_get_values(void);
 uint8 grayscale_is_scan_ready(void);
 uint8 grayscale_take_scan_ready(void);
+uint32 grayscale_get_scan_sequence(void);
 
 #endif

@@ -3,12 +3,16 @@
 
 #include "zf_common_typedef.h"
 
-#define MOTOR_SPEED_MAX     (10000)        // 归一化速度满量程，与 hardware 层占空比量程对齐
+#define MOTOR_SPEED_MAX                 (10000)
+#define MOTOR_WATCHDOG_TIMEOUT_MS       (100)
 
 void motor_init(void);
-void motor_set_speed(int32 left_speed, int32 right_speed);    // 输入范围 [-MOTOR_SPEED_MAX, MOTOR_SPEED_MAX]，当前为开环直通映射
+void motor_set_speed(int32 left_speed, int32 right_speed);
 void motor_brake(void);
 void motor_stop(void);
+
+void motor_watchdog_kick(void);
+void motor_watchdog_check(void);
 
 /*
  * 编码器已接入（正交 QEI，见 encoder.c / docs/pin/pin.md）：

@@ -14,7 +14,6 @@ static void heartbeat_send(void)
 
     heartbeat_hw_led_toggle();
 
-    encoder_update_speed(HEARTBEAT_PERIOD_MS);
     left_rpm  = encoder_get_left_rpm();
     right_rpm = encoder_get_right_rpm();
     sequence  = heartbeat_hw_get_sequence();
@@ -26,7 +25,8 @@ static void heartbeat_send(void)
 void heartbeat_init(void)
 {
     heartbeat_hw_init(HEARTBEAT_PERIOD_MS);
-    heartbeat_hw_uart_send_string("BOOT OK\r\n");                      // 上电立即发一条，便于确认串口链路
+    heartbeat_hw_uart_send_string("BOOT OK\r\n");
+    heartbeat_hw_uart_flush_blocking();
 }
 
 void heartbeat_process(void)
@@ -35,6 +35,8 @@ void heartbeat_process(void)
     {
         heartbeat_send();
     }
+
+    heartbeat_hw_uart_tx_pump();
 }
 
 uint32 heartbeat_get_ms(void)

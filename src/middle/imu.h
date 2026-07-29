@@ -4,51 +4,67 @@
 #include "zf_common_typedef.h"
 
 /*
- * Single-axis IMU UART middle layer.
+ * ATK-MS901M stream parser.
  *
- * Read frame (5 bytes): 0x5A | TYPE | DATAL | DATAH | SUM
- * Write frame (hardware layer): 55 AA ADDR DATAL DATAH
- *
- * See docs/数据手册(串口通信).pdf
+ * Frame: 55 55 ID LEN DATA[LEN] SUM
+ * SUM is the low byte of the sum from the first header through the last data
+ * byte. Only attitude (ID 0x01) and acceleration from gyro/accel (ID 0x03)
+ * are converted. Other valid frames are skipped without losing sync.
  */
 
-#define IMU_FRAME_HEADER           (0x5A)
-#define IMU_FRAME_SIZE             (5)
+#define IMU_FRAME_HEADER            (0x55u)
+#define IMU_FRAME_TYPE_ANGLE        (0x01u)
+#define IMU_FRAME_TYPE_ACCEL_GYRO   (0x03u)
+#define IMU_FRAME_MAX_DATA_SIZE     (32u)
 
-#define IMU_TYPE_GYRO              (0xAA)
-#define IMU_TYPE_ANGLE             (0xBB)
+#define IMU_FLAG_ANGLE              (0x01u)
+#define IMU_FLAG_ACCEL              (0x02u)
 
-#define IMU_FLAG_GYRO              (0x01u)
-#define IMU_FLAG_ANGLE             (0x02u)
+/* Must match the module configuration. ATK-MS901M defaults to +/-4 g. */
+#define IMU_ACCEL_FSR_G             (4.0f)
+#define IMU_GRAVITY_MPS2            (9.80665f)
+#define IMU_ANGLE_SCALE_DEG         (180.0f / 32768.0f)
+#define IMU_ACCEL_SCALE_MPS2        \
+    (IMU_ACCEL_FSR_G * IMU_GRAVITY_MPS2 / 32768.0f)
 
-#define IMU_GYRO_SCALE_DPS         (2000.0f)
-#define IMU_GYRO_RANGE_DPS         (400.0f)
-#define IMU_ANGLE_RANGE_DEG        (180.0f)
+/* Ten samples at 200 Hz. */
+#define IMU_STALE_TIMEOUT_MS        (50u)
 
 typedef struct
 {
-    float wz;
-} imu_gyro_t;
-
-typedef struct
-{
+    float roll;
+    float pitch;
     float yaw;
 } imu_angle_t;
 
 typedef struct
 {
-    imu_gyro_t  gyro;
+    float ax;
+    float ay;
+    float az;
+} imu_accel_t;
+
+typedef struct
+{
     imu_angle_t angle;
+    imu_accel_t accel;
     uint8       flags;
+    uint32      angle_time_ms;
+    uint32      accel_time_ms;
 } imu_snapshot_t;
 
 void imu_init(void);
 void imu_process(void);
 
-const imu_gyro_t  *imu_get_gyro(void);
 const imu_angle_t *imu_get_angle(void);
+const imu_accel_t *imu_get_accel(void);
 uint8 imu_get_update_flags(void);
 void imu_get_snapshot(imu_snapshot_t *snapshot);
 uint8 imu_is_type_ready(uint8 flag);
+uint8 imu_is_online(void);
+
+uint32 imu_get_good_frame_count(void);
+uint32 imu_get_bad_frame_count(void);
+uint32 imu_get_ignored_frame_count(void);
 
 #endif

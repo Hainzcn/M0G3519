@@ -1,6 +1,8 @@
 #include "grayscale.h"
 
-#include "ti_msp_dl_config.h"
+#include "grayscale_hw.h"
+#include "heartbeat.h"
+#include "zf_driver_timer.h"
 
 typedef enum
 {
@@ -9,30 +11,28 @@ typedef enum
     GRAYSCALE_STATE_READ,
 } grayscale_state_enum;
 
+#define GRAYSCALE_SETTLE_TIMER         (TIM_G7)
+
 static uint8 grayscale_values[GRAYSCALE_CHANNELS];
+static uint8 grayscale_work_values[GRAYSCALE_CHANNELS];
 static uint8 grayscale_scan_ready;
+static uint32 grayscale_scan_sequence;
 static uint8 grayscale_channel;
 static grayscale_state_enum grayscale_state;
-static uint32 grayscale_settle_start_val;
+static uint16 grayscale_settle_start_us;
+static uint32 grayscale_settle_start_ms;
 
-static uint32 grayscale_systick_ticks_elapsed(uint32 start_val, uint32 now_val)
+static uint8 grayscale_settle_elapsed(uint16 start_us, uint32 start_ms)
 {
-    uint32 load = SysTick->LOAD;
+    uint16 elapsed_us = (uint16)(timer_get(GRAYSCALE_SETTLE_TIMER) - start_us);
 
-    if (now_val <= start_val)
+    if (elapsed_us >= (uint16)GRAYSCALE_HW_SETTLE_US)
     {
-        return start_val - now_val;
+        return 1u;
     }
 
-    return start_val + (load - now_val);
-}
-
-static uint8 grayscale_settle_elapsed(uint32 start_val)
-{
-    uint32 elapsed_ticks = grayscale_systick_ticks_elapsed(start_val, SysTick->VAL);
-    uint32 required_ticks = (uint32)GRAYSCALE_HW_SETTLE_US * (CPUCLK_FREQ / 1000000u);
-
-    return (elapsed_ticks >= required_ticks) ? 1u : 0u;
+    /* Never leave the scanner stuck if the dedicated timer stops advancing. */
+    return ((heartbeat_get_ms() - start_ms) >= 1u) ? 1u : 0u;
 }
 
 void grayscale_init(void)
@@ -40,13 +40,17 @@ void grayscale_init(void)
     uint8 i;
 
     grayscale_hw_init();
+    timer_init(GRAYSCALE_SETTLE_TIMER, TIMER_US);
+    timer_start(GRAYSCALE_SETTLE_TIMER);
 
     for (i = 0; i < GRAYSCALE_CHANNELS; i++)
     {
         grayscale_values[i] = 0;
+        grayscale_work_values[i] = 0;
     }
 
     grayscale_scan_ready = 0;
+    grayscale_scan_sequence = 0u;
     grayscale_channel    = 0;
     grayscale_state      = GRAYSCALE_STATE_SELECT;
 }
@@ -57,12 +61,14 @@ void grayscale_process(void)
     {
         case GRAYSCALE_STATE_SELECT:
             grayscale_hw_select_channel(grayscale_channel);
-            grayscale_settle_start_val = SysTick->VAL;
+            grayscale_settle_start_us = timer_get(GRAYSCALE_SETTLE_TIMER);
+            grayscale_settle_start_ms = heartbeat_get_ms();
             grayscale_state = GRAYSCALE_STATE_WAIT_SETTLE;
             break;
 
         case GRAYSCALE_STATE_WAIT_SETTLE:
-            if (!grayscale_settle_elapsed(grayscale_settle_start_val))
+            if (!grayscale_settle_elapsed(grayscale_settle_start_us,
+                                          grayscale_settle_start_ms))
             {
                 return;
             }
@@ -70,11 +76,20 @@ void grayscale_process(void)
             break;
 
         case GRAYSCALE_STATE_READ:
-            grayscale_values[grayscale_channel] = grayscale_hw_read_out();
+            grayscale_work_values[grayscale_channel] =
+                grayscale_hw_read_out();
 
             if ((GRAYSCALE_CHANNELS - 1u) <= grayscale_channel)
             {
+                uint8 i;
+
+                /* Publish only a complete scan so OLED/control never tear. */
+                for (i = 0u; i < GRAYSCALE_CHANNELS; i++)
+                {
+                    grayscale_values[i] = grayscale_work_values[i];
+                }
                 grayscale_scan_ready = 1;
+                grayscale_scan_sequence++;
                 grayscale_channel    = 0;
             }
             else
@@ -110,4 +125,9 @@ uint8 grayscale_take_scan_ready(void)
 
     grayscale_scan_ready = 0u;
     return 1u;
+}
+
+uint32 grayscale_get_scan_sequence(void)
+{
+    return grayscale_scan_sequence;
 }

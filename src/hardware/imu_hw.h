@@ -4,19 +4,23 @@
 #include "zf_common_typedef.h"
 
 /*
- * 六轴 IMU 模块硬件层（UART1，PA8 TX / PA9 RX）。
+ * ATK-MS901M hardware layer: UART1, PA8 TX / PA9 RX, 115200-8-N-1.
  *
- * UART1 引脚与波特率由 SysConfig 初始化；RX 中断在 imu_hw_rx_enable() 中开启。
- * TX 命令带超时，避免模块未接时阻塞死等。
+ * UART RX is moved into fixed blocks by DMA. The UART ISR only publishes a
+ * completed block and rearms DMA; parsing remains in the main loop.
  */
 
-#define IMU_HW_RX_FIFO_SIZE        (512)
-#define IMU_HW_TX_TIMEOUT_CYCLES   (8000000u)   /* 约 100 ms @ 80 MHz */
+#define IMU_HW_DMA_BLOCK_SIZE      (64u)
+#define IMU_HW_DMA_BLOCK_COUNT     (4u)
+#define IMU_HW_TX_TIMEOUT_CYCLES   (8000000u)
 
 void imu_hw_init(void);
 void imu_hw_rx_enable(void);
-uint8 imu_hw_read_byte(uint8 *byte);
+const uint8 *imu_hw_acquire_block(uint16 *length);
+void imu_hw_release_block(const uint8 *block);
 uint8 imu_hw_write_frame(const uint8 *frame, uint8 len);
-uint8 imu_hw_write_reg(uint8 addr, int16 value);
+uint32 imu_hw_get_overflow_count(void);
+uint32 imu_hw_get_dma_block_count(void);
+uint8 imu_hw_take_rx_error(void);
 
 #endif

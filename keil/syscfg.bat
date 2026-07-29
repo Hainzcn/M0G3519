@@ -1,25 +1,26 @@
 @echo off
+setlocal
 
-set SYSCFG_PATH="A:\ti\sysconfig_1.26.2\sysconfig_cli.bat"
+set "SYSCFG_CLI=A:\ti\sysconfig_1.28.0\sysconfig_cli.bat"
 
-if not exist "%SYSCFG_PATH%" (
+if not exist "%SYSCFG_CLI%" (
     echo.
-    echo Couldn't find Sysconfig Tool %SYSCFG_PATH%
+    echo Couldn't find Sysconfig Tool "%SYSCFG_CLI%"
     echo "Update the file located at <sdk path>/tools/keil/syscfg.bat"
     echo.
     exit /b 1
 )
 
-echo Using Sysconfig Tool from %SYSCFG_PATH%
+echo Using Sysconfig Tool from "%SYSCFG_CLI%"
 echo "Update the file located at <sdk path>/tools/keil/syscfg.bat to use a different version"
 
-set PROJ_DIR=%~1
-set PROJ_DIR=%PROJ_DIR:'=%
+set "PROJ_DIR=%~1"
+set "PROJ_DIR=%PROJ_DIR:'=%"
+if "%PROJ_DIR:~-1%"=="\" set "PROJ_DIR=%PROJ_DIR:~0,-1%"
+set "SYSCFG_FILE=%~2"
+set "SYSCFG_FILE=%SYSCFG_FILE:'=%"
 
-set SYSCFG_FILE=%~2
-set SYSCFG_FILE=%SYSCFG_FILE:'=%
-
-set SDK_ROOT=A:\ti\mspm0_sdk_2_10_00_04
+set "SDK_ROOT=A:\ti\mspm0_sdk_2_10_00_04"
 if not exist "%SDK_ROOT%\.metadata\product.json" (
     echo.
     echo Couldn't find SDK metadata at %SDK_ROOT%\.metadata\product.json
@@ -48,7 +49,7 @@ exit /b 1
 IF %SYSCFG_DIR:~-1%==\ SET SYSCFG_DIR=%SYSCFG_DIR:~0,-1%
 :syscfg_search_exit
 
-%SYSCFG_PATH% -o "%PROJ_DIR%" -s "%SDK_ROOT%\.metadata\product.json" --compiler keil "%SYSCFG_DIR%\%SYSCFG_FILE%"
+"%SYSCFG_CLI%" -o "%PROJ_DIR%" -s "%SDK_ROOT%\.metadata\product.json" --compiler keil --device MSPM0G3519 --package "LQFP-100(PZ)" "%SYSCFG_DIR%\%SYSCFG_FILE%"
 
 :: Patch generated header for ARMCLANG && patch builder.params with missing source files
 powershell -ExecutionPolicy Bypass -Command ^
@@ -57,6 +58,9 @@ powershell -ExecutionPolicy Bypass -Command ^
  (Get-Content $hdr -Raw).Replace('#elif defined(__GNUC__)', '#elif defined(__GNUC__) || defined(__clang__) || defined(__ARMCC_VERSION)') | Set-Content $hdr -NoNewline; ^
  $j = Get-Content $bp -Raw | ConvertFrom-Json; ^
  $j.sourceList = @( ^
+   '../src/middle/control_pid.c', ^
+   '../src/middle/line_control.c', ^
+   '../src/middle/wheel_speed_control.c', ^
    '../src/MSPM0G3519_Library/zf_common/zf_common_clock.c', ^
    '../src/MSPM0G3519_Library/zf_common/zf_common_debug.c', ^
    '../src/MSPM0G3519_Library/zf_common/zf_common_fifo.c', ^
