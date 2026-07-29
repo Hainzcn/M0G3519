@@ -21,9 +21,9 @@ int main(void)
     {
         motor_watchdog_kick();
         heartbeat_hw_uart_tx_pump();
-        motor_app_demo_process();
         imu_app_process();
         grayscale_app_process();
+        motor_app_process();
         heartbeat_app_process();
         oled_app_process();
     }

@@ -188,14 +188,14 @@ RPM 换算：`rpm = Δcount × 60000 / (1320 × period_ms)`
 
 八路数字灰度模块：**3 位地址 AD0~AD2 + 1 位 OUT**，非阻塞扫描，禁止主循环 busy-wait 延时。
 
-引脚：AD0=A15，AD1=A16，AD2=A17，OUT=A18（相对厂家例程 PA14~PA17 偏移，避开 A14 状态灯）。
+引脚：AD0=A15，AD1=A16，AD2=A12，OUT=A13。PA17 因实测无法拉低而停用，A14 仍为状态灯。
 
 ### 应用层 — `src/app/grayscale_app.h`
 
 | 函数 | 说明 |
 | --- | --- |
 | `grayscale_app_init()` | 调用 `grayscale_init()` |
-| `grayscale_app_process()` | 推进扫描状态机；每 500 ms 通过 UART0 发送 `[gs]` 调试报文 |
+| `grayscale_app_process()` | 推进扫描状态机；每 1 s 通过 UART0 发送 `[gs]` 调试报文 |
 
 ### 中间层 — `src/middle/grayscale.h`
 
@@ -405,7 +405,7 @@ int main(void)
 | --- | --- | --- |
 | 上电 | `BOOT OK\r\n` | `BOOT OK` |
 | 每 1 s | `[hb] <序号>,<左RPM>,<右RPM>\r\n` | `[hb] 3,120,-118` |
-| 每 500 ms | `[gs],<序号>,v0,v1,…,v7\r\n` | `[gs] 2,0,0,1,1,0,0,0,0` |
+| 每 1 s | `[gs] <序号>,v=<v0>…<v7>\r\n` | `[gs] 2,v=00110000` |
 | 每 1 s（IMU 就绪） | `[imu] <序号>,<yaw>,<wz>\r\n` | `[imu] 3,12.34,-0.56` |
 | IMU 未就绪 | `[imu] 0,wait,flags=0x??\r\n` | `[imu] 0,wait,flags=0x01` |
 

@@ -14,7 +14,6 @@ static void heartbeat_send(void)
 
     heartbeat_hw_led_toggle();
 
-    encoder_update_speed(HEARTBEAT_PERIOD_MS);
     left_rpm  = encoder_get_left_rpm();
     right_rpm = encoder_get_right_rpm();
     sequence  = heartbeat_hw_get_sequence();

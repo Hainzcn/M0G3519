@@ -1,102 +1,169 @@
 #include "motor_app.h"
+
+#include <stdio.h>
+
+#include "control_config.h"
+#include "grayscale.h"
 #include "heartbeat.h"
+#include "heartbeat_hw.h"
+#include "line_control.h"
 #include "motor.h"
+#include "wheel_speed_control.h"
 
-// ===================== 电机转动测试 Demo 配置（按需修改） =====================
-#define MOTOR_APP_DEMO_ENABLE               (1)        // 1=接入主循环运行 demo，0=关闭
-#define MOTOR_APP_DEMO_HOLD_FORWARD         (1)        // 1=持续满速正转（联调 VM/输出用），0=正反转交替
-#define MOTOR_APP_DEMO_DUTY                 (10000)    // PWM 占空比，范围 [0, MOTOR_SPEED_MAX]
-#define MOTOR_APP_DEMO_STEP_MS              (2000)     // 正转/反转各持续毫秒数（HOLD_FORWARD=0 时有效）
-#define MOTOR_APP_DEMO_LOOP                 (1)        // 1=循环正反转，0=只跑一轮后停止
-// ========================================================================
+#define MOTOR_APP_SCAN_TIMEOUT_MS       (30u)
+#define MOTOR_APP_DEBUG_PERIOD_MS       (250u)
 
-typedef enum
+static motor_app_mode_enum motor_app_mode;
+static uint32 motor_app_last_control_ms;
+static uint32 motor_app_last_scan_ms;
+static uint32 motor_app_last_scan_sequence;
+static uint32 motor_app_last_debug_ms;
+static float motor_app_test_left_rpm;
+static float motor_app_test_right_rpm;
+
+static void motor_app_send_debug(uint32 now_ms)
 {
-    MOTOR_APP_DEMO_PHASE_FORWARD = 0,
-    MOTOR_APP_DEMO_PHASE_REVERSE,
-    MOTOR_APP_DEMO_PHASE_DONE,
-} motor_app_demo_phase_enum;
+    char message[128];
+    const line_control_output_t *line;
+    const wheel_speed_control_status_t *wheel;
 
-static motor_app_demo_phase_enum motor_app_demo_phase = MOTOR_APP_DEMO_PHASE_FORWARD;
-static uint32 motor_app_demo_phase_start_ms = 0;
-static uint8 motor_app_demo_started = 0;
-
-static int32 motor_app_demo_clamp_duty(int32 duty)
-{
-    if (duty > (int32)MOTOR_SPEED_MAX)
+    if ((now_ms - motor_app_last_debug_ms) < MOTOR_APP_DEBUG_PERIOD_MS)
     {
-        return (int32)MOTOR_SPEED_MAX;
+        return;
     }
-    if (duty < 0)
-    {
-        return 0;
-    }
-    return duty;
-}
 
-static void motor_app_demo_begin_phase(int32 left_speed, int32 right_speed)
-{
-    motor_app_demo_phase_start_ms = heartbeat_get_ms();
-    motor_set_speed(left_speed, right_speed);
+    motor_app_last_debug_ms = now_ms;
+    line = line_control_get_output();
+    wheel = wheel_speed_control_get_status();
+    snprintf(message, sizeof(message),
+        "[ctl] %u,e=%d,n=%u,t=%d/%d,m=%d/%d,u=%d/%d,s=%u%u\r\n",
+        (unsigned int)motor_app_mode,
+        (int)line->error,
+        (unsigned int)line->active_count,
+        (int)wheel->left_target_rpm, (int)wheel->right_target_rpm,
+        (int)wheel->left_measured_rpm, (int)wheel->right_measured_rpm,
+        (int)wheel->left_duty, (int)wheel->right_duty,
+        (unsigned int)wheel->left_saturated,
+        (unsigned int)wheel->right_saturated);
+    heartbeat_hw_uart_send_string(message);
 }
 
 void motor_app_init(void)
 {
     motor_init();
+    line_control_init();
+    wheel_speed_control_init();
+
+    motor_app_mode = MOTOR_APP_MODE_DISABLED;
+    motor_app_last_control_ms = heartbeat_get_ms();
+    motor_app_last_scan_ms = motor_app_last_control_ms;
+    motor_app_last_scan_sequence = grayscale_get_scan_sequence();
+    motor_app_last_debug_ms = motor_app_last_control_ms;
+    motor_app_test_left_rpm = 0.0f;
+    motor_app_test_right_rpm = 0.0f;
 }
 
-void motor_app_demo_process(void)
+void motor_app_process(void)
 {
-#if !MOTOR_APP_DEMO_ENABLE
-    (void)motor_app_demo_phase;
-    (void)motor_app_demo_phase_start_ms;
-    (void)motor_app_demo_started;
-    return;
-#else
-    const int32 demo_duty = motor_app_demo_clamp_duty(MOTOR_APP_DEMO_DUTY);
-    uint32 elapsed_ms;
+    const line_control_output_t *line;
+    uint32 now_ms = heartbeat_get_ms();
+    uint32 elapsed_ms = now_ms - motor_app_last_control_ms;
+    uint32 scan_sequence;
 
-    if (!motor_app_demo_started)
-    {
-        motor_app_demo_started = 1;
-#if MOTOR_APP_DEMO_HOLD_FORWARD
-        motor_set_speed(demo_duty, demo_duty);
-#else
-        motor_app_demo_phase   = MOTOR_APP_DEMO_PHASE_FORWARD;
-        motor_app_demo_begin_phase(demo_duty, demo_duty);
-#endif
-        return;
-    }
-
-#if MOTOR_APP_DEMO_HOLD_FORWARD
-    return;
-#else
-
-    if (MOTOR_APP_DEMO_PHASE_DONE == motor_app_demo_phase)
+    if (elapsed_ms < CHASSIS_CONTROL_PERIOD_MS)
     {
         return;
     }
 
-    elapsed_ms = heartbeat_get_ms() - motor_app_demo_phase_start_ms;
-    if (elapsed_ms < MOTOR_APP_DEMO_STEP_MS)
+    motor_app_last_control_ms = now_ms;
+
+    /* Stop for one cycle after a long stall; use the real encoder interval. */
+    if (elapsed_ms > 50u)
     {
+        line_control_reset();
+        wheel_speed_control_reset();
+        wheel_speed_control_update(elapsed_ms, 0u);
         return;
     }
 
-    if (MOTOR_APP_DEMO_PHASE_FORWARD == motor_app_demo_phase)
+    if (MOTOR_APP_MODE_DISABLED == motor_app_mode)
     {
-        motor_app_demo_phase = MOTOR_APP_DEMO_PHASE_REVERSE;
-        motor_app_demo_begin_phase(-demo_duty, -demo_duty);
+        wheel_speed_control_update(elapsed_ms, 0u);
         return;
     }
 
+    if (MOTOR_APP_MODE_SPEED_TEST == motor_app_mode)
+    {
+        wheel_speed_control_set_target(motor_app_test_left_rpm,
+                                       motor_app_test_right_rpm);
+        wheel_speed_control_update(elapsed_ms, 1u);
+        motor_app_send_debug(now_ms);
+        return;
+    }
+
+    scan_sequence = grayscale_get_scan_sequence();
+    if (scan_sequence != motor_app_last_scan_sequence)
+    {
+        motor_app_last_scan_sequence = scan_sequence;
+        motor_app_last_scan_ms = now_ms;
+        line_control_update(grayscale_get_values(), now_ms,
+                            (float)elapsed_ms * 0.001f);
+    }
+    else if ((now_ms - motor_app_last_scan_ms) > MOTOR_APP_SCAN_TIMEOUT_MS)
+    {
+        line_control_reset();
+    }
+
+    line = line_control_get_output();
+    if (0u != line->line_lost)
+    {
+        wheel_speed_control_update(elapsed_ms, 0u);
+    }
+    else
+    {
+        wheel_speed_control_set_target(line->left_rpm, line->right_rpm);
+        wheel_speed_control_update(elapsed_ms, 1u);
+    }
+    motor_app_send_debug(now_ms);
+}
+
+void motor_app_stop(void)
+{
+    motor_app_mode = MOTOR_APP_MODE_DISABLED;
+    line_control_reset();
+    wheel_speed_control_reset();
     motor_stop();
-#if MOTOR_APP_DEMO_LOOP
-    motor_app_demo_phase = MOTOR_APP_DEMO_PHASE_FORWARD;
-    motor_app_demo_begin_phase(demo_duty, demo_duty);
-#else
-    motor_app_demo_phase = MOTOR_APP_DEMO_PHASE_DONE;
-#endif
-#endif  /* MOTOR_APP_DEMO_HOLD_FORWARD */
-#endif  /* MOTOR_APP_DEMO_ENABLE */
+}
+
+void motor_app_set_line_follow_enabled(uint8 enabled)
+{
+    if (0u == enabled)
+    {
+        motor_app_stop();
+        return;
+    }
+
+    line_control_reset();
+    wheel_speed_control_reset();
+    motor_app_last_scan_ms = heartbeat_get_ms();
+    motor_app_last_scan_sequence = grayscale_get_scan_sequence();
+    motor_app_mode = MOTOR_APP_MODE_LINE_FOLLOW;
+}
+
+void motor_app_set_base_rpm(float base_rpm)
+{
+    line_control_set_base_rpm(base_rpm);
+}
+
+void motor_app_set_speed_test(float left_rpm, float right_rpm)
+{
+    wheel_speed_control_reset();
+    motor_app_test_left_rpm = left_rpm;
+    motor_app_test_right_rpm = right_rpm;
+    motor_app_mode = MOTOR_APP_MODE_SPEED_TEST;
+}
+
+motor_app_mode_enum motor_app_get_mode(void)
+{
+    return motor_app_mode;
 }
