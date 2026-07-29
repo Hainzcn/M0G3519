@@ -85,10 +85,16 @@ void gpio_set_level (gpio_pin_enum pin, const uint8 dat)
 {
     uint8   io_group        = ((pin >> GPIO_GROUP_INDEX_OFFSET) & GPIO_GROUP_INDEX_MASK);
     uint8   io_pin          = ((pin >> GPIO_PIN_INDEX_OFFSET) & GPIO_PIN_INDEX_MASK);
+    uint32  pin_mask        = (0x00000001u << io_pin);
 
-    (   (dat) ?
-        (gpio_group[io_group]->DOUTSET31_0 |= (0x00000001 << io_pin)) :
-        (gpio_group[io_group]->DOUTCLR31_0 |= (0x00000001 << io_pin)));
+    if(dat)
+    {
+        DL_GPIO_setPins(gpio_group[io_group], pin_mask);
+    }
+    else
+    {
+        DL_GPIO_clearPins(gpio_group[io_group], pin_mask);
+    }
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -118,14 +124,7 @@ void gpio_toggle_level (gpio_pin_enum pin)
     uint8   io_group        = ((pin >> GPIO_GROUP_INDEX_OFFSET) & GPIO_GROUP_INDEX_MASK);
     uint8   io_pin          = ((pin >> GPIO_PIN_INDEX_OFFSET) & GPIO_PIN_INDEX_MASK);
 
-    if((gpio_group[io_group]->DOUT31_0 & (0x00000001 << (pin & 0x1F))))
-    {
-        (gpio_group[io_group]->DOUTCLR31_0 |= (0x00000001 << io_pin));
-    }
-    else
-    {
-        (gpio_group[io_group]->DOUTSET31_0 |= (0x00000001 << io_pin));
-    }
+    DL_GPIO_togglePins(gpio_group[io_group], (0x00000001u << io_pin));
 }
 
 //-------------------------------------------------------------------------------------------------------------------

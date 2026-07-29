@@ -12,11 +12,16 @@ void grayscale_hw_init(void)
 
 void grayscale_hw_select_channel(uint8 ch)
 {
-    ch &= 0x07u;
+    uint32 address_value;
+    const uint32 address_mask =
+        DL_GPIO_PIN_15 | DL_GPIO_PIN_16 | DL_GPIO_PIN_17;
 
-    gpio_set_level(GRAYSCALE_HW_AD0_PIN, (ch >> 0) & 0x01u);
-    gpio_set_level(GRAYSCALE_HW_AD1_PIN, (ch >> 1) & 0x01u);
-    gpio_set_level(GRAYSCALE_HW_AD2_PIN, (ch >> 2) & 0x01u);
+    ch &= 0x07u;
+    address_value = ((0u != (ch & 0x01u)) ? DL_GPIO_PIN_15 : 0u) |
+                    ((0u != (ch & 0x02u)) ? DL_GPIO_PIN_16 : 0u) |
+                    ((0u != (ch & 0x04u)) ? DL_GPIO_PIN_17 : 0u);
+
+    DL_GPIO_writePinsVal(GPIOA, address_mask, address_value);
 }
 
 uint8 grayscale_hw_read_out(void)

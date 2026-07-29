@@ -122,7 +122,7 @@ extern GPIO_Regs *gpio_group[GPIO_GROUP_MAX];
 // 使用示例     gpio_low(D5);
 // 备注信息     
 //-------------------------------------------------------------------------------------------------------------------
-#define     gpio_low(pin)               (gpio_group[((pin) >> GPIO_GROUP_INDEX_OFFSET)]->DOUTCLR31_0 |= (0x00000001 << ((pin) & GPIO_PIN_INDEX_MASK)))
+#define     gpio_low(pin)               (DL_GPIO_clearPins(gpio_group[((pin) >> GPIO_GROUP_INDEX_OFFSET)], (0x00000001u << ((pin) & GPIO_PIN_INDEX_MASK))))
 
 //-------------------------------------------------------------------------------------------------------------------
 // 函数简介     对应 IO 置位为高电平
@@ -131,7 +131,7 @@ extern GPIO_Regs *gpio_group[GPIO_GROUP_MAX];
 // 使用示例     gpio_high(D5);
 // 备注信息     
 //-------------------------------------------------------------------------------------------------------------------
-#define     gpio_high(pin)              (gpio_group[((pin) >> GPIO_GROUP_INDEX_OFFSET)]->DOUTSET31_0 |= (0x00000001 << ((pin) & GPIO_PIN_INDEX_MASK)))
+#define     gpio_high(pin)              (DL_GPIO_setPins(gpio_group[((pin) >> GPIO_GROUP_INDEX_OFFSET)], (0x00000001u << ((pin) & GPIO_PIN_INDEX_MASK))))
 
 void        gpio_set_level              (gpio_pin_enum pin, const uint8 dat);
 uint8       gpio_get_level              (gpio_pin_enum pin);

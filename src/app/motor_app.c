@@ -3,7 +3,7 @@
 #include "motor.h"
 
 // ===================== 电机转动测试 Demo 配置（按需修改） =====================
-#define MOTOR_APP_DEMO_ENABLE               (0)        // 1=接入主循环运行 demo，0=关闭
+#define MOTOR_APP_DEMO_ENABLE               (1)        // 1=接入主循环运行 demo，0=关闭
 #define MOTOR_APP_DEMO_HOLD_FORWARD         (1)        // 1=持续满速正转（联调 VM/输出用），0=正反转交替
 #define MOTOR_APP_DEMO_DUTY                 (10000)    // PWM 占空比，范围 [0, MOTOR_SPEED_MAX]
 #define MOTOR_APP_DEMO_STEP_MS              (2000)     // 正转/反转各持续毫秒数（HOLD_FORWARD=0 时有效）
