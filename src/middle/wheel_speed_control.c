@@ -168,6 +168,10 @@ void wheel_speed_control_update(uint32 period_ms, uint8 enabled)
                                    wheel_status.left_measured_rpm, dt_s);
     right_output = wheel_update_one(&wheel_right,
                                     wheel_status.right_measured_rpm, dt_s);
+    left_output = wheel_clamp(left_output * WHEEL_LEFT_PWM_MAP_SCALE,
+                              WHEEL_PID_OUTPUT_LIMIT);
+    right_output = wheel_clamp(right_output * WHEEL_RIGHT_PWM_MAP_SCALE,
+                               WHEEL_PID_OUTPUT_LIMIT);
     max_output_delta = WHEEL_PWM_SLEW_DUTY_PER_S * dt_s;
     wheel_left.applied_output = wheel_slew(wheel_left.applied_output,
         left_output, max_output_delta);

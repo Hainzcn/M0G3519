@@ -69,6 +69,8 @@ PWM 为低时，输出为高阻，电机滑行。
 
 宏定义见 `motor_hw.h`：`MOTOR_HW_LEFT_PWMA_PWM`、`MOTOR_HW_LEFT_AIN1_GPIO` 等。
 
+逻辑左右轮与实际接线可在 `control_config.h` 中校准：`MOTOR_OUTPUT_SWAP_LEFT_RIGHT` 控制左右通道交换，`MOTOR_LEFT_OUTPUT_POLARITY`、`MOTOR_RIGHT_OUTPUT_POLARITY` 分别控制正反极性。极性只允许使用 `1` 或 `-1`；编码器方向仍由独立的 `WHEEL_LEFT/RIGHT_ENCODER_SIGN` 校准。
+
 ### 联调：万用表预期（正转、占空比 70%）
 
 | 测量点 | 预期 |

@@ -105,19 +105,20 @@ u_m=k_S\operatorname{sgn}(n_r)+k_Vn_r+k_A\dot n_r
 +K_p(n_r-n)+K_i\int(n_r-n)dt+K_d\frac{d(n_r-n)}{dt}
 $$
 
-电机标称最高转速为 **320 RPM**（`MOTOR_RATED_MAX_RPM`）。软件目标暂时限制为 250 RPM，供 $k_A$ 使用的目标加速度估计限制为 600 RPM/s，PWM 限制为 10000。
+电机标称最高转速为 **320 RPM**（`MOTOR_RATED_MAX_RPM`）。满 PWM 架空实测左轮约 305 RPM、右轮约 330 RPM，分别记录在 `WHEEL_LEFT_MEASURED_MAX_RPM` 和 `WHEEL_RIGHT_MEASURED_MAX_RPM`。软件目标暂时限制为 250 RPM，供 $k_A$ 使用的目标加速度估计限制为 600 RPM/s，PWM 限制为 10000。
 
-最终 PWM 还经过 `WHEEL_PWM_SLEW_DUTY_PER_S` 限制；默认 30000 duty/s，即 10 ms 内最多改变 300，防止新的灰度状态把阶跃电压直接施加到电机。安全停机不经过该限制。输出饱和且误差继续推动饱和时暂停积分。
+PID 输出先经过左右独立映射：左轮 `WHEEL_LEFT_PWM_MAP_SCALE=1.00`，右轮 `WHEEL_RIGHT_PWM_MAP_SCALE=0.92`，因此右轮最大物理 PWM 为 9200，理论空载最高转速约为 304 RPM。正反转共用同一比例。映射后再经过 `WHEEL_PWM_SLEW_DUTY_PER_S` 限制；默认 30000 duty/s，即 10 ms 内最多改变 300，防止新的灰度状态把阶跃电压直接施加到电机。安全停机不经过该限制。输出饱和且误差继续推动饱和时暂停积分。
 
 ## 7. 必做符号检查
 
 修改 `control_config.h` 前先架空车轮：
 
-1. 分别给左右轮正目标，确认两轮都向车辆前进方向转。
-2. 正转时串口 `m=` 后对应实测 RPM 必须为正；否则修改 `WHEEL_LEFT_ENCODER_SIGN` 或 `WHEEL_RIGHT_ENCODER_SIGN`。
-3. 将黑线依次移到通道 0 和通道 7，确认 `e=` 分别为负和正。
-4. 在线位于车体右侧时，确认控制器使车辆向右修正。
-5. 若黑线没有被判为有效，切换 `LINE_SENSOR_ACTIVE_LEVEL`，不要先调 PID。
+1. 确认 PWMA/PWMB 分别驱动物理左/右轮；若接线暂时相反，设置 `MOTOR_OUTPUT_SWAP_LEFT_RIGHT=1`。
+2. 分别给左右轮正目标，确认两轮都向车辆前进方向转；反转侧将 `MOTOR_LEFT_OUTPUT_POLARITY` 或 `MOTOR_RIGHT_OUTPUT_POLARITY` 改为 `-1`。
+3. 正转时串口 `m=` 后对应实测 RPM 必须为正；否则修改 `WHEEL_LEFT_ENCODER_SIGN` 或 `WHEEL_RIGHT_ENCODER_SIGN`。电机输出极性和编码器计数极性必须分别校准。
+4. 将黑线依次移到通道 0 和通道 7，确认 `e=` 分别为负和正。
+5. 在线位于车体右侧时，确认控制器使车辆向右修正。
+6. 若黑线没有被判为有效，切换 `LINE_SENSOR_ACTIVE_LEVEL`，不要先调 PID。
 
 ## 8. 调参顺序
 
