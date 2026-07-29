@@ -16,9 +16,9 @@ SysConfig 生成文件：`empty/keil/`（`ti_msp_dl_config.c/h`）
 | 工具 | 用途 | 示例路径 |
 |------|------|----------|
 | [EIDE 扩展](https://marketplace.visualstudio.com/items?itemName=cl.eide) | 嵌入式构建 | VS Code 扩展 |
-| Keil MDK (ARM Compiler 6) | 编译 / 链接 | `A:/Program Files (x86)/Keil_v5/ARM/ARMCLANG` |
+| Keil MDK (ARM Compiler 6) | 编译 / 链接 | `D:/newkeil/ARM/ARMCLANG` |
 | MSPM0 SDK | 头文件、DriverLib、SysConfig 元数据 | `A:/ti/mspm0_sdk_2_10_00_04` |
-| SysConfig | 根据 `.syscfg` 生成 `ti_msp_dl_config.*` | `A:/ti/sysconfig_1.28.0/sysconfig_cli.bat` |
+| SysConfig | 根据 `.syscfg` 生成 `ti_msp_dl_config.*` | `A:/ti/sysconfig_1.26.2/sysconfig_cli.bat` |
 
 打开工程：
 
@@ -35,7 +35,7 @@ empty/keil/empty_LP_MSPM0G3519_nortos_keil.code-workspace
 以下路径请替换为你本机实际安装位置。下文用占位符表示：
 
 - `<SDK_ROOT>` — MSPM0 SDK 根目录，例如 `A:/ti/mspm0_sdk_2_10_00_04`
-- `<SYSCONFIG_CLI>` — SysConfig 命令行入口，例如 `A:/ti/sysconfig_1.28.0/sysconfig_cli.bat`
+- `<SYSCONFIG_CLI>` — SysConfig 命令行入口，例如 `A:/ti/sysconfig_1.26.2/sysconfig_cli.bat`
 
 Windows 路径在 `eide.yml` 中建议使用 **正斜杠** `/`，避免转义问题。
 

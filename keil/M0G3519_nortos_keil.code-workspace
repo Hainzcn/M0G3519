@@ -28,7 +28,8 @@
             "editor.insertSpaces": true,
             "editor.tabSize": 4,
             "editor.autoIndent": "advanced"
-        }
+        },
+        "EIDE.ARM.ARMCC6.InstallDirectory": "D:\\newkeil\\ARM\\ARMCLANG"
     },
     "extensions": {
         "recommendations": [

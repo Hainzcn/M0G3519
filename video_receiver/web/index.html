@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MaixCAM2 图传接收端</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">车载平衡滚球运动控制系统</p>
+        <h1>图传接收与录像</h1>
+      </div>
+      <div class="connection" id="connection" aria-live="polite">
+        <span class="status-dot"></span>
+        <span id="connection-text">等待 MaixCAM2 图像</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="live-section" aria-labelledby="live-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">实时画面</p>
+            <h2 id="live-title">摆杆监视画面</h2>
+          </div>
+          <p class="frame-note" id="frame-note">尚未收到图像</p>
+        </div>
+        <div class="viewer">
+          <img id="live-feed" alt="MaixCAM2 实时图传画面">
+          <div class="empty-state" id="empty-state">正在等待 MaixCAM2 上传 JPEG 图像</div>
+          <canvas id="recording-canvas" width="640" height="480" aria-hidden="true"></canvas>
+        </div>
+        <div class="control-row">
+          <button class="primary" id="record-button" type="button">开始录像</button>
+          <span class="recording-status" id="recording-status">未录像</span>
+        </div>
+      </section>
+
+      <section class="recordings-section" aria-labelledby="recordings-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">本地存储</p>
+            <h2 id="recordings-title">历史录像</h2>
+          </div>
+          <button class="secondary" id="refresh-button" type="button">刷新列表</button>
+        </div>
+        <div class="recordings-layout">
+          <div class="recordings-list" id="recordings-list" aria-live="polite"></div>
+          <div class="playback-panel">
+            <p class="eyebrow">回放</p>
+            <video id="playback" controls preload="metadata"></video>
+            <p id="playback-title">从左侧选择一段录像进行回放</p>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

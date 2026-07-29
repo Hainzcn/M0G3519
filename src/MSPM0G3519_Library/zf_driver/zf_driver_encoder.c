@@ -136,7 +136,6 @@ void encoder_dir_init (timer_index_enum index, encoder_channel1_enum lsb_pin, gp
     gpio_init(dir_pin, GPI, 0, GPI_PULL_UP);
     
     DL_Timer_setClockConfig(timer_list[index], &gCAPTURE_0ClockConfig);
-    DL_Timer_Count_CCP(timer_list[index]);
     DL_Timer_setCaptureCompareInputFilter(timer_list[index], DL_TIMER_CC_INPUT_FILT_CPV_CONSEC_PER, DL_TIMER_CC_INPUT_FILT_FP_PER_8, DL_TIMER_CC_0_INDEX);
     DL_Timer_enableCaptureCompareInputFilter(timer_list[index], DL_TIMER_CC_0_INDEX);
     DL_Timer_enableClock(timer_list[index]);
