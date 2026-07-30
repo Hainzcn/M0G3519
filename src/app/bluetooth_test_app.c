@@ -3,15 +3,18 @@
 #include "bluetooth_hw.h"
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
+#include "imu.h"
 #include "line_control.h"
 #include "motor_app.h"
 #include "wheel_speed_control.h"
 
 #define BLUETOOTH_TEST_ALIVE_PERIOD_MS      (1000u)
 #define BLUETOOTH_TEST_MAX_ECHO_BYTES       (64u)
-#define CHASSIS_TELEMETRY_PERIOD_MS         (100u)
-#define CHASSIS_TELEMETRY_FRAME_SIZE        (52u)
-#define CHASSIS_TELEMETRY_VERSION           (0x01u)
+/* Match the 100 Hz wheel-speed loop. Reduce to 50/20 Hz if tx_drop_bytes rises. */
+#define CHASSIS_TELEMETRY_HZ                (100u)
+#define CHASSIS_TELEMETRY_PERIOD_MS         (1000u / CHASSIS_TELEMETRY_HZ)
+#define CHASSIS_TELEMETRY_FRAME_SIZE        (56u)
+#define CHASSIS_TELEMETRY_VERSION           (0x02u)
 #define CHASSIS_TELEMETRY_TYPE              (0x81u)
 
 #define CHASSIS_FLAG_CONTROL_ACTIVE         (0x01u)
@@ -113,9 +116,12 @@ static void chassis_telemetry_send(uint32 now_ms)
     const line_control_output_t *line = line_control_get_output();
     const wheel_speed_control_status_t *wheel =
         wheel_speed_control_get_status();
+    imu_snapshot_t imu;
     motor_app_mode_enum mode = motor_app_get_mode();
     uint32 rx_overflow = bluetooth_hw_get_rx_overflow_count();
     uint16 crc;
+
+    imu_get_snapshot(&imu);
 
     frame[0] = 0xA5u;
     frame[1] = 0x5Au;
@@ -145,8 +151,18 @@ static void chassis_telemetry_send(uint32 now_ms)
     chassis_write_u32_le(&frame[44], bluetooth_hw_get_tx_drop_count());
     chassis_write_u16_le(&frame[48],
         (uint16)((rx_overflow > 65535u) ? 65535u : rx_overflow));
-    crc = chassis_crc16_ccitt_false(frame, 50u);
-    chassis_write_u16_le(&frame[50], crc);
+    if (0u != (imu.flags & IMU_FLAG_ACCEL))
+    {
+        chassis_write_scaled_i16(&frame[50], imu.accel.ax, 1000.0f);
+    }
+    else
+    {
+        chassis_write_u16_le(&frame[50], 0x8000u);
+    }
+    frame[52] = imu.flags;
+    frame[53] = 0u;
+    crc = chassis_crc16_ccitt_false(frame, 54u);
+    chassis_write_u16_le(&frame[54], crc);
 
     (void)bluetooth_hw_write_atomic(frame, CHASSIS_TELEMETRY_FRAME_SIZE);
     chassis_telemetry_sequence++;
@@ -159,7 +175,7 @@ void bluetooth_test_app_init(void)
     chassis_telemetry_last_ms = bluetooth_test_last_alive_ms;
     chassis_telemetry_sequence = 0u;
 
-    bluetooth_hw_send_string("[bt] ready,115200,telemetry=10Hz\r\n");
+    bluetooth_hw_send_string("[bt] ready,115200,telemetry=100Hz\r\n");
     heartbeat_hw_uart_send_string(
         "[mode] uart3 telemetry enabled\r\n");
 }
