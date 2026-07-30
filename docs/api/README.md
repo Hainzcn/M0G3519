@@ -63,7 +63,11 @@ grayscale → line_control（循迹 PID + 曲率前馈）
 | `motor_app_process()` | **主循环每轮调用**；10 ms 调度控制环；活动模式下每 250 ms 输出 `[ctl]` |
 | `motor_app_stop()` | 停止电机并复位控制状态 |
 | `motor_app_set_line_follow_enabled(enabled)` | `1`=进入循迹；`0`=同 stop |
+<<<<<<< HEAD
 | `motor_app_set_base_rpm(base_rpm)` | 设置循迹直道基准 RPM（60~180）；自动等比例换算查表控制量 |
+=======
+| `motor_app_set_base_rpm(base_rpm)` | 设置循迹基准 RPM |
+>>>>>>> 4cf82cf (docs: 跟进文档)
 | `motor_app_set_speed_test(left_rpm, right_rpm)` | 进入轮速测试模式 |
 | `motor_app_set_right_circle_demo(center_rpm)` | 进入顺时针圆 demo（按轮距/圆直径算差速） |
 | `motor_app_get_mode()` | 返回当前模式 |
@@ -94,7 +98,10 @@ grayscale → line_control（循迹 PID + 曲率前馈）
 | `pid_turn_rpm` | `float` | 循迹 PID 差速输出 |
 | `curvature_feedforward_rpm` | `float` | 右弯曲率前馈差速 |
 | `turn_rpm` | `float` | 最终差速（PID + 前馈，已限幅） |
+<<<<<<< HEAD
 | `speed_scale` / `feedback_scale` | `float` | 请求速度比例与高速受限后的查表反馈比例 |
+=======
+>>>>>>> 4cf82cf (docs: 跟进文档)
 | `active_count` | `uint8` | 参与误差计算的有效探头数 |
 | `right_active_count` | `uint8` | 右侧通道（默认 5~7）黑线数 |
 | `right_curve_detected` | `uint8` | 右弯判定（连续 60 ms 且非横线） |
@@ -106,8 +113,12 @@ grayscale → line_control（循迹 PID + 曲率前馈）
 | --- | --- |
 | `line_control_init()` | 初始化循迹 PID |
 | `line_control_reset()` | 复位 PID 与输出 |
+<<<<<<< HEAD
 | `line_control_set_base_rpm(base_rpm)` | 设置直道基准速度（60~180 RPM）并更新速度比例 |
 | `line_control_get_base_rpm()` | 读取限幅后的直道基准速度 |
+=======
+| `line_control_set_base_rpm(base_rpm)` | 设置基准速度 |
+>>>>>>> 4cf82cf (docs: 跟进文档)
 | `line_control_update(values, now_ms, dt_s)` | 输入 8 路灰度快照，更新输出 |
 | `line_control_get_output()` | 只读输出指针 |
 
@@ -157,15 +168,24 @@ grayscale → line_control（循迹 PID + 曲率前馈）
 | 分组 | 代表宏 | 说明 |
 | --- | --- | --- |
 | 周期 | `CHASSIS_CONTROL_PERIOD_MS` | 10 ms |
+<<<<<<< HEAD
 | 车体 | `CHASSIS_WHEEL_TRACK_M`、`CHASSIS_WHEEL_DIAMETER_M` | 轮距 0.195 m、轮径 0.065 m |
+=======
+| 车体 | `CHASSIS_WHEEL_TRACK_M`、`CHASSIS_WHEEL_DIAMETER_M` | 轮距 0.18 m、轮径 0.065 m |
+>>>>>>> 4cf82cf (docs: 跟进文档)
 | 电机接线 | `MOTOR_OUTPUT_SWAP_LEFT_RIGHT`、`MOTOR_*_OUTPUT_POLARITY` | 左右交换与极性 |
 | 编码器符号 | `WHEEL_LEFT/RIGHT_ENCODER_SIGN` | 前进时 RPM 为正 |
 | 轮速 PID | `WHEEL_LEFT/RIGHT_KP/KI/KD`、`WHEEL_*_KS/KV/KA` | 左右独立 |
 | 轮速限幅 | `WHEEL_TARGET_RPM_LIMIT`（250）、`WHEEL_PWM_SLEW_DUTY_PER_S` | 目标 RPM 与 PWM 斜率 |
 | PWM 映射 | `WHEEL_LEFT/RIGHT_PWM_MAP_SCALE` | 右轮默认 0.92 |
+<<<<<<< HEAD
 | 查表循迹 | `LINE_LOOKUP_SPEED_REFERENCE_RPM`、`LINE_LOOKUP_STRAIGHT_BASE_RPM`、`LINE_LOOKUP_FEEDBACK_SCALE_MAX`、`LINE_LOOKUP_TURN_SLEW_RPM_PER_S` | 固定标定速度、恒定中心速度、高速反馈上限与差速平滑 |
 | 胶囊赛道 | `LINE_LOOKUP_STRAIGHT_LENGTH_M`、`LINE_LOOKUP_ARC_RADIUS_M`、`LINE_LOOKUP_TRANSITION_HALF_LENGTH_M` | 编码器里程阶段与曲率平滑过渡 |
 | 丢线 | `LINE_LOOKUP_LOST_HOLD_MS`、`LINE_LOOKUP_SEARCH_TIMEOUT_MS` | 保持、右转搜索和停车 |
+=======
+| 循迹 | `LINE_BASE_RPM_DEFAULT`（170）、`LINE_KP/KI/KD`、`LINE_ERROR_FILTER_ALPHA` | 外环增益与滤波 |
+| 右弯 | `LINE_RIGHT_SENSOR_FIRST/LAST_INDEX`（5~7）、`LINE_RIGHT_CURVE_DETECT_MS`（60） | 右弯检测 |
+>>>>>>> 4cf82cf (docs: 跟进文档)
 
 符号检查流程见 [循迹两驱PID框架.md §7](../循迹两驱PID框架.md)。
 
@@ -281,42 +301,67 @@ RPM 换算：`rpm = Δcount × 60000 / (1320 × period_ms)`
 
 ## 循迹模块（grayscale）
 
+<<<<<<< HEAD
 八路红外循迹：通过独立 **I2C1 @ 400 kHz** 读取数字状态寄存器 `0x30`，非阻塞轮询，禁止主循环 busy-wait。
 
 引脚：**SCL=A15，SDA=A16**；7 位地址 `0x12`。X1 对应 bit7，X8 对应 bit0。
+=======
+八路数字灰度：**3 位地址 AD0~AD2 + 1 位 OUT**，非阻塞扫描，禁止主循环 busy-wait。
+
+引脚：**AD0=A15，AD1=A16，AD2=A12，OUT=A13**。PA17 停用；PA18 为 BSL 脚，不可作 OUT。
+>>>>>>> 4cf82cf (docs: 跟进文档)
 
 ### 应用层 — `src/app/grayscale_app.h`
 
 | 函数 | 说明 |
 | --- | --- |
 | `grayscale_app_init()` | 调用 `grayscale_init()` |
+<<<<<<< HEAD
 | `grayscale_app_process()` | 推进 I2C 读取；每完成一轮且间隔 ≥1 s 发送 `[gs]` |
+=======
+| `grayscale_app_process()` | 推进扫描；每完成一轮且间隔 ≥1 s 发送 `[gs]` |
+>>>>>>> 4cf82cf (docs: 跟进文档)
 
 ### 中间层 — `src/middle/grayscale.h`
 
 | 函数 | 说明 |
 | --- | --- |
+<<<<<<< HEAD
 | `grayscale_init()` | 初始化 I2C1 读取状态机 |
+=======
+| `grayscale_init()` | 初始化 GPIO 与状态机 |
+>>>>>>> 4cf82cf (docs: 跟进文档)
 | `grayscale_process()` | 主循环每轮调用，立即返回 |
 | `grayscale_get_values()` | 最近一轮完整 8 路快照（0/1） |
 | `grayscale_is_scan_ready()` | 是否至少完成过一轮 |
 | `grayscale_take_scan_ready()` | 取走就绪标志（app 层用） |
 | `grayscale_get_scan_sequence()` | 扫描轮次序号；控制环用于判新数据 |
+<<<<<<< HEAD
 | `grayscale_get_raw_bits()` | 模块 `0x30` 寄存器最近原始字节 |
 | `grayscale_is_online()` | 最近 20 ms 内是否收到有效数据 |
 | `grayscale_get_last_update_ms()` | 最近成功更新时间 |
 | `grayscale_get_error_count()` | I2C 错误累计值 |
 
 每次收到完整的 8 位寄存器后发布 `values[]`，避免控制/OLED 读到撕裂数据。
+=======
+
+整轮扫描完成后原子发布 `values[]`，避免控制/OLED 读到撕裂数据。
+>>>>>>> 4cf82cf (docs: 跟进文档)
 
 ### 硬件层 — `src/hardware/grayscale_hw.h`
 
 | 函数 | 说明 |
 | --- | --- |
+<<<<<<< HEAD
 | `grayscale_hw_init()` | 初始化独立 I2C1 客户端 |
 | `grayscale_hw_start_read()` | 非阻塞启动 `0x30` 寄存器读取 |
 | `grayscale_hw_take_read(bits)` | 查询并取出 8 位结果 |
 | `grayscale_hw_get_error_count()` | I2C NACK/超时等错误计数 |
+=======
+| `grayscale_hw_init()` | AD0~AD2 推挽，OUT 上拉；默认选通道 0 |
+| `grayscale_hw_select_channel(ch)` | 写通道 0~7（先 clear 再 set） |
+| `grayscale_hw_read_out()` | 读 OUT 0/1 |
+>>>>>>> 4cf82cf (docs: 跟进文档)
 
 ---
 
@@ -401,7 +446,11 @@ typedef struct {
 
 ## OLED 模块（oled）
 
+<<<<<<< HEAD
 GME12864-49（128×64 SSD1306），独立 **I2C0 @ 400 kHz**，SCL=B17，SDA=B18，地址 0x3C。B0/B1 已释放。
+=======
+GME12864-49（128×64 SSD1306），**I2C0 @ 400 kHz**，SCL=B0，SDA=B1，地址 0x3C。
+>>>>>>> 4cf82cf (docs: 跟进文档)
 
 ### 应用层 — `src/app/oled_app.h`
 
@@ -471,7 +520,11 @@ int main(void)
 
 ### `clock_init(uint32 clock)` — `zf_common_clock.h`
 
+<<<<<<< HEAD
 外设上电、`SYSCFG_DL_init()`（UART0/1/3/7、I2C0/1、DMA）、`interrupt_init()`。
+=======
+外设上电、`SYSCFG_DL_init()`（UART0/1、I2C0、DMA）、`interrupt_init()`。
+>>>>>>> 4cf82cf (docs: 跟进文档)
 
 ---
 
@@ -612,10 +665,17 @@ void periodic_task(void)
 ## 依赖与约束
 
 1. 电机 PWM：**TIM_A0**（A0/A1）；方向 GPIO B2~B5；编码器 QEI：**TIMG8/TIMG9**。
+<<<<<<< HEAD
 2. **UART0/1/3/7、I2C0/1、DMA** 由 SysConfig 初始化；勿对这些外设再次调用逐飞初始化函数。
 3. **禁止阻塞延时**：主循环及传感器/IMU 路径不得 busy-wait。
 4. 红外循迹独占 I2C1（A15/A16），OLED 独占 I2C0（B17/B18）；B0/B1 预留。
 5. **OLED I2C 刷新**、**红外 I2C 轮询**、**控制环**、**IMU 解析**均在主循环推进；ISR 只搬运数据和更新状态。
+=======
+2. **UART0/1、I2C0、DMA** 由 SysConfig 初始化；勿对 UART0 调用逐飞 `uart_init()`。
+3. **禁止阻塞延时**：主循环及传感器/IMU 路径不得 busy-wait。
+4. 灰度 GPIO（A12/A13/A15/A16）运行时 `gpio_init`，不改 `M0G3519.syscfg`。
+5. **OLED I2C 刷新**、**控制环**、**IMU 解析**均在主循环；禁止在 ISR 中调用。
+>>>>>>> 4cf82cf (docs: 跟进文档)
 6. 主循环须每轮调用 `motor_watchdog_kick()` 与 `heartbeat_hw_uart_tx_pump()`。
 7. 灰度消费者须读 `grayscale_get_values()` 完整快照，并用 `scan_sequence` 判新数据。
 8. 比赛前建议降低或关闭 `[ctl]`/`[gs]`/`[imu]` 文本遥测。
