@@ -53,6 +53,7 @@ SYSCONFIG_WEAK void SYSCFG_DL_init(void)
     SYSCFG_DL_I2C_OLED_init();
     SYSCFG_DL_UART_0_init();
     SYSCFG_DL_UART_1_init();
+    SYSCFG_DL_UART_EMM42_init();
     SYSCFG_DL_DMA_init();
     SYSCFG_DL_SYSCTL_CLK_init();
 }
@@ -67,6 +68,7 @@ SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
     DL_I2C_reset(I2C_OLED_INST);
     DL_UART_Main_reset(UART_0_INST);
     DL_UART_Main_reset(UART_1_INST);
+    DL_UART_Main_reset(UART_EMM42_INST);
 
 
     DL_GPIO_enablePower(GPIOA);
@@ -75,6 +77,7 @@ SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
     DL_I2C_enablePower(I2C_OLED_INST);
     DL_UART_Main_enablePower(UART_0_INST);
     DL_UART_Main_enablePower(UART_1_INST);
+    DL_UART_Main_enablePower(UART_EMM42_INST);
 
     delay_cycles(POWER_STARTUP_DELAY);
 }
@@ -101,6 +104,10 @@ SYSCONFIG_WEAK void SYSCFG_DL_GPIO_init(void)
         GPIO_UART_1_IOMUX_TX, GPIO_UART_1_IOMUX_TX_FUNC);
     DL_GPIO_initPeripheralInputFunction(
         GPIO_UART_1_IOMUX_RX, GPIO_UART_1_IOMUX_RX_FUNC);
+    DL_GPIO_initPeripheralOutputFunction(
+        GPIO_UART_EMM42_IOMUX_TX, GPIO_UART_EMM42_IOMUX_TX_FUNC);
+    DL_GPIO_initPeripheralInputFunction(
+        GPIO_UART_EMM42_IOMUX_RX, GPIO_UART_EMM42_IOMUX_RX_FUNC);
 
 }
 
@@ -329,6 +336,41 @@ SYSCONFIG_WEAK void SYSCFG_DL_UART_1_init(void)
     DL_UART_Main_setTXFIFOThreshold(UART_1_INST, DL_UART_TX_FIFO_LEVEL_1_2_EMPTY);
 
     DL_UART_Main_enable(UART_1_INST);
+}
+static const DL_UART_Main_ClockConfig gUART_EMM42ClockConfig = {
+    .clockSel    = DL_UART_MAIN_CLOCK_BUSCLK,
+    .divideRatio = DL_UART_MAIN_CLOCK_DIVIDE_RATIO_8
+};
+
+static const DL_UART_Main_Config gUART_EMM42Config = {
+    .mode        = DL_UART_MAIN_MODE_NORMAL,
+    .direction   = DL_UART_MAIN_DIRECTION_TX_RX,
+    .flowControl = DL_UART_MAIN_FLOW_CONTROL_NONE,
+    .parity      = DL_UART_MAIN_PARITY_NONE,
+    .wordLength  = DL_UART_MAIN_WORD_LENGTH_8_BITS,
+    .stopBits    = DL_UART_MAIN_STOP_BITS_ONE
+};
+
+SYSCONFIG_WEAK void SYSCFG_DL_UART_EMM42_init(void)
+{
+    DL_UART_Main_setClockConfig(UART_EMM42_INST, (DL_UART_Main_ClockConfig *) &gUART_EMM42ClockConfig);
+
+    DL_UART_Main_init(UART_EMM42_INST, (DL_UART_Main_Config *) &gUART_EMM42Config);
+    /*
+     * Configure baud rate by setting oversampling and baud rate divisors.
+     *  Target baud rate: 115200
+     *  Actual baud rate: 114942.53
+     */
+    DL_UART_Main_setOversampling(UART_EMM42_INST, DL_UART_OVERSAMPLING_RATE_16X);
+    DL_UART_Main_setBaudRateDivisor(UART_EMM42_INST, UART_EMM42_IBRD_5_MHZ_115200_BAUD, UART_EMM42_FBRD_5_MHZ_115200_BAUD);
+
+
+    /* Configure Interrupts */
+    DL_UART_Main_enableInterrupt(UART_EMM42_INST,
+                                 DL_UART_MAIN_INTERRUPT_RX);
+
+
+    DL_UART_Main_enable(UART_EMM42_INST);
 }
 
 static const DL_DMA_Config gDMA_IMU_RXConfig = {

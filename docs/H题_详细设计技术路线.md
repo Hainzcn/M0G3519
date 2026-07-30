@@ -102,6 +102,7 @@
 | TIMG7 | 灰度通道切换稳定计时 |
 | UART0 PA10/PA11 | 调试输出 |
 | UART1 PA8/PA9 | IMU |
+| UART7 PA23/PA24 | Emm42 步进电机驱动 |
 | I2C0 PB0/PB1 | OLED |
 | SysTick | 1ms 系统时间基准和电机看门狗 |
 

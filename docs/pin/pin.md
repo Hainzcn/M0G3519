@@ -123,6 +123,18 @@ A/B 相在软件里只区分「接 CCP0 还是 CCP1」；接反了只会导致�
 
 实现见 `src/hardware/encoder_hw.c`（`encoder_quad_init`）、`src/middle/encoder.c`（`encoder_update_speed` / `encoder_get_*_rpm` / `encoder_get_*_total_count`）；`motor_init()` 内已调用 `encoder_init()`，当前仍开环驱动，转速供监控与后续闭环使用。
 
+## Emm42 步进电机驱动（UART7，已实现）
+
+Emm42 使用独立硬件串口，不占用 UART0 心跳/调试或 UART1 IMU。
+
+| Emm42 信号 | MCU 引脚 | 方向 | 说明 |
+| --- | --- | --- | --- |
+| MCU 侧 RX / RAH | A23 (PA23) | MCU → PLC 驱动接口 | UART7 TX，115200-8-N-1 |
+| MCU 侧 TX / TBL | A24 (PA24) | PLC 驱动接口 → MCU | UART7 RX，115200-8-N-1 |
+| GND | GND | — | MCU、驱动器必须共地 |
+
+PA23/PA24 当前未被 PWM、QEI、灰度、OLED、IMU 或调试串口占用。它们只接 PLC 驱动电路的 MCU 逻辑侧，不得绕过隔离/电平转换后连接 24V PLC 端子。电机和驱动器使用独立电源，不得由核心板供电。
+
 ## 程序状态指示灯与心跳串口（已实现）
 
 | 信号 | MCU 引脚 | 说明 |

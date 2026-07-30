@@ -463,7 +463,7 @@ int main(void)
 
 ### `clock_init(uint32 clock)` — `zf_common_clock.h`
 
-外设上电、`SYSCFG_DL_init()`（UART0/1、I2C0、DMA）、`interrupt_init()`。
+外设上电、`SYSCFG_DL_init()`（UART0/1/7、I2C0、DMA）、`interrupt_init()`。
 
 ---
 
@@ -604,7 +604,7 @@ void periodic_task(void)
 ## 依赖与约束
 
 1. 电机 PWM：**TIM_A0**（A0/A1）；方向 GPIO B2~B5；编码器 QEI：**TIMG8/TIMG9**。
-2. **UART0/1、I2C0、DMA** 由 SysConfig 初始化；勿对 UART0 调用逐飞 `uart_init()`。
+2. **UART0/1/7、I2C0、DMA** 由 SysConfig 初始化；勿对这些串口再次调用逐飞 `uart_init()`。
 3. **禁止阻塞延时**：主循环及传感器/IMU 路径不得 busy-wait。
 4. 灰度 GPIO（A12/A13/A15/A16）运行时 `gpio_init`，不改 `M0G3519.syscfg`。
 5. **OLED I2C 刷新**、**控制环**、**IMU 解析**均在主循环；禁止在 ISR 中调用。

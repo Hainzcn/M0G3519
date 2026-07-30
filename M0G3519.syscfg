@@ -13,6 +13,7 @@ const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
 const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
 const UART1  = UART.addInstance();
 const UART2  = UART.addInstance();
+const UART3  = UART.addInstance();
 const I2C    = scripting.addModule("/ti/driverlib/I2C", {}, false);
 const I2C1   = I2C.addInstance();
 
@@ -73,6 +74,14 @@ UART2.DMA_CHANNEL_RX.addressMode        = "f2b";
 UART2.DMA_CHANNEL_RX.dstLength          = "BYTE";
 UART2.DMA_CHANNEL_RX.srcLength          = "BYTE";
 UART2.DMA_CHANNEL_RX.peripheral.$assign = "DMA_CH0";
+
+UART3.$name                    = "UART_EMM42";
+UART3.targetBaudRate           = 115200;
+UART3.uartClkDiv               = "8";
+UART3.enabledInterrupts        = ["RX"];
+UART3.peripheral.$assign       = "UART7";
+UART3.peripheral.txPin.$assign = "PA23";
+UART3.peripheral.rxPin.$assign = "PA24";
 
 I2C1.basicEnableController       = true;
 I2C1.basicControllerBusSpeed     = 400000;

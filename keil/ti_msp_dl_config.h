@@ -133,6 +133,22 @@ bool SYSCFG_DL_SYSCTL_SYSPLL_init(void);
 #define UART_1_BAUD_RATE                                                (115200)
 #define UART_1_IBRD_5_MHZ_115200_BAUD                                        (2)
 #define UART_1_FBRD_5_MHZ_115200_BAUD                                       (46)
+/* Defines for UART_EMM42 */
+#define UART_EMM42_INST                                                    UART7
+#define UART_EMM42_INST_FREQUENCY                                        5000000
+#define UART_EMM42_INST_IRQHandler                              UART7_IRQHandler
+#define UART_EMM42_INST_INT_IRQN                                  UART7_INT_IRQn
+#define GPIO_UART_EMM42_RX_PORT                                            GPIOA
+#define GPIO_UART_EMM42_TX_PORT                                            GPIOA
+#define GPIO_UART_EMM42_RX_PIN                                    DL_GPIO_PIN_24
+#define GPIO_UART_EMM42_TX_PIN                                    DL_GPIO_PIN_23
+#define GPIO_UART_EMM42_IOMUX_RX                                 (IOMUX_PINCM54)
+#define GPIO_UART_EMM42_IOMUX_TX                                 (IOMUX_PINCM53)
+#define GPIO_UART_EMM42_IOMUX_RX_FUNC                  IOMUX_PINCM54_PF_UART7_RX
+#define GPIO_UART_EMM42_IOMUX_TX_FUNC                  IOMUX_PINCM53_PF_UART7_TX
+#define UART_EMM42_BAUD_RATE                                            (115200)
+#define UART_EMM42_IBRD_5_MHZ_115200_BAUD                                    (2)
+#define UART_EMM42_FBRD_5_MHZ_115200_BAUD                                   (46)
 
 
 
@@ -155,6 +171,7 @@ bool SYSCFG_DL_SYSCTL_SYSPLL_init(void);
 void SYSCFG_DL_I2C_OLED_init(void);
 void SYSCFG_DL_UART_0_init(void);
 void SYSCFG_DL_UART_1_init(void);
+void SYSCFG_DL_UART_EMM42_init(void);
 void SYSCFG_DL_DMA_init(void);
 
 bool SYSCFG_DL_saveConfiguration(void);
