@@ -9,8 +9,17 @@ typedef struct
     float right_target_rpm;
     float left_measured_rpm;
     float right_measured_rpm;
+    float planned_speed_mps;
+    float planned_accel_mps2;
+    float measured_speed_mps;
+    float measured_accel_mps2;
+    float left_feedforward_pwm;
+    float right_feedforward_pwm;
+    float left_feedback_pwm;
+    float right_feedback_pwm;
     int32 left_duty;
     int32 right_duty;
+    uint8 kinematics_valid;
     uint8 left_saturated;
     uint8 right_saturated;
 } wheel_speed_control_status_t;

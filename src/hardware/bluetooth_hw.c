@@ -81,6 +81,36 @@ uint16 bluetooth_hw_write(const uint8 *data, uint16 length)
     return written;
 }
 
+uint16 bluetooth_hw_write_atomic(const uint8 *data, uint16 length)
+{
+    uint16 used;
+    uint16 free_bytes;
+
+    if ((NULL == data) || (0u == length) ||
+        (length >= BLUETOOTH_HW_TX_BUFFER_SIZE))
+    {
+        return 0u;
+    }
+
+    if (bluetooth_hw_tx_head >= bluetooth_hw_tx_tail)
+    {
+        used = (uint16)(bluetooth_hw_tx_head - bluetooth_hw_tx_tail);
+    }
+    else
+    {
+        used = (uint16)(BLUETOOTH_HW_TX_BUFFER_SIZE -
+                        bluetooth_hw_tx_tail + bluetooth_hw_tx_head);
+    }
+    free_bytes = (uint16)(BLUETOOTH_HW_TX_BUFFER_SIZE - 1u - used);
+    if (free_bytes < length)
+    {
+        bluetooth_hw_tx_drop_count += length;
+        return 0u;
+    }
+
+    return bluetooth_hw_write(data, length);
+}
+
 void bluetooth_hw_send_string(const char *str)
 {
     while ((NULL != str) && ('\0' != *str))

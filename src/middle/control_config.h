@@ -4,8 +4,8 @@
 /* 底盘控制公共配置，100 Hz 周期；请在实车上标定。 */
 #define CHASSIS_CONTROL_PERIOD_MS             (10u)
 
-/* 测试固件上电保持电机停机，不自动进入循迹或圆周 demo。 */
-#define MOTOR_APP_AUTO_START_LINE_FOLLOW      (0u)
+/* 上电自动进入循迹；与 RIGHT_CIRCLE_DEMO 二选一。 */
+#define MOTOR_APP_AUTO_START_LINE_FOLLOW      (1u)
 #define MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO (0u)
 
 #if ((MOTOR_APP_AUTO_START_LINE_FOLLOW != 0u) && \
@@ -72,6 +72,9 @@
 #define WHEEL_LEFT_PWM_MAP_SCALE              (1.00f)
 #define WHEEL_RIGHT_PWM_MAP_SCALE             (0.92f)
 #define WHEEL_PWM_SLEW_DUTY_PER_S             (30000.0f)
+/* 编码器差分前进加速度低通和异常值限幅。 */
+#define WHEEL_ACCEL_FILTER_ALPHA               (0.20f)
+#define WHEEL_MEASURED_ACCEL_MPS2_LIMIT        (20.0f)
 
 /*
  * 模块 OUT 信号已是数字量（0/1），MCU 侧无电压阈值。

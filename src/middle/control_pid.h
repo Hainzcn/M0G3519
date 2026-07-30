@@ -17,6 +17,9 @@ typedef struct
     control_pid_config_t config;
     float integral;
     float previous_error;
+    float feedforward;
+    float feedback;
+    float unsaturated_output;
     float output;
     uint8 initialized;
     uint8 saturated;

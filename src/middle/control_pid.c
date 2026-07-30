@@ -34,6 +34,9 @@ void control_pid_reset(control_pid_t *pid)
 
     pid->integral = 0.0f;
     pid->previous_error = 0.0f;
+    pid->feedforward = 0.0f;
+    pid->feedback = 0.0f;
+    pid->unsaturated_output = 0.0f;
     pid->output = 0.0f;
     pid->initialized = 0u;
     pid->saturated = 0u;
@@ -43,6 +46,7 @@ float control_pid_step(control_pid_t *pid, float error, float feedforward,
                        float dt_s)
 {
     float derivative = 0.0f;
+    float feedback;
     float integral_candidate;
     float unsaturated;
     float output;
@@ -63,9 +67,10 @@ float control_pid_step(control_pid_t *pid, float error, float feedforward,
 
     integral_candidate = control_pid_clamp(
         pid->integral + error * dt_s, pid->config.integral_limit);
-    unsaturated = feedforward + pid->config.kp * error +
-                  pid->config.ki * integral_candidate +
-                  pid->config.kd * derivative;
+    feedback = pid->config.kp * error +
+               pid->config.ki * integral_candidate +
+               pid->config.kd * derivative;
+    unsaturated = feedforward + feedback;
     output = control_pid_clamp(unsaturated, pid->config.output_limit);
 
     /* Integrate only when it does not drive an already saturated output out. */
@@ -77,6 +82,9 @@ float control_pid_step(control_pid_t *pid, float error, float feedforward,
     }
 
     pid->previous_error = error;
+    pid->feedforward = feedforward;
+    pid->feedback = feedback;
+    pid->unsaturated_output = unsaturated;
     pid->output = output;
     pid->saturated = (output != unsaturated) ? 1u : 0u;
     return output;

@@ -10,6 +10,7 @@
 void bluetooth_hw_init(void);
 uint8 bluetooth_hw_read_byte(uint8 *data);
 uint16 bluetooth_hw_write(const uint8 *data, uint16 length);
+uint16 bluetooth_hw_write_atomic(const uint8 *data, uint16 length);
 void bluetooth_hw_send_string(const char *str);
 void bluetooth_hw_tx_pump(void);
 

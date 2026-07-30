@@ -20,6 +20,12 @@ typedef struct
 static wheel_controller_t wheel_left;
 static wheel_controller_t wheel_right;
 static wheel_speed_control_status_t wheel_status;
+static float wheel_previous_planned_speed_mps;
+static float wheel_previous_measured_speed_mps;
+static float wheel_filtered_measured_accel_mps2;
+static uint8 wheel_kinematics_initialized;
+
+#define WHEEL_PI_F                         (3.14159265f)
 
 static float wheel_clamp(float value, float limit)
 {
@@ -50,6 +56,71 @@ static float wheel_slew(float current, float target, float max_delta)
         return current - max_delta;
     }
     return target;
+}
+
+static float wheel_rpm_to_mps(float rpm)
+{
+    return rpm * WHEEL_PI_F * CHASSIS_WHEEL_DIAMETER_M / 60.0f;
+}
+
+static void wheel_reset_outputs(void)
+{
+    control_pid_reset(&wheel_left.pid);
+    control_pid_reset(&wheel_right.pid);
+    wheel_left.target_rpm = 0.0f;
+    wheel_right.target_rpm = 0.0f;
+    wheel_left.previous_target_rpm = 0.0f;
+    wheel_right.previous_target_rpm = 0.0f;
+    wheel_left.applied_output = 0.0f;
+    wheel_right.applied_output = 0.0f;
+    wheel_status.left_target_rpm = 0.0f;
+    wheel_status.right_target_rpm = 0.0f;
+    wheel_status.left_feedforward_pwm = 0.0f;
+    wheel_status.right_feedforward_pwm = 0.0f;
+    wheel_status.left_feedback_pwm = 0.0f;
+    wheel_status.right_feedback_pwm = 0.0f;
+    wheel_status.left_duty = 0;
+    wheel_status.right_duty = 0;
+    wheel_status.left_saturated = 0u;
+    wheel_status.right_saturated = 0u;
+}
+
+static void wheel_update_kinematics(float dt_s)
+{
+    float raw_accel;
+
+    wheel_status.planned_speed_mps = wheel_rpm_to_mps(
+        0.5f * (wheel_status.left_target_rpm +
+                wheel_status.right_target_rpm));
+    wheel_status.measured_speed_mps = wheel_rpm_to_mps(
+        0.5f * (wheel_status.left_measured_rpm +
+                wheel_status.right_measured_rpm));
+
+    if (0u == wheel_kinematics_initialized)
+    {
+        wheel_status.planned_accel_mps2 = 0.0f;
+        wheel_filtered_measured_accel_mps2 = 0.0f;
+        wheel_kinematics_initialized = 1u;
+    }
+    else
+    {
+        wheel_status.planned_accel_mps2 =
+            (wheel_status.planned_speed_mps -
+             wheel_previous_planned_speed_mps) / dt_s;
+        raw_accel = wheel_clamp(
+            (wheel_status.measured_speed_mps -
+             wheel_previous_measured_speed_mps) / dt_s,
+            WHEEL_MEASURED_ACCEL_MPS2_LIMIT);
+        wheel_filtered_measured_accel_mps2 +=
+            WHEEL_ACCEL_FILTER_ALPHA *
+            (raw_accel - wheel_filtered_measured_accel_mps2);
+    }
+
+    wheel_status.measured_accel_mps2 =
+        wheel_filtered_measured_accel_mps2;
+    wheel_status.kinematics_valid = wheel_kinematics_initialized;
+    wheel_previous_planned_speed_mps = wheel_status.planned_speed_mps;
+    wheel_previous_measured_speed_mps = wheel_status.measured_speed_mps;
 }
 
 static void wheel_init_one(wheel_controller_t *wheel,
@@ -116,20 +187,18 @@ void wheel_speed_control_init(void)
 
 void wheel_speed_control_reset(void)
 {
-    control_pid_reset(&wheel_left.pid);
-    control_pid_reset(&wheel_right.pid);
-    wheel_left.target_rpm = 0.0f;
-    wheel_right.target_rpm = 0.0f;
-    wheel_left.previous_target_rpm = 0.0f;
-    wheel_right.previous_target_rpm = 0.0f;
-    wheel_left.applied_output = 0.0f;
-    wheel_right.applied_output = 0.0f;
-    wheel_status.left_target_rpm = 0.0f;
-    wheel_status.right_target_rpm = 0.0f;
-    wheel_status.left_duty = 0;
-    wheel_status.right_duty = 0;
-    wheel_status.left_saturated = 0u;
-    wheel_status.right_saturated = 0u;
+    wheel_reset_outputs();
+    wheel_status.left_measured_rpm = 0.0f;
+    wheel_status.right_measured_rpm = 0.0f;
+    wheel_status.planned_speed_mps = 0.0f;
+    wheel_status.planned_accel_mps2 = 0.0f;
+    wheel_status.measured_speed_mps = 0.0f;
+    wheel_status.measured_accel_mps2 = 0.0f;
+    wheel_status.kinematics_valid = 0u;
+    wheel_previous_planned_speed_mps = 0.0f;
+    wheel_previous_measured_speed_mps = 0.0f;
+    wheel_filtered_measured_accel_mps2 = 0.0f;
+    wheel_kinematics_initialized = 0u;
 }
 
 void wheel_speed_control_set_target(float left_rpm, float right_rpm)
@@ -156,14 +225,15 @@ void wheel_speed_control_update(uint32 period_ms, uint8 enabled)
     wheel_status.right_measured_rpm =
         (float)encoder_get_right_rpm() * wheel_right.encoder_sign;
 
+    dt_s = (float)period_ms * 0.001f;
     if (0u == enabled)
     {
-        wheel_speed_control_reset();
+        wheel_reset_outputs();
+        wheel_update_kinematics(dt_s);
         motor_stop();
         return;
     }
 
-    dt_s = (float)period_ms * 0.001f;
     left_output = wheel_update_one(&wheel_left,
                                    wheel_status.left_measured_rpm, dt_s);
     right_output = wheel_update_one(&wheel_right,
@@ -180,10 +250,19 @@ void wheel_speed_control_update(uint32 period_ms, uint8 enabled)
 
     wheel_status.left_target_rpm = wheel_left.target_rpm;
     wheel_status.right_target_rpm = wheel_right.target_rpm;
+    wheel_status.left_feedforward_pwm =
+        wheel_left.pid.feedforward * WHEEL_LEFT_PWM_MAP_SCALE;
+    wheel_status.right_feedforward_pwm =
+        wheel_right.pid.feedforward * WHEEL_RIGHT_PWM_MAP_SCALE;
+    wheel_status.left_feedback_pwm =
+        wheel_left.pid.feedback * WHEEL_LEFT_PWM_MAP_SCALE;
+    wheel_status.right_feedback_pwm =
+        wheel_right.pid.feedback * WHEEL_RIGHT_PWM_MAP_SCALE;
     wheel_status.left_duty = wheel_round_to_int(wheel_left.applied_output);
     wheel_status.right_duty = wheel_round_to_int(wheel_right.applied_output);
     wheel_status.left_saturated = wheel_left.pid.saturated;
     wheel_status.right_saturated = wheel_right.pid.saturated;
+    wheel_update_kinematics(dt_s);
     motor_set_speed(wheel_status.left_duty, wheel_status.right_duty);
 }
 

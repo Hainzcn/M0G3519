@@ -120,7 +120,7 @@ void emm42_demo_app_process(void)
             {
                 emm42_demo_set_state(EMM42_DEMO_RETURN_ZERO, now_ms);
             }
-            break;
+            break; 
 
         case EMM42_DEMO_RETURN_ZERO:
             if (0u == emm42_move_pulses(EMM42_DEMO_ADDRESS, 0,
@@ -158,3 +158,4 @@ emm42_demo_state_enum emm42_demo_app_get_state(void)
 {
     return emm42_demo_state;
 }
+   
