@@ -14,7 +14,7 @@
 #endif
 
 /* 实测车体几何参数，以及顺时针 1 m 直径圆的中心轨迹。 */
-#define CHASSIS_WHEEL_TRACK_M                  (0.18f)
+#define CHASSIS_WHEEL_TRACK_M                  (0.22f)
 #define CHASSIS_WHEEL_DIAMETER_M               (0.065f)
 #define RIGHT_CIRCLE_DIAMETER_M                (1.000f)
 #define RIGHT_CIRCLE_DEMO_CENTER_RPM           (120.0f)
@@ -50,14 +50,14 @@
 #define WHEEL_LEFT_KI                         (8.0f)
 #define WHEEL_LEFT_KD                         (0.0f)
 #define WHEEL_LEFT_KS                         (0.0f)
-#define WHEEL_LEFT_KV                         (0.0f)
+#define WHEEL_LEFT_KV                         (30.0f)
 #define WHEEL_LEFT_KA                         (0.0f)
 
 #define WHEEL_RIGHT_KP                        (80.0f)
 #define WHEEL_RIGHT_KI                        (8.0f)
 #define WHEEL_RIGHT_KD                        (0.0f)
 #define WHEEL_RIGHT_KS                        (0.0f)
-#define WHEEL_RIGHT_KV                        (0.0f)
+#define WHEEL_RIGHT_KV                        (33.0f)
 #define WHEEL_RIGHT_KA                        (0.0f)
 
 #define WHEEL_PID_INTEGRAL_LIMIT              (6000.0f)
@@ -98,11 +98,16 @@
 #define LINE_RIGHT_SENSOR_FIRST_INDEX         (5u)
 #define LINE_RIGHT_SENSOR_LAST_INDEX          (7u)
 #define LINE_RIGHT_CURVE_DETECT_MS            (60u)
+#define LINE_CURVATURE_FEEDFORWARD_ENABLED    (1u)
 #if ((LINE_RIGHT_SENSOR_FIRST_INDEX > LINE_RIGHT_SENSOR_LAST_INDEX) || \
      (LINE_RIGHT_SENSOR_LAST_INDEX >= 8u))
 #error "Right line sensor range must be within channels 0..7"
 #endif
-#define LINE_KP                               (0.015f)
+#if ((LINE_CURVATURE_FEEDFORWARD_ENABLED != 0u) && \
+     (LINE_CURVATURE_FEEDFORWARD_ENABLED != 1u))
+#error "LINE_CURVATURE_FEEDFORWARD_ENABLED must be 0 or 1"
+#endif
+#define LINE_KP                               (0.020f)
 #define LINE_KI                               (0.0f)
 #define LINE_KD                               (0.00018f)
 #define LINE_INTEGRAL_LIMIT                   (3000.0f)

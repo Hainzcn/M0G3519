@@ -161,7 +161,7 @@ void bluetooth_test_app_init(void)
 
     bluetooth_hw_send_string("[bt] ready,115200,telemetry=10Hz\r\n");
     heartbeat_hw_uart_send_string(
-        "[mode] uart3 telemetry, motor disabled\r\n");
+        "[mode] uart3 telemetry enabled\r\n");
 }
 
 void bluetooth_test_app_process(void)

@@ -1,3 +1,4 @@
+#include "bluetooth_test_app.h"
 #include "grayscale_app.h"
 #include "heartbeat_app.h"
 #include "heartbeat_hw.h"
@@ -12,6 +13,7 @@ int main(void)
     heartbeat_app_init();
     grayscale_app_init();
     motor_app_init();
+    bluetooth_test_app_init();
 
     while (1)
     {
@@ -19,6 +21,7 @@ int main(void)
         heartbeat_hw_uart_tx_pump();
         grayscale_app_process();
         motor_app_process();
+        bluetooth_test_app_process();
         heartbeat_app_process();
     }
 }

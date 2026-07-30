@@ -121,6 +121,10 @@ $\Delta n_{ff}=0.195n_b$。前馈与循迹 PID 输出相加，最终仍受
 `LINE_TURN_RPM_LIMIT` 限制。若实车模块安装方向相反，应交换
 `LINE_RIGHT_SENSOR_FIRST_INDEX/LAST_INDEX` 所定义的右侧通道范围。
 
+`LINE_CURVATURE_FEEDFORWARD_ENABLED` 控制上述预设曲率差速。设为 `0` 时，
+右弯检测仍正常运行，但 `curvature_feedforward_rpm` 保持为零；循迹 PID、
+误差降速、目标 RPM 斜率限制和丢线保护均不受影响。设为 `1` 时恢复预设差速。
+
 大偏差时基础速度从 `LINE_BASE_RPM_DEFAULT` 线性降到 `LINE_MIN_RPM_DEFAULT`。差速输出有限幅，左右轮目标还受 `LINE_TARGET_SLEW_RPM_PER_S` 限制；默认 500 RPM/s，即 10 ms 内最多改变 5 RPM。
 
 ## 6. 双轮速度环

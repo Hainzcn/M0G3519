@@ -209,7 +209,8 @@ void line_control_update(const uint8 values[GRAYSCALE_CHANNELS],
     base_rpm = line_base_rpm -
         (line_base_rpm - LINE_MIN_RPM_DEFAULT) * speed_scale;
     curvature_feedforward_rpm = 0.0f;
-    if (0u != line_output.right_curve_detected)
+    if ((0u != LINE_CURVATURE_FEEDFORWARD_ENABLED) &&
+        (0u != line_output.right_curve_detected))
     {
         curvature_feedforward_rpm = base_rpm * CHASSIS_WHEEL_TRACK_M /
             RIGHT_CIRCLE_DIAMETER_M;
