@@ -21,6 +21,19 @@ static uint32 motor_app_last_debug_ms;
 static float motor_app_test_left_rpm;
 static float motor_app_test_right_rpm;
 
+static float motor_app_clamp(float value, float min_value, float max_value)
+{
+    if (value > max_value)
+    {
+        return max_value;
+    }
+    if (value < min_value)
+    {
+        return min_value;
+    }
+    return value;
+}
+
 static void motor_app_send_debug(uint32 now_ms)
 {
     char message[128];
@@ -36,10 +49,13 @@ static void motor_app_send_debug(uint32 now_ms)
     line = line_control_get_output();
     wheel = wheel_speed_control_get_status();
     snprintf(message, sizeof(message),
-        "[ctl] %u,e=%d,n=%u,t=%d/%d,m=%d/%d,u=%d/%d,s=%u%u\r\n",
+        "[ctl] %u,e=%d,n=%u,r=%u%u,f=%d,t=%d/%d,m=%d/%d,u=%d/%d,s=%u%u\r\n",
         (unsigned int)motor_app_mode,
         (int)line->error,
         (unsigned int)line->active_count,
+        (unsigned int)line->right_active_count,
+        (unsigned int)line->right_curve_detected,
+        (int)line->curvature_feedforward_rpm,
         (int)wheel->left_target_rpm, (int)wheel->right_target_rpm,
         (int)wheel->left_measured_rpm, (int)wheel->right_measured_rpm,
         (int)wheel->left_duty, (int)wheel->right_duty,
@@ -62,7 +78,11 @@ void motor_app_init(void)
     motor_app_test_left_rpm = 0.0f;
     motor_app_test_right_rpm = 0.0f;
 
-    if (0u != MOTOR_APP_AUTO_START_LINE_FOLLOW)
+    if (0u != MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO)
+    {
+        motor_app_set_right_circle_demo(RIGHT_CIRCLE_DEMO_CENTER_RPM);
+    }
+    else if (0u != MOTOR_APP_AUTO_START_LINE_FOLLOW)
     {
         motor_app_set_line_follow_enabled(1u);
     }
@@ -97,7 +117,8 @@ void motor_app_process(void)
         return;
     }
 
-    if (MOTOR_APP_MODE_SPEED_TEST == motor_app_mode)
+    if ((MOTOR_APP_MODE_SPEED_TEST == motor_app_mode) ||
+        (MOTOR_APP_MODE_RIGHT_CIRCLE_DEMO == motor_app_mode))
     {
         wheel_speed_control_set_target(motor_app_test_left_rpm,
                                        motor_app_test_right_rpm);
@@ -166,6 +187,26 @@ void motor_app_set_speed_test(float left_rpm, float right_rpm)
     motor_app_test_left_rpm = left_rpm;
     motor_app_test_right_rpm = right_rpm;
     motor_app_mode = MOTOR_APP_MODE_SPEED_TEST;
+}
+
+void motor_app_set_right_circle_demo(float center_rpm)
+{
+    const float turn_ratio = CHASSIS_WHEEL_TRACK_M /
+        RIGHT_CIRCLE_DIAMETER_M;
+    const float max_center_rpm = WHEEL_TARGET_RPM_LIMIT /
+        (1.0f + turn_ratio);
+    float turn_rpm;
+
+    center_rpm = motor_app_clamp(center_rpm, 0.0f,
+        max_center_rpm);
+    turn_rpm = center_rpm * turn_ratio;
+
+    wheel_speed_control_reset();
+    motor_app_test_left_rpm = motor_app_clamp(center_rpm + turn_rpm,
+        0.0f, WHEEL_TARGET_RPM_LIMIT);
+    motor_app_test_right_rpm = motor_app_clamp(center_rpm - turn_rpm,
+        0.0f, WHEEL_TARGET_RPM_LIMIT);
+    motor_app_mode = MOTOR_APP_MODE_RIGHT_CIRCLE_DEMO;
 }
 
 motor_app_mode_enum motor_app_get_mode(void)

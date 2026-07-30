@@ -9,8 +9,12 @@ typedef struct
     float left_rpm;
     float right_rpm;
     float error;
+    float pid_turn_rpm;
+    float curvature_feedforward_rpm;
     float turn_rpm;
     uint8 active_count;
+    uint8 right_active_count;
+    uint8 right_curve_detected;
     uint8 line_valid;
     uint8 marker_detected;
     uint8 line_lost;

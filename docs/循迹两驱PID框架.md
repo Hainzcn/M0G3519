@@ -6,8 +6,8 @@
 
 ```text
 八路灰度数字量
-  -> 加权位置误差、丢线和横线检测
-  -> 循迹 PID + 弯道降速
+  -> 加权位置误差、丢线、横线和右弯检测
+  -> 循迹 PID + 1 m 圆曲率前馈 + 弯道降速
   -> 左右轮目标 RPM
   -> 左右轮独立 PID + kS/kV/kA 前馈
   -> TB6612 PWM
@@ -49,6 +49,17 @@ motor_app_set_line_follow_enabled(1u);
 motor_app_stop();
 ```
 
+车体参数验证用顺时针 1 m 直径圆 demo：
+
+```c
+motor_app_set_right_circle_demo(120.0f);
+```
+
+也可将 `MOTOR_APP_AUTO_START_LINE_FOLLOW` 设为 `0`、
+`MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO` 设为 `1`，使其上电自动运行。
+按轮距 0.195 m、轮径 0.065 m 计算，中心目标 120 RPM 时左右轮目标分别为
+143.4 RPM 和 96.6 RPM，中心线速度约 0.408 m/s，理论单圈约 7.70 s。
+
 这些入口后续应由比赛状态机调用，不应长期硬编码在 `main()` 中。
 
 ## 4. 灰度误差
@@ -61,6 +72,10 @@ motor_app_stop();
 
 有效探头集合为 $A$，位置误差为：
 
+模块原始数字量定义为 `1=黑线、0=白色地图`。OLED 底部亮块、右弯判断和
+横线判断均使用黑线电平 `LINE_BLACK_ACTIVE_LEVEL=1`。现有位置 PID 保留
+已完成实车调参的补集误差模型 `LINE_SENSOR_ACTIVE_LEVEL=0`，两种语义不得混用。
+
 $$
 e=\frac{\sum_{i\in A}w_i}{|A|}
 $$
@@ -71,16 +86,17 @@ $$
 e_f[k]=e_f[k-1]+\alpha(e[k]-e_f[k-1])
 $$
 
-默认 `LINE_ERROR_FILTER_ALPHA=0.20`。减小该值会更平滑但增加转向延迟；增大则响应更快。
+默认 `LINE_ERROR_FILTER_ALPHA=0.30`。减小该值会更平滑但增加转向延迟；增大则响应更快。
 
 默认通道 7 方向为正。正误差经过循迹 PID 得到正差速量时，左轮加速、右轮减速。若实车转向相反，应整体反转权重顺序或交换差速符号，不要通过负 PID 增益修补。
 
 当前安全策略：
 
-- 无有效探头时，最多保持上一次误差 100 ms。
-- 超过 100 ms 仍丢线，清空 PID 并停止电机。
+- 无有效探头时，最多保持上一次误差 200 ms。
+- 超过 200 ms 仍丢线，清空 PID 并停止电机。
 - 灰度扫描序号超过 30 ms 不更新，按传感器故障停止。
 - 同时触发不少于 6 路时置位 `marker_detected`，供后续 A 点横线状态机使用；当前不会自动停车。
+- 模块第 6~8 路（数组下标 5~7）任一路连续识别黑线 60 ms 后判定进入右弯；横线不会触发该判定。
 
 ## 5. 循迹外环
 
@@ -94,7 +110,18 @@ $$
 n_L=n_b+\Delta n,\qquad n_R=n_b-\Delta n
 $$
 
-大偏差时基础速度从 `LINE_BASE_RPM_DEFAULT` 线性降到 `LINE_MIN_RPM_DEFAULT`。差速输出有限幅，左右轮目标还受 `LINE_TARGET_SLEW_RPM_PER_S` 限制；默认 300 RPM/s，即 10 ms 内最多改变 3 RPM。
+顺时针圆弧的中心半径为 $R$、轮距为 $B$ 时，曲率前馈差速为：
+
+$$
+\Delta n_{ff}=n_b\frac{B}{2R}=n_b\frac{B}{D}
+$$
+
+本车 $B=0.195\,m$、目标圆直径 $D=1.000\,m$，因此右弯判定有效时
+$\Delta n_{ff}=0.195n_b$。前馈与循迹 PID 输出相加，最终仍受
+`LINE_TURN_RPM_LIMIT` 限制。若实车模块安装方向相反，应交换
+`LINE_RIGHT_SENSOR_FIRST_INDEX/LAST_INDEX` 所定义的右侧通道范围。
+
+大偏差时基础速度从 `LINE_BASE_RPM_DEFAULT` 线性降到 `LINE_MIN_RPM_DEFAULT`。差速输出有限幅，左右轮目标还受 `LINE_TARGET_SLEW_RPM_PER_S` 限制；默认 500 RPM/s，即 10 ms 内最多改变 5 RPM。
 
 ## 6. 双轮速度环
 
@@ -144,7 +171,7 @@ PID 输出先经过左右独立映射：左轮 `WHEEL_LEFT_PWM_MAP_SCALE=1.00`�
 ### 8.4 循迹外环
 
 1. 低速起步，只增加 `LINE_KP`，使车辆能回线但不过度摆动。
-2. 加入少量 `LINE_KD` 抑制蛇形。数字探头切换会放大微分项，当前初值已从 0.0008 降至 0.00015。
+2. 加入少量 `LINE_KD` 抑制蛇形。数字探头切换会放大微分项，当前初值为 0.00018。
 3. 若单探头切换仍抖动，依次减小 `LINE_ERROR_FILTER_ALPHA`、降低 `LINE_TARGET_SLEW_RPM_PER_S`；若转弯明显迟钝则反向调整。
 4. 最后才考虑很小的 `LINE_KI`，数字灰度循迹通常不需要较强积分。
 5. 逐步提高基础 RPM，并重新调整弯道最低速度和差速限幅。
@@ -154,7 +181,7 @@ PID 输出先经过左右独立映射：左轮 `WHEEL_LEFT_PWM_MAP_SCALE=1.00`�
 活动模式下每 250 ms 输出：
 
 ```text
-[ctl] mode,e=<误差>,n=<有效探头数>,t=<左右目标RPM>,m=<左右实测RPM>,u=<左右PWM>,s=<饱和标志>
+[ctl] mode,e=<误差>,n=<有效探头数>,r=<右侧数><弯道标志>,f=<前馈RPM>,t=<左右目标RPM>,m=<左右实测RPM>,u=<左右PWM>,s=<饱和标志>
 ```
 
 调参时重点观察目标与实测方向是否一致、PWM 是否长期饱和、左右轮稳态误差是否不同。正式比赛前应降低或关闭文本遥测，改用定长二进制日志。

@@ -4,6 +4,7 @@
 #include "grayscale.h"
 #include "heartbeat.h"
 #include "imu.h"
+#include "line_control.h"
 #include "oled.h"
 
 #include "string.h"
@@ -20,6 +21,7 @@
 #define OLED_APP_PAGE_TITLE             (0)
 #define OLED_APP_PAGE_YAW               (1)
 #define OLED_APP_PAGE_RPM               (3)
+#define OLED_APP_PAGE_TURN              (5)
 #define OLED_APP_PAGE_GS                (7)
 
 #define OLED_APP_GS_BLOCK_W             (OLED_HW_WIDTH / GRAYSCALE_CHANNELS)
@@ -28,6 +30,7 @@
 #define OLED_APP_LEFT_RPM_VALUE_X       (12)
 #define OLED_APP_RIGHT_RPM_VALUE_X      (76)
 #define OLED_APP_RPM_VALUE_W            (42)
+#define OLED_APP_TURN_X                  (48)
 
 #define OLED_APP_TEXT_DIRTY_YAW          (0x01u)
 #define OLED_APP_TEXT_DIRTY_RPM          (0x02u)
@@ -41,6 +44,63 @@ static uint8  oled_app_gs_cache[GRAYSCALE_CHANNELS];
 static int32  oled_app_yaw_cache;
 static int32  oled_app_left_rpm_cache;
 static int32  oled_app_right_rpm_cache;
+static uint8  oled_app_turn_cache;
+
+/* 16x16 Song bitmap rows for "turning", rendered as black on white. */
+static const uint16 oled_app_glyph_turn[16] =
+{
+    0x0808u, 0x3F7Fu, 0x1008u, 0x1410u,
+    0x24FFu, 0x3F10u, 0x0420u, 0x047Fu,
+    0x0701u, 0x3C22u, 0x1414u, 0x0408u,
+    0x0404u, 0x0404u, 0x0000u, 0x0000u,
+};
+
+static const uint16 oled_app_glyph_curve[16] =
+{
+    0x3FFFu, 0x0110u, 0x0514u, 0x0912u,
+    0x1111u, 0x0000u, 0x0FFCu, 0x0004u,
+    0x0FFCu, 0x0800u, 0x0FFEu, 0x0002u,
+    0x0014u, 0x0008u, 0x0000u, 0x0000u,
+};
+
+static void oled_app_draw_inverse_glyph(uint8 x, const uint16 glyph[16])
+{
+    uint8 row;
+    uint8 col;
+
+    for (row = 0u; row < 16u; row++)
+    {
+        for (col = 0u; col < 16u; col++)
+        {
+            uint16 mask = (uint16)(1u << (15u - col));
+            oled_set_pixel((uint8)(x + col),
+                           (uint8)(OLED_APP_PAGE_TURN * 8u + row),
+                           (0u != (glyph[row] & mask)) ? 0u : 1u);
+        }
+    }
+}
+
+static uint8 oled_app_render_turn(void)
+{
+    const line_control_output_t *line = line_control_get_output();
+    uint8 turning = line->right_curve_detected;
+
+    if (turning == oled_app_turn_cache)
+    {
+        return 0u;
+    }
+
+    oled_app_turn_cache = turning;
+    oled_clear_page(OLED_APP_PAGE_TURN);
+    oled_clear_page((uint8)(OLED_APP_PAGE_TURN + 1u));
+    if (0u != turning)
+    {
+        oled_app_draw_inverse_glyph(OLED_APP_TURN_X, oled_app_glyph_turn);
+        oled_app_draw_inverse_glyph((uint8)(OLED_APP_TURN_X + 16u),
+                                    oled_app_glyph_curve);
+    }
+    return 1u;
+}
 
 static void oled_app_draw_static_labels(void)
 {
@@ -143,9 +203,11 @@ void oled_app_init(void)
     oled_app_yaw_cache       = 0x7FFFFFFF;
     oled_app_left_rpm_cache  = 0x7FFFFFFF;
     oled_app_right_rpm_cache = 0x7FFFFFFF;
+    oled_app_turn_cache      = 0xFFu;
 
     oled_app_draw_static_labels();
     oled_app_render_text();
+    oled_app_render_turn();
     gs_values = grayscale_get_values();
     oled_app_render_gs(gs_values);
     oled_refresh();
@@ -176,6 +238,12 @@ void oled_app_process(void)
         oled_app_was_ready = 1u;
         /* Initialization or recovery invalidates the controller RAM. */
         oled_refresh();
+    }
+
+    if (0u != oled_app_render_turn())
+    {
+        oled_refresh_pages(OLED_APP_PAGE_TURN,
+                           (uint8)(OLED_APP_PAGE_TURN + 1u));
     }
 
     if ((now_ms - oled_app_last_text_ms) >= OLED_APP_TEXT_PERIOD_MS)
