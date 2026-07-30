@@ -1,0 +1,20 @@
+#ifndef BLUETOOTH_HW_H_
+#define BLUETOOTH_HW_H_
+
+#include "zf_common_typedef.h"
+
+/* Dedicated UART3: TX PB12, RX PB13, 115200-8-N-1. */
+#define BLUETOOTH_HW_RX_BUFFER_SIZE     (256u)
+#define BLUETOOTH_HW_TX_BUFFER_SIZE     (256u)
+
+void bluetooth_hw_init(void);
+uint8 bluetooth_hw_read_byte(uint8 *data);
+uint16 bluetooth_hw_write(const uint8 *data, uint16 length);
+void bluetooth_hw_send_string(const char *str);
+void bluetooth_hw_tx_pump(void);
+
+uint32 bluetooth_hw_get_rx_count(void);
+uint32 bluetooth_hw_get_rx_overflow_count(void);
+uint32 bluetooth_hw_get_tx_drop_count(void);
+
+#endif

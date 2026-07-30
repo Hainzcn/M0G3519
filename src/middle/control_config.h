@@ -4,8 +4,8 @@
 /* 底盘控制公共配置，100 Hz 周期；请在实车上标定。 */
 #define CHASSIS_CONTROL_PERIOD_MS             (10u)
 
-/* 尚未安装启动按键：上电后自动进入循迹模式。 */
-#define MOTOR_APP_AUTO_START_LINE_FOLLOW      (1u)
+/* 测试固件上电保持电机停机，不自动进入循迹或圆周 demo。 */
+#define MOTOR_APP_AUTO_START_LINE_FOLLOW      (0u)
 #define MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO (0u)
 
 #if ((MOTOR_APP_AUTO_START_LINE_FOLLOW != 0u) && \

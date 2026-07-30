@@ -149,6 +149,22 @@ bool SYSCFG_DL_SYSCTL_SYSPLL_init(void);
 #define UART_EMM42_BAUD_RATE                                            (115200)
 #define UART_EMM42_IBRD_5_MHZ_115200_BAUD                                    (2)
 #define UART_EMM42_FBRD_5_MHZ_115200_BAUD                                   (46)
+/* Defines for UART_BLUETOOTH */
+#define UART_BLUETOOTH_INST                                                UART3
+#define UART_BLUETOOTH_INST_FREQUENCY                                   10000000
+#define UART_BLUETOOTH_INST_IRQHandler                          UART3_IRQHandler
+#define UART_BLUETOOTH_INST_INT_IRQN                              UART3_INT_IRQn
+#define GPIO_UART_BLUETOOTH_RX_PORT                                        GPIOB
+#define GPIO_UART_BLUETOOTH_TX_PORT                                        GPIOB
+#define GPIO_UART_BLUETOOTH_RX_PIN                                DL_GPIO_PIN_13
+#define GPIO_UART_BLUETOOTH_TX_PIN                                DL_GPIO_PIN_12
+#define GPIO_UART_BLUETOOTH_IOMUX_RX                             (IOMUX_PINCM30)
+#define GPIO_UART_BLUETOOTH_IOMUX_TX                             (IOMUX_PINCM29)
+#define GPIO_UART_BLUETOOTH_IOMUX_RX_FUNC               IOMUX_PINCM30_PF_UART3_RX
+#define GPIO_UART_BLUETOOTH_IOMUX_TX_FUNC               IOMUX_PINCM29_PF_UART3_TX
+#define UART_BLUETOOTH_BAUD_RATE                                        (115200)
+#define UART_BLUETOOTH_IBRD_10_MHZ_115200_BAUD                               (5)
+#define UART_BLUETOOTH_FBRD_10_MHZ_115200_BAUD                              (27)
 
 
 
@@ -172,6 +188,7 @@ void SYSCFG_DL_I2C_OLED_init(void);
 void SYSCFG_DL_UART_0_init(void);
 void SYSCFG_DL_UART_1_init(void);
 void SYSCFG_DL_UART_EMM42_init(void);
+void SYSCFG_DL_UART_BLUETOOTH_init(void);
 void SYSCFG_DL_DMA_init(void);
 
 bool SYSCFG_DL_saveConfiguration(void);

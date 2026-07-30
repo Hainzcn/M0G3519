@@ -28,7 +28,7 @@
 
 ## 3. 运行模式
 
-当前无用户按键，`MOTOR_APP_AUTO_START_LINE_FOLLOW=1`，上电取得第一帧有效灰度数据后自动进入循迹。将该宏改为 `0` 可恢复上电禁用。
+当前为蓝牙串口测试固件，`MOTOR_APP_AUTO_START_LINE_FOLLOW=0`、`MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO=0`，上电保持电机停机且不运行循迹或圆周 demo。恢复底盘联调时，应通过明确的测试入口启用对应模式，不要同时开启两个自动启动宏。
 
 架空轮速标定：
 
