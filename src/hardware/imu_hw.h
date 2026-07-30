@@ -1,4 +1,4 @@
-﻿#ifndef IMU_HW_H_
+#ifndef IMU_HW_H_
 #define IMU_HW_H_
 
 #include "zf_common_typedef.h"
@@ -13,6 +13,7 @@
 #define IMU_HW_DMA_BLOCK_SIZE      (64u)
 #define IMU_HW_DMA_BLOCK_COUNT     (4u)
 #define IMU_HW_TX_TIMEOUT_CYCLES   (8000000u)
+#define DMA_IMU_RX_CHAN_ID         (2u)
 
 void imu_hw_init(void);
 void imu_hw_rx_enable(void);

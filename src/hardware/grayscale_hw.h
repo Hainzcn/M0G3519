@@ -4,26 +4,21 @@
 #include "zf_common_typedef.h"
 
 /*
- * 八路循迹模块硬件层（3 位地址 + 1 位数字 OUT）。
+ * Six-channel line sensor.  It is an I2C peripheral, not an AD0/AD1/AD2
+ * multiplexer.  I2C0 is shared with the OLED; sensor reads yield while an
+ * OLED transfer is active.
  *
- * 当前接线（避开 A14 状态灯、异常的 PA17 和 PA18 启动配置脚）：
- *   AD0=A15, AD1=A16, AD2=A12, OUT=A13
- *
- * PA18 is the active-low BSL invoke pin sampled during BOOTRST. It must not be
- * driven by the sensor, otherwise a low OUT level can boot the MCU into ROM BSL.
- *
- * 本层仅做 GPIO 操作，不含任何延时。
+ * Wiring: SCL=PB0, SDA=PB1, GND common, sensor supply=5 V.
+ * The I2C pull-up voltage must not exceed the MCU's 3.3 V I/O level.
  */
 
-#define GRAYSCALE_HW_CHANNELS      (8)
-#define GRAYSCALE_HW_AD0_PIN       (A15)
-#define GRAYSCALE_HW_AD1_PIN       (A16)
-#define GRAYSCALE_HW_AD2_PIN       (A12)
-#define GRAYSCALE_HW_OUT_PIN       (A13)
-#define GRAYSCALE_HW_SETTLE_US     (50)   // 供 middle 层轮询阈值
+#define GRAYSCALE_HW_CHANNELS          (6u)
+#define GRAYSCALE_HW_I2C_ADDRESS       (0x5Cu)
+#define GRAYSCALE_HW_STATE_REGISTER    (5u)
+#define GRAYSCALE_HW_SCAN_PERIOD_MS    (5u)
 
 void grayscale_hw_init(void);
-void grayscale_hw_select_channel(uint8 ch);
-uint8 grayscale_hw_read_out(void);
+uint8 grayscale_hw_read_states(uint8 values[GRAYSCALE_HW_CHANNELS]);
+uint32 grayscale_hw_get_error_count(void);
 
 #endif

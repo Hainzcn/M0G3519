@@ -186,9 +186,9 @@ RPM 换算：`rpm = Δcount × 60000 / (1320 × period_ms)`
 
 ## 循迹模块（grayscale）
 
-八路数字灰度模块：**3 位地址 AD0~AD2 + 1 位 OUT**，非阻塞扫描，禁止主循环 busy-wait 延时。
+六路巡线传感器为 I2C 外设，7 位地址为 `0x5C`。寄存器 `5` 返回六路数字检测状态；模块自行完成学习校准，控制层不再使用 AD0~AD2/OUT GPIO 扫描。
 
-引脚：AD0=A15，AD1=A16，AD2=A12，OUT=A13。PA17 因实测无法拉低而停用，A14 仍为状态灯。
+I2C0 与 OLED 共用：SCL=B0、SDA=B1，传感器供电为 5V 且必须共地。SCL/SDA 上拉电平不得超过主控 3.3V I/O 电平。
 
 ### 应用层 — `src/app/grayscale_app.h`
 
@@ -201,24 +201,21 @@ RPM 换算：`rpm = Δcount × 60000 / (1320 × period_ms)`
 
 | 名称 | 值 | 说明 |
 | --- | --- | --- |
-| `GRAYSCALE_CHANNELS` | 8 | 探头数量 X1~X8 |
+| `GRAYSCALE_CHANNELS` | 6 | 探头数量 X1~X6 |
 
 | 函数 | 说明 |
 | --- | --- |
-| `grayscale_init()` | 初始化 GPIO 与扫描状态机 |
-| `grayscale_process()` | 主循环每轮调用，立即返回；分步完成 8 路扫描 |
-| `grayscale_get_values()` | 指向长度 8 的 `uint8` 数组，元素为 0 或 1 |
+| `grayscale_init()` | 初始化 I2C 读取状态 |
+| `grayscale_process()` | 主循环调用；每 5 ms 读取一次状态寄存器，OLED 正在传输时延后读取 |
+| `grayscale_get_values()` | 指向长度 6 的 `uint8` 数组，元素为 0 或 1 |
 | `grayscale_is_scan_ready()` | 是否至少完成过一轮扫描 |
-
-地址切换后约 50 µs 稳定时间通过 **只读 SysTick VAL 轮询** 实现（见 `grayscale.c`）。
 
 ### 硬件层 — `src/hardware/grayscale_hw.h`
 
 | 函数 | 说明 |
 | --- | --- |
-| `grayscale_hw_init()` | AD0~AD2 推挽输出，OUT 上拉输入 |
-| `grayscale_hw_select_channel(ch)` | 写入通道号 0~7 |
-| `grayscale_hw_read_out()` | 读取 OUT 电平 0/1 |
+| `grayscale_hw_init()` | 初始化 I2C 传感器读取状态 |
+| `grayscale_hw_read_states(values)` | 从寄存器 `5` 读取六路数字状态 |
 
 ---
 
@@ -410,7 +407,7 @@ int main(void)
 | IMU 未就绪 | `[imu] 0,wait,flags=0x??\r\n` | `[imu] 0,wait,flags=0x01` |
 
 - `[hb]` 序号由 `heartbeat_hw_get_sequence()` 提供，在 SysTick ISR 中递增。
-- `[gs]` 的 `v0`~`v7` 对应 X1~X8；厂家说明：灯亮/检测到为 1。
+- `[gs]` 的 `v0`~`v5` 对应 X1~X6；厂家说明：灯亮/检测到为 1。
 - `[imu]` 的 yaw、wz 为浮点（° 与 °/s，两位小数）；就绪需 `IMU_FLAG_ANGLE | IMU_FLAG_GYRO`。
 - 串口格式化使用 `%u`/`%d`/`%.2f`，避免 microlib 下 `%lu`/`%ld` 混用导致乱码。
 

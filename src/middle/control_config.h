@@ -34,17 +34,13 @@
 #define WHEEL_FEEDFORWARD_ACCEL_RPM_S_LIMIT   (600.0f)
 #define WHEEL_PWM_SLEW_DUTY_PER_S             (30000.0f)
 
-/*
- * The module OUT signal is already digital (0/1), so there is no MCU-side
- * voltage threshold. Adjust the comparator threshold on the sensor module.
- * Bench test shows low reflectance/covering reports logic low, so black line
- * detection uses 0 as the active level.
- */
-#define LINE_SENSOR_ACTIVE_LEVEL              (0u)
-#define LINE_SENSOR_MARKER_MIN_COUNT          (6u)
+/* The six-channel sensor returns a digital state for each learned target. */
+#define LINE_SENSOR_ACTIVE_LEVEL              (1u)
+#define LINE_SENSOR_MARKER_MIN_COUNT          (5u)
 #define LINE_LOST_HOLD_MS                     (100u)
 
-/* Sensor error is -3500 ... +3500, positive toward channel 7. */
+/* Sensor error is -2500 ... +2500, positive toward channel 5. */
+#define LINE_ERROR_MAX                        (2500.0f)
 #define LINE_STEERING_SIGN                    (1.0f)
 #define LINE_ERROR_FILTER_ALPHA               (0.20f)
 #define LINE_TARGET_SLEW_RPM_PER_S            (300.0f)

@@ -137,12 +137,6 @@ bool SYSCFG_DL_SYSCTL_SYSPLL_init(void);
 
 
 
-
-/* Defines for DMA_IMU_RX */
-#define DMA_IMU_RX_CHAN_ID                                                   (0)
-#define UART_1_INST_DMA_TRIGGER                              (DMA_UART1_RX_TRIG)
-
-
 /* clang-format on */
 
 void SYSCFG_DL_init(void);
@@ -155,7 +149,6 @@ bool SYSCFG_DL_SYSCTL_SYSPLL_init(void);
 void SYSCFG_DL_I2C_OLED_init(void);
 void SYSCFG_DL_UART_0_init(void);
 void SYSCFG_DL_UART_1_init(void);
-void SYSCFG_DL_DMA_init(void);
 
 bool SYSCFG_DL_saveConfiguration(void);
 bool SYSCFG_DL_restoreConfiguration(void);

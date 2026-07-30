@@ -41,11 +41,10 @@ void grayscale_app_process(void)
     grayscale_app_print_count ++;
     values = grayscale_get_values();
     snprintf(message, sizeof(message),
-             "[gs] %u,v=%u%u%u%u%u%u%u%u\r\n",
+             "[gs] %u,v=%u%u%u%u%u%u\r\n",
              (unsigned int)grayscale_app_print_count,
              (unsigned int)values[0], (unsigned int)values[1],
              (unsigned int)values[2], (unsigned int)values[3],
-             (unsigned int)values[4], (unsigned int)values[5],
-             (unsigned int)values[6], (unsigned int)values[7]);
+             (unsigned int)values[4], (unsigned int)values[5]);
     heartbeat_hw_uart_send_string(message);
 }

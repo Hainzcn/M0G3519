@@ -5,7 +5,7 @@
 
 static const int16 line_sensor_weight[GRAYSCALE_CHANNELS] =
 {
-    -3500, -2500, -1500, -500, 500, 1500, 2500, 3500,
+    -2500, -1500, -500, 500, 1500, 2500,
 };
 
 static control_pid_t line_pid;
@@ -160,7 +160,7 @@ void line_control_update(const uint8 values[GRAYSCALE_CHANNELS],
 
     turn_rpm = LINE_STEERING_SIGN *
         control_pid_step(&line_pid, error, 0.0f, dt_s);
-    speed_scale = line_clamp(line_abs(error) / 3500.0f, 0.0f, 1.0f);
+    speed_scale = line_clamp(line_abs(error) / LINE_ERROR_MAX, 0.0f, 1.0f);
     base_rpm = line_base_rpm -
         (line_base_rpm - LINE_MIN_RPM_DEFAULT) * speed_scale;
 

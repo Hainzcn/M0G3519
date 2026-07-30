@@ -4,6 +4,8 @@
 #include "grayscale.h"
 #include "heartbeat.h"
 #include "imu.h"
+#include "line_control.h"
+#include "motor_app.h"
 #include "oled.h"
 
 #include "string.h"
@@ -20,6 +22,7 @@
 #define OLED_APP_PAGE_TITLE             (0)
 #define OLED_APP_PAGE_YAW               (1)
 #define OLED_APP_PAGE_RPM               (3)
+#define OLED_APP_PAGE_TURN              (5)
 #define OLED_APP_PAGE_GS                (7)
 
 #define OLED_APP_GS_BLOCK_W             (OLED_HW_WIDTH / GRAYSCALE_CHANNELS)
@@ -28,9 +31,23 @@
 #define OLED_APP_LEFT_RPM_VALUE_X       (12)
 #define OLED_APP_RIGHT_RPM_VALUE_X      (76)
 #define OLED_APP_RPM_VALUE_W            (42)
+#define OLED_APP_TURN_VALUE_X           (36)
+#define OLED_APP_TURN_THRESHOLD_RPM     (5.0f)
 
 #define OLED_APP_TEXT_DIRTY_YAW          (0x01u)
 #define OLED_APP_TEXT_DIRTY_RPM          (0x02u)
+#define OLED_APP_TEXT_DIRTY_TURN         (0x04u)
+
+typedef enum
+{
+    OLED_APP_TURN_STOP = 0,
+    OLED_APP_TURN_TEST,
+    OLED_APP_TURN_LOST,
+    OLED_APP_TURN_MARK,
+    OLED_APP_TURN_STRAIGHT,
+    OLED_APP_TURN_LEFT,
+    OLED_APP_TURN_RIGHT,
+} oled_app_turn_state_enum;
 
 static uint32 oled_app_last_gs_ms;
 static uint32 oled_app_last_text_ms;
@@ -41,6 +58,7 @@ static uint8  oled_app_gs_cache[GRAYSCALE_CHANNELS];
 static int32  oled_app_yaw_cache;
 static int32  oled_app_left_rpm_cache;
 static int32  oled_app_right_rpm_cache;
+static oled_app_turn_state_enum oled_app_turn_cache;
 
 static void oled_app_draw_static_labels(void)
 {
@@ -48,6 +66,68 @@ static void oled_app_draw_static_labels(void)
     oled_show_string(0, OLED_APP_PAGE_YAW, "Yaw:", OLED_FONT_6X8);
     oled_show_string(0, OLED_APP_PAGE_RPM, "L:", OLED_FONT_6X8);
     oled_show_string(64, OLED_APP_PAGE_RPM, "R:", OLED_FONT_6X8);
+    oled_show_string(0, OLED_APP_PAGE_TURN, "Turn:", OLED_FONT_6X8);
+}
+
+static oled_app_turn_state_enum oled_app_get_turn_state(void)
+{
+    const line_control_output_t *line = line_control_get_output();
+    float speed_difference;
+
+    if (MOTOR_APP_MODE_DISABLED == motor_app_get_mode())
+    {
+        return OLED_APP_TURN_STOP;
+    }
+
+    if (MOTOR_APP_MODE_SPEED_TEST == motor_app_get_mode())
+    {
+        return OLED_APP_TURN_TEST;
+    }
+
+    if (0u != line->line_lost)
+    {
+        return OLED_APP_TURN_LOST;
+    }
+
+    if (0u != line->marker_detected)
+    {
+        return OLED_APP_TURN_MARK;
+    }
+
+    speed_difference = line->left_rpm - line->right_rpm;
+    /* With both wheels moving forward, a faster left wheel turns right. */
+    if (speed_difference > OLED_APP_TURN_THRESHOLD_RPM)
+    {
+        return OLED_APP_TURN_RIGHT;
+    }
+    if (speed_difference < -OLED_APP_TURN_THRESHOLD_RPM)
+    {
+        return OLED_APP_TURN_LEFT;
+    }
+
+    return OLED_APP_TURN_STRAIGHT;
+}
+
+static const char *oled_app_turn_text(oled_app_turn_state_enum state)
+{
+    switch (state)
+    {
+        case OLED_APP_TURN_TEST:
+            return "Test";
+        case OLED_APP_TURN_LOST:
+            return "Lost";
+        case OLED_APP_TURN_MARK:
+            return "Mark";
+        case OLED_APP_TURN_LEFT:
+            return "Left";
+        case OLED_APP_TURN_RIGHT:
+            return "Right";
+        case OLED_APP_TURN_STRAIGHT:
+            return "Straight";
+        case OLED_APP_TURN_STOP:
+        default:
+            return "Stop";
+    }
 }
 
 static uint8 oled_app_render_gs(const uint8 *values)
@@ -69,6 +149,7 @@ static uint8 oled_app_render_text(void)
     int32 left_rpm;
     int32 right_rpm;
     int32 yaw_cache;
+    oled_app_turn_state_enum turn_state;
     uint8 dirty_pages = 0u;
     uint8 yaw_ready;
 
@@ -81,7 +162,8 @@ static uint8 oled_app_render_text(void)
 
     if ((yaw_cache == oled_app_yaw_cache) &&
         (left_rpm == oled_app_left_rpm_cache) &&
-        (right_rpm == oled_app_right_rpm_cache))
+        (right_rpm == oled_app_right_rpm_cache) &&
+        (oled_app_get_turn_state() == oled_app_turn_cache))
     {
         return 0;
     }
@@ -122,6 +204,17 @@ static uint8 oled_app_render_text(void)
                       OLED_FONT_6X8);
     }
 
+    turn_state = oled_app_get_turn_state();
+    if (turn_state != oled_app_turn_cache)
+    {
+        dirty_pages |= OLED_APP_TEXT_DIRTY_TURN;
+        oled_app_turn_cache = turn_state;
+        oled_clear_page_segment(OLED_APP_PAGE_TURN, OLED_APP_TURN_VALUE_X,
+                                (uint8)(OLED_HW_WIDTH - OLED_APP_TURN_VALUE_X));
+        oled_show_string(OLED_APP_TURN_VALUE_X, OLED_APP_PAGE_TURN,
+                         oled_app_turn_text(turn_state), OLED_FONT_6X8);
+    }
+
     return dirty_pages;
 }
 
@@ -143,6 +236,7 @@ void oled_app_init(void)
     oled_app_yaw_cache       = 0x7FFFFFFF;
     oled_app_left_rpm_cache  = 0x7FFFFFFF;
     oled_app_right_rpm_cache = 0x7FFFFFFF;
+    oled_app_turn_cache      = (oled_app_turn_state_enum)0xFFu;
 
     oled_app_draw_static_labels();
     oled_app_render_text();
@@ -189,6 +283,10 @@ void oled_app_process(void)
         if (0u != (text_dirty_pages & OLED_APP_TEXT_DIRTY_RPM))
         {
             oled_refresh_pages(OLED_APP_PAGE_RPM, OLED_APP_PAGE_RPM);
+        }
+        if (0u != (text_dirty_pages & OLED_APP_TEXT_DIRTY_TURN))
+        {
+            oled_refresh_pages(OLED_APP_PAGE_TURN, OLED_APP_PAGE_TURN);
         }
     }
 

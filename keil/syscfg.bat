@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "SYSCFG_CLI=A:\ti\sysconfig_1.28.0\sysconfig_cli.bat"
+set "SYSCFG_CLI=A:\ti\sysconfig_1.26.2\sysconfig_cli.bat"
 
 if not exist "%SYSCFG_CLI%" (
     echo.
@@ -51,48 +51,12 @@ IF %SYSCFG_DIR:~-1%==\ SET SYSCFG_DIR=%SYSCFG_DIR:~0,-1%
 
 "%SYSCFG_CLI%" -o "%PROJ_DIR%" -s "%SDK_ROOT%\.metadata\product.json" --compiler keil --device MSPM0G3519 --package "LQFP-100(PZ)" "%SYSCFG_DIR%\%SYSCFG_FILE%"
 
-:: Patch generated header for ARMCLANG && patch builder.params with missing source files
+:: Patch generated header for ARMCLANG && add SYSCONFIG_WEAK define to builder.params
 powershell -ExecutionPolicy Bypass -Command ^
 "$hdr = '%PROJ_DIR%\ti_msp_dl_config.h'; ^
  $bp  = '%PROJ_DIR%\build\M0G3519_nortos_keil\builder.params'; ^
  (Get-Content $hdr -Raw).Replace('#elif defined(__GNUC__)', '#elif defined(__GNUC__) || defined(__clang__) || defined(__ARMCC_VERSION)') | Set-Content $hdr -NoNewline; ^
  $j = Get-Content $bp -Raw | ConvertFrom-Json; ^
- $j.sourceList = @( ^
-   '../src/middle/control_pid.c', ^
-   '../src/middle/line_control.c', ^
-   '../src/middle/wheel_speed_control.c', ^
-   '../src/MSPM0G3519_Library/zf_common/zf_common_clock.c', ^
-   '../src/MSPM0G3519_Library/zf_common/zf_common_debug.c', ^
-   '../src/MSPM0G3519_Library/zf_common/zf_common_fifo.c', ^
-   '../src/MSPM0G3519_Library/zf_common/zf_common_font.c', ^
-   '../src/MSPM0G3519_Library/zf_common/zf_common_interrupt.c', ^
-   '../src/MSPM0G3519_Library/zf_driver/zf_driver_delay.c', ^
-   '../src/MSPM0G3519_Library/zf_driver/zf_driver_encoder.c', ^
-   '../src/MSPM0G3519_Library/zf_driver/zf_driver_gpio.c', ^
-   '../src/MSPM0G3519_Library/zf_driver/zf_driver_pwm.c', ^
-   '../src/MSPM0G3519_Library/zf_driver/zf_driver_timer.c', ^
-   '../src/MSPM0G3519_Library/zf_driver/zf_driver_uart.c', ^
-   '../src/MSPM0G3519_Library/zf_driver/zf_sdk_compat.c', ^
-   '../src/app/grayscale_app.c', ^
-   '../src/app/heartbeat_app.c', ^
-   '../src/app/imu_app.c', ^
-   '../src/app/motor_app.c', ^
-   '../src/app/oled_app.c', ^
-   '../src/hardware/encoder_hw.c', ^
-   '../src/hardware/grayscale_hw.c', ^
-   '../src/hardware/heartbeat_hw.c', ^
-   '../src/hardware/imu_hw.c', ^
-   '../src/hardware/motor_hw.c', ^
-   '../src/hardware/oled_hw.c', ^
-   '../src/main.c', ^
-   '../src/middle/encoder.c', ^
-   '../src/middle/grayscale.c', ^
-   '../src/middle/heartbeat.c', ^
-   '../src/middle/imu.c', ^
-   '../src/middle/motor.c', ^
-   '../src/middle/oled.c', ^
-   'startup_mspm0g351x_uvision.s', ^
-   'ti_msp_dl_config.c' ^
- ); ^
- $j.defines = @('__MSPM0G3519__', 'SYSCONFIG_WEAK=__attribute__((weak))'); ^
+ $hasWeak = $j.defines | Where-Object { $_ -like 'SYSCONFIG_WEAK=*' }; ^
+ if (-not $hasWeak) { $j.defines = @($j.defines) + 'SYSCONFIG_WEAK=__attribute__((weak))' }; ^
  $j | ConvertTo-Json -Depth 10 | Set-Content $bp -NoNewline"
