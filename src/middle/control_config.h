@@ -14,7 +14,7 @@
 #endif
 
 /* 实测车体几何参数，以及顺时针 1 m 直径圆的中心轨迹。 */
-#define CHASSIS_WHEEL_TRACK_M                  (0.22f)
+#define CHASSIS_WHEEL_TRACK_M                  (0.195f)
 #define CHASSIS_WHEEL_DIAMETER_M               (0.065f)
 #define RIGHT_CIRCLE_DIAMETER_M                (1.000f)
 #define RIGHT_CIRCLE_DEMO_CENTER_RPM           (120.0f)
@@ -76,40 +76,40 @@
 #define WHEEL_ACCEL_FILTER_ALPHA               (0.20f)
 #define WHEEL_MEASURED_ACCEL_MPS2_LIMIT        (20.0f)
 
-/*
- * 模块 OUT 信号已是数字量（0/1），MCU 侧无电压阈值。
- * 请在传感器模块上调节比较器阈值。
- * 现有位置 PID 按白色电平 0 的补集误差完成实车调参，不得直接翻转；
- * 物理黑线电平 1 单独用于右弯和横线判断。
- */
-#define LINE_SENSOR_ACTIVE_LEVEL              (0u)
+/* Digital black-line lookup controller for the clockwise capsule track. */
 #define LINE_BLACK_ACTIVE_LEVEL               (1u)
 #define LINE_SENSOR_MARKER_MIN_COUNT          (6u)
-#define LINE_LOST_HOLD_MS                     (200u)
+#define LINE_LOOKUP_CORRECTION_SIGN           (1.0f)
+#define LINE_LOOKUP_INITIAL_PHASE             (0u)       /* 0=straight, 1=right arc */
 
-/* 传感器误差范围 -3500 ... +3500，正值朝向通道 7。 */
-#define LINE_STEERING_SIGN                    (-1.0f)
-#define LINE_ERROR_FILTER_ALPHA               (0.30f)
-#define LINE_TARGET_SLEW_RPM_PER_S            (500.0f)  /* 目标轮速变化率上限（RPM/s），限制加减速 */
-#define LINE_BASE_RPM_DEFAULT                 (170.0f)   /* 循迹直行基准速度（RPM），主速度调节项 */
-#define LINE_MIN_RPM_DEFAULT                  (90.0f)   /* 大偏差/急弯时的最低基准速度（RPM） */
-#define LINE_TURN_RPM_LIMIT                   (60.0f)   /* 转向 PID 输出的差速上限（RPM） */
-/* 模块标号第 6~8 路对应 values[] 的 0 基下标 5~7。 */
-#define LINE_RIGHT_SENSOR_FIRST_INDEX         (5u)
-#define LINE_RIGHT_SENSOR_LAST_INDEX          (7u)
-#define LINE_RIGHT_CURVE_DETECT_MS            (60u)
-#define LINE_CURVATURE_FEEDFORWARD_ENABLED    (1u)
-#if ((LINE_RIGHT_SENSOR_FIRST_INDEX > LINE_RIGHT_SENSOR_LAST_INDEX) || \
-     (LINE_RIGHT_SENSOR_LAST_INDEX >= 8u))
-#error "Right line sensor range must be within channels 0..7"
-#endif
-#if ((LINE_CURVATURE_FEEDFORWARD_ENABLED != 0u) && \
-     (LINE_CURVATURE_FEEDFORWARD_ENABLED != 1u))
-#error "LINE_CURVATURE_FEEDFORWARD_ENABLED must be 0 or 1"
-#endif
-#define LINE_KP                               (0.020f)
-#define LINE_KI                               (0.0f)
-#define LINE_KD                               (0.00018f)
-#define LINE_INTEGRAL_LIMIT                   (3000.0f)
+#define LINE_LOOKUP_STRAIGHT_LENGTH_M         (1.500f)
+#define LINE_LOOKUP_ARC_RADIUS_M              (0.500f)
+#define LINE_LOOKUP_ARC_LENGTH_M              (1.57079633f)
+#define LINE_LOOKUP_TRANSITION_HALF_LENGTH_M  (0.150f)
 
+/* 120 RPM 是查表反馈标定基准；运行中中心速度保持恒定。 */
+#define LINE_LOOKUP_SPEED_REFERENCE_RPM       (120.0f)
+#define LINE_LOOKUP_STRAIGHT_BASE_RPM         (170.0f)
+#define LINE_LOOKUP_SPEED_MIN_RPM             (60.0f)
+#define LINE_LOOKUP_SPEED_MAX_RPM             (180.0f)
+#define LINE_LOOKUP_FEEDBACK_SCALE_MAX        (1.00f)
+#define LINE_LOOKUP_LEVEL_1_TURN_RPM          (8.0f)
+#define LINE_LOOKUP_LEVEL_2_TURN_RPM          (16.0f)
+#define LINE_LOOKUP_LEVEL_3_TURN_RPM          (28.0f)
+#define LINE_LOOKUP_LEVEL_4_TURN_RPM          (42.0f)
+#define LINE_LOOKUP_TURN_RPM_LIMIT            (55.0f)
+#define LINE_LOOKUP_BASE_START_SLEW_RPM_PER_S (300.0f)
+#define LINE_LOOKUP_TURN_SLEW_RPM_PER_S       (240.0f)
+#define LINE_LOOKUP_REVERSE_HOLD_MS           (40u)
+
+#define LINE_LOOKUP_LOST_HOLD_MS              (80u)
+#define LINE_LOOKUP_SEARCH_TIMEOUT_MS         (250u)
+#define LINE_LOOKUP_SEARCH_TURN_RPM           (35.0f)
+
+#if (LINE_LOOKUP_INITIAL_PHASE > 1u)
+#error "LINE_LOOKUP_INITIAL_PHASE must be 0 or 1"
+#endif
+#if (LINE_LOOKUP_LOST_HOLD_MS >= LINE_LOOKUP_SEARCH_TIMEOUT_MS)
+#error "Line lost hold time must be shorter than search timeout"
+#endif
 #endif

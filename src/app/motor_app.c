@@ -36,7 +36,7 @@ static float motor_app_clamp(float value, float min_value, float max_value)
 
 static void motor_app_send_debug(uint32 now_ms)
 {
-    char message[128];
+    char message[176];
     const line_control_output_t *line;
     const wheel_speed_control_status_t *wheel;
 
@@ -49,12 +49,19 @@ static void motor_app_send_debug(uint32 now_ms)
     line = line_control_get_output();
     wheel = wheel_speed_control_get_status();
     snprintf(message, sizeof(message),
-        "[ctl] %u,e=%d,n=%u,r=%u%u,f=%d,t=%d/%d,m=%d/%d,u=%d/%d,s=%u%u\r\n",
+        "[ctl] %u,v=%d,k=%d,h=%d,q=%02X,p=%u,d=%d,g=%d,e=%d,n=%u,c=%d,b=%d,"
+        "t=%d/%d,m=%d/%d,u=%d/%d,s=%u%u\r\n",
         (unsigned int)motor_app_mode,
+        (int)line_control_get_base_rpm(),
+        (int)(line->speed_scale * 1000.0f),
+        (int)(line->feedback_scale * 1000.0f),
+        (unsigned int)line->sensor_mask,
+        (unsigned int)line->phase,
+        (int)(line->phase_distance_m * 1000.0f),
+        (int)(line->curve_blend * 1000.0f),
         (int)line->error,
         (unsigned int)line->active_count,
-        (unsigned int)line->right_active_count,
-        (unsigned int)line->right_curve_detected,
+        (int)line->lookup_correction_rpm,
         (int)line->curvature_feedforward_rpm,
         (int)wheel->left_target_rpm, (int)wheel->right_target_rpm,
         (int)wheel->left_measured_rpm, (int)wheel->right_measured_rpm,

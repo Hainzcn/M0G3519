@@ -54,7 +54,7 @@ UART3 继续允许低频 ASCII 启动/存活信息和调试回显。接收端应
 | 36 | 2 | `right_final_pwm` | int16 duty | 限幅、映射、斜率限制后的逻辑命令 |
 | 38 | 2 | `measured_speed_mm_s` | int16 mm/s | 左右实测 RPM 均值换算 |
 | 40 | 2 | `measured_accel_mm_s2` | int16 mm/s² | 编码器速度差分的滤波值 |
-| 42 | 2 | `line_error` | int16 | 灰度循迹滤波误差 |
+| 42 | 2 | `line_error` | int16 | 查表位置等级乘以 1000，范围 -4000..4000 |
 | 44 | 4 | `tx_drop_bytes` | uint32 | UART3 TX 缓冲累计丢弃字节数 |
 | 48 | 2 | `rx_overflow_count` | uint16 | UART3 RX 溢出次数，65535 饱和 |
 | 50 | 2 | `crc16` | uint16 | 对字节 0..49 计算，低字节先发 |

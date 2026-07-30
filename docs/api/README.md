@@ -63,7 +63,7 @@ grayscale → line_control（循迹 PID + 曲率前馈）
 | `motor_app_process()` | **主循环每轮调用**；10 ms 调度控制环；活动模式下每 250 ms 输出 `[ctl]` |
 | `motor_app_stop()` | 停止电机并复位控制状态 |
 | `motor_app_set_line_follow_enabled(enabled)` | `1`=进入循迹；`0`=同 stop |
-| `motor_app_set_base_rpm(base_rpm)` | 设置循迹基准 RPM |
+| `motor_app_set_base_rpm(base_rpm)` | 设置循迹直道基准 RPM（60~180）；自动等比例换算查表控制量 |
 | `motor_app_set_speed_test(left_rpm, right_rpm)` | 进入轮速测试模式 |
 | `motor_app_set_right_circle_demo(center_rpm)` | 进入顺时针圆 demo（按轮距/圆直径算差速） |
 | `motor_app_get_mode()` | 返回当前模式 |
@@ -94,6 +94,7 @@ grayscale → line_control（循迹 PID + 曲率前馈）
 | `pid_turn_rpm` | `float` | 循迹 PID 差速输出 |
 | `curvature_feedforward_rpm` | `float` | 右弯曲率前馈差速 |
 | `turn_rpm` | `float` | 最终差速（PID + 前馈，已限幅） |
+| `speed_scale` / `feedback_scale` | `float` | 请求速度比例与高速受限后的查表反馈比例 |
 | `active_count` | `uint8` | 参与误差计算的有效探头数 |
 | `right_active_count` | `uint8` | 右侧通道（默认 5~7）黑线数 |
 | `right_curve_detected` | `uint8` | 右弯判定（连续 60 ms 且非横线） |
@@ -105,7 +106,8 @@ grayscale → line_control（循迹 PID + 曲率前馈）
 | --- | --- |
 | `line_control_init()` | 初始化循迹 PID |
 | `line_control_reset()` | 复位 PID 与输出 |
-| `line_control_set_base_rpm(base_rpm)` | 设置基准速度 |
+| `line_control_set_base_rpm(base_rpm)` | 设置直道基准速度（60~180 RPM）并更新速度比例 |
+| `line_control_get_base_rpm()` | 读取限幅后的直道基准速度 |
 | `line_control_update(values, now_ms, dt_s)` | 输入 8 路灰度快照，更新输出 |
 | `line_control_get_output()` | 只读输出指针 |
 
@@ -155,14 +157,15 @@ grayscale → line_control（循迹 PID + 曲率前馈）
 | 分组 | 代表宏 | 说明 |
 | --- | --- | --- |
 | 周期 | `CHASSIS_CONTROL_PERIOD_MS` | 10 ms |
-| 车体 | `CHASSIS_WHEEL_TRACK_M`、`CHASSIS_WHEEL_DIAMETER_M` | 轮距 0.18 m、轮径 0.065 m |
+| 车体 | `CHASSIS_WHEEL_TRACK_M`、`CHASSIS_WHEEL_DIAMETER_M` | 轮距 0.195 m、轮径 0.065 m |
 | 电机接线 | `MOTOR_OUTPUT_SWAP_LEFT_RIGHT`、`MOTOR_*_OUTPUT_POLARITY` | 左右交换与极性 |
 | 编码器符号 | `WHEEL_LEFT/RIGHT_ENCODER_SIGN` | 前进时 RPM 为正 |
 | 轮速 PID | `WHEEL_LEFT/RIGHT_KP/KI/KD`、`WHEEL_*_KS/KV/KA` | 左右独立 |
 | 轮速限幅 | `WHEEL_TARGET_RPM_LIMIT`（250）、`WHEEL_PWM_SLEW_DUTY_PER_S` | 目标 RPM 与 PWM 斜率 |
 | PWM 映射 | `WHEEL_LEFT/RIGHT_PWM_MAP_SCALE` | 右轮默认 0.92 |
-| 循迹 | `LINE_BASE_RPM_DEFAULT`（170）、`LINE_KP/KI/KD`、`LINE_ERROR_FILTER_ALPHA` | 外环增益与滤波 |
-| 右弯 | `LINE_RIGHT_SENSOR_FIRST/LAST_INDEX`（5~7）、`LINE_RIGHT_CURVE_DETECT_MS`（60） | 右弯检测 |
+| 查表循迹 | `LINE_LOOKUP_SPEED_REFERENCE_RPM`、`LINE_LOOKUP_STRAIGHT_BASE_RPM`、`LINE_LOOKUP_FEEDBACK_SCALE_MAX`、`LINE_LOOKUP_TURN_SLEW_RPM_PER_S` | 固定标定速度、恒定中心速度、高速反馈上限与差速平滑 |
+| 胶囊赛道 | `LINE_LOOKUP_STRAIGHT_LENGTH_M`、`LINE_LOOKUP_ARC_RADIUS_M`、`LINE_LOOKUP_TRANSITION_HALF_LENGTH_M` | 编码器里程阶段与曲率平滑过渡 |
+| 丢线 | `LINE_LOOKUP_LOST_HOLD_MS`、`LINE_LOOKUP_SEARCH_TIMEOUT_MS` | 保持、右转搜索和停车 |
 
 符号检查流程见 [循迹两驱PID框架.md §7](../循迹两驱PID框架.md)。
 
