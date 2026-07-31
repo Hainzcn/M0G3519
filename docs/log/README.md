@@ -29,9 +29,9 @@
 
 | 方向 | 协议 | 文档 |
 | --- | --- | --- |
-| Maix → MCU | 视觉 V1，24 B，`0x01` | `docs/UART3视觉通信MVP.md` |
+| Maix → MCU | 视觉 V1，24 B，`0x01` | `docs/UART3通信协议.md` |
 | MCU → Maix | 底盘遥测 V2，56 B，`0x81` @100 Hz | `docs/UART3底盘遥测协议.md` |
-| MCU → Maix | 摆杆遥测 V1，20 B，`0x82` @100 Hz | `docs/UART3视觉通信MVP.md` §4 |
+| MCU → Maix | 摆杆遥测 V1，20 B，`0x82` @100 Hz | `docs/UART3通信协议.md` §4 |
 
 代码入口：`uart3_maix_app.c`、`uart3_maix_hw.c`、`vision_link.c`。
 
@@ -54,7 +54,7 @@
 
 ### 权威协议 / API 文档（非 log）
 
-- `docs/UART3视觉通信MVP.md`
+- `docs/UART3通信协议.md`
 - `docs/UART3底盘遥测协议.md`
 - `docs/Emm42步进电机驱动.md`
 - `docs/红外循迹模块适配.md`
@@ -65,10 +65,10 @@
 ## 当前固件默认行为（HEAD）
 
 1. 底盘 **不**自动循迹（`MOTOR_APP_AUTO_START_* = 0`）。
-2. **摆杆 Demo 启用**（`EMM42_BALANCE_DEMO_ENABLE = 1`）：±5° 往复 + UART3 发 0x82。
-3. UART3 RX：24 B 视觉解析；1 Hz `[link] alive` + UART0 `[vision]` 诊断。
-4. 红外循迹 I2C 2 ms 轮询；OLED 显示灰度/按键/错误。
-5. 底盘遥测 0x81 **关闭**（与 0x82 互斥）。
+2. `UART3_MAIX_MODE_NORMAL` 为默认值：UART3 RX 解析 24 B 视觉帧，TX 完全静默。
+3. 摆杆 Demo、0x81 底盘遥测和 0x82 摆杆遥测默认均关闭。
+4. UART0 每秒输出 `[vision]` 诊断；UART3 不发送文本。
+5. 红外循迹 I2C 2 ms 轮询；OLED 显示灰度/按键/错误。
 
 ## 更早日志
 

@@ -15,9 +15,9 @@
 - 完整性：CRC-16/CCITT-FALSE；
 - 消息类型：`0x81 CHASSIS_TELEMETRY`。
 
-UART3 继续允许低频 ASCII 启动/存活信息，但通信MVP已删除RX字节回显，避免视觉帧
-反向混入日志。接收端应先搜索 `A5 5A`，
-再检查版本、类型和帧长。V2 帧头为 `A5 5A 02 81 38`。按长度收齐后校验
+该报文只在 `UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG` 模式发送；正常模式 UART3
+TX 完全静默。UART3 不混入 ASCII 启动、存活或诊断文本。接收端应先搜索
+`A5 5A`，再检查版本、类型和帧长。V2 帧头为 `A5 5A 02 81 38`。按长度收齐后校验
 CRC，不得按换行拆分整个 UART 字节流。
 
 遥测帧通过 256 字节非阻塞 TX 环形缓冲发送。整帧入队是原子的：剩余空间不足时
@@ -146,14 +146,14 @@ poly=0x1021, init=0xFFFF, refin=false, refout=false, xorout=0x0000
 接收端处理顺序：
 
 1. 搜索 `A5 5A`；
-2. 检查受支持的版本/长度组合：V1 为 `01/34`，V2 为 `02/38`，类型均为 `81`；
-3. 按帧长收齐，V1 对 0..49、V2 对 0..53 计算 CRC；
+2. 检查当前版本、类型和长度组合 `02/81/38`；
+3. 按 56 字节帧长收齐，对 0..53 计算 CRC；
 4. CRC 正确后按小端定点字段解析；
 5. 用 `sequence` 统计丢帧，用 `mcu_ms` 计算 MCU 侧采样间隔；
 6. CRC 错误时丢弃当前第一个帧头字节，继续搜索下一帧。
 
-MaixCAM2 的 `uart_log_receiver.py` 会原样保存包含文本和二进制帧的整个流，因此原始
+MaixCAM2 的 `uart_log_receiver.py` 会原样保存收到的整个流，因此原始
 `.bin` 文件始终是离线分析的权威数据源。
 
-电脑端 `chassis_telemetry.py` 同时兼容原 52 字节 V1 帧和当前 56 字节 V2 帧；V1
-解码结果中的 IMU 加速度字段为空。
+MaixCAM2 在线解析结果写入 `chassis_telemetry.csv`；当前接收器只接受主控 HEAD 使用
+的 56 字节 V2 帧，不把历史 52 字节 V1 帧误识别为当前遥测。

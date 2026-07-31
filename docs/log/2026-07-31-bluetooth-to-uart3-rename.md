@@ -46,7 +46,7 @@ UART3 链路已承担 Maix 视觉 + 底盘/摆杆遥测，继续称为 “blueto
 
 ### `docs/H题_详细设计技术路线.md`
 
-- 视觉/遥测章节指向 `UART3视觉通信MVP.md` 与 `UART3底盘遥测协议.md` 为权威来源。
+- 当前视觉/遥测权威文档为 `UART3通信协议.md` 与 `UART3底盘遥测协议.md`。
 
 ### `docs/images/连杆.png`
 

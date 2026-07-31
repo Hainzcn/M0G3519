@@ -8,7 +8,7 @@
 
 ## 1. 协议概要（Maix → MCU）
 
-权威文档：`docs/UART3视觉通信MVP.md` §2。
+当前权威文档：`docs/UART3通信协议.md` §2。
 
 | 项 | 值 |
 | --- | --- |
@@ -71,7 +71,7 @@
 
 ## 4. 文档
 
-- 新增 `docs/UART3视觉通信MVP.md`（视觉 V1 + 链路边界）。
+- 原提交新增的 MVP 文档现已由 `docs/UART3通信协议.md` 取代。
 - 更新 `docs/UART3底盘遥测协议.md`：注明 MVP 已删除 RX 回显。
 - `docs/log/2026-07-30-bluetooth-uart-test-mode.md` 加注废止说明。
 

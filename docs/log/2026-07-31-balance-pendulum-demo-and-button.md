@@ -74,7 +74,7 @@ WAIT_POWER(3s) → WAIT_ZERO → WAIT_ENABLE →
 
 **注意**：`imu_pitch` 尚未减水平零偏、未应用方向系数，仅用于机构响应曲线对比。
 
-文档：`docs/UART3视觉通信MVP.md` §4；`docs/Emm42步进电机驱动.md` §摆杆 Demo。
+当前协议文档：`docs/UART3通信协议.md` §4；`docs/Emm42步进电机驱动.md` §摆杆 Demo。
 
 ## 4. 按键模块（新增）
 
@@ -104,7 +104,7 @@ WAIT_POWER(3s) → WAIT_ZERO → WAIT_ENABLE →
 ## 5. 文档更新
 
 - `docs/Emm42步进电机驱动.md`：Demo 流程、安全须知、分支/方向排查。
-- `docs/UART3视觉通信MVP.md`：§4 摆杆遥测、§5 验收、当前默认模式说明。
+- `docs/UART3通信协议.md`：§4 摆杆遥测、§5 验收、当前默认模式说明。
 
 ## 6. 下游解码工具（BallBalanceRover / SBDandT）
 

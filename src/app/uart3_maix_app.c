@@ -3,48 +3,26 @@
 #include <stdio.h>
 
 #include "control_config.h"
-#if (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u)
-#include "emm42_demo_app.h"
-#endif
-#include "uart3_maix_hw.h"
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
+#include "uart3_maix_hw.h"
+#include "vision_link.h"
+
+#if (UART3_MAIX_MODE != UART3_MAIX_MODE_NORMAL)
 #include "imu.h"
+#endif
+#if (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
 #include "line_control.h"
 #include "motor_app.h"
 #include "wheel_speed_control.h"
-#include "vision_link.h"
+#endif
+#if (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
+#include "emm42_demo_app.h"
+#endif
 
-#define UART3_MAIX_ALIVE_PERIOD_MS      (1000u)
-/* Match the 100 Hz wheel-speed loop. Reduce to 50/20 Hz if tx_drop_bytes rises. */
-#define CHASSIS_TELEMETRY_HZ                (100u)
-#define CHASSIS_TELEMETRY_PERIOD_MS         (1000u / CHASSIS_TELEMETRY_HZ)
-#define CHASSIS_TELEMETRY_FRAME_SIZE        (56u)
-#define CHASSIS_TELEMETRY_VERSION           (0x02u)
-#define CHASSIS_TELEMETRY_TYPE              (0x81u)
+#define UART3_MAIX_DIAGNOSTIC_PERIOD_MS       (1000u)
 
-#define BALANCE_TELEMETRY_HZ                (100u)
-#define BALANCE_TELEMETRY_PERIOD_MS         (1000u / BALANCE_TELEMETRY_HZ)
-#define BALANCE_TELEMETRY_FRAME_SIZE        (20u)
-#define BALANCE_TELEMETRY_VERSION           (0x01u)
-#define BALANCE_TELEMETRY_TYPE              (0x82u)
-#define BALANCE_FLAG_DEMO_ACTIVE            (0x01u)
-#define BALANCE_FLAG_IMU_ANGLE_VALID        (0x02u)
-
-#define CHASSIS_FLAG_CONTROL_ACTIVE         (0x01u)
-#define CHASSIS_FLAG_LINE_VALID             (0x02u)
-#define CHASSIS_FLAG_LINE_LOST              (0x04u)
-#define CHASSIS_FLAG_MARKER                  (0x08u)
-#define CHASSIS_FLAG_LEFT_SATURATED          (0x10u)
-#define CHASSIS_FLAG_RIGHT_SATURATED         (0x20u)
-#define CHASSIS_FLAG_KINEMATICS_VALID        (0x40u)
-#define CHASSIS_FLAG_UART_RX_OVERFLOW        (0x80u)
-
-static uint32 uart3_maix_last_alive_ms;
-static uint32 chassis_telemetry_last_ms;
-static uint16 chassis_telemetry_sequence;
-static uint32 balance_telemetry_last_ms;
-static uint16 balance_telemetry_sequence;
+static uint32 uart3_maix_last_diagnostic_ms;
 
 static void vision_link_send_diagnostic(void)
 {
@@ -75,13 +53,14 @@ static void vision_link_send_diagnostic(void)
     heartbeat_hw_uart_send_string(message);
 }
 
-static void chassis_write_u16_le(uint8 *buffer, uint16 value)
+#if (UART3_MAIX_MODE != UART3_MAIX_MODE_NORMAL)
+static void telemetry_write_u16_le(uint8 *buffer, uint16 value)
 {
     buffer[0] = (uint8)(value & 0xFFu);
     buffer[1] = (uint8)(value >> 8u);
 }
 
-static void chassis_write_u32_le(uint8 *buffer, uint32 value)
+static void telemetry_write_u32_le(uint8 *buffer, uint32 value)
 {
     buffer[0] = (uint8)(value & 0xFFu);
     buffer[1] = (uint8)((value >> 8u) & 0xFFu);
@@ -89,7 +68,7 @@ static void chassis_write_u32_le(uint8 *buffer, uint32 value)
     buffer[3] = (uint8)((value >> 24u) & 0xFFu);
 }
 
-static int16 chassis_float_to_i16(float value, float scale)
+static int16 telemetry_float_to_i16(float value, float scale)
 {
     float scaled = value * scale;
 
@@ -104,13 +83,15 @@ static int16 chassis_float_to_i16(float value, float scale)
     return (int16)(scaled + ((scaled >= 0.0f) ? 0.5f : -0.5f));
 }
 
-static void chassis_write_scaled_i16(uint8 *buffer, float value, float scale)
+static void telemetry_write_scaled_i16(
+    uint8 *buffer, float value, float scale)
 {
-    chassis_write_u16_le(buffer,
-        (uint16)chassis_float_to_i16(value, scale));
+    telemetry_write_u16_le(buffer,
+        (uint16)telemetry_float_to_i16(value, scale));
 }
 
-static uint16 chassis_crc16_ccitt_false(const uint8 *data, uint16 length)
+static uint16 telemetry_crc16_ccitt_false(
+    const uint8 *data, uint16 length)
 {
     uint16 crc = 0xFFFFu;
     uint16 index;
@@ -121,18 +102,28 @@ static uint16 chassis_crc16_ccitt_false(const uint8 *data, uint16 length)
         crc ^= (uint16)data[index] << 8u;
         for (bit = 0u; bit < 8u; bit++)
         {
-            if (0u != (crc & 0x8000u))
-            {
-                crc = (uint16)((crc << 1u) ^ 0x1021u);
-            }
-            else
-            {
-                crc <<= 1u;
-            }
+            crc = (0u != (crc & 0x8000u)) ?
+                (uint16)((crc << 1u) ^ 0x1021u) : (uint16)(crc << 1u);
         }
     }
     return crc;
 }
+#endif
+
+#if (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
+#define CHASSIS_TELEMETRY_PERIOD_MS           (10u)
+#define CHASSIS_TELEMETRY_FRAME_SIZE          (56u)
+#define CHASSIS_FLAG_CONTROL_ACTIVE           (0x01u)
+#define CHASSIS_FLAG_LINE_VALID               (0x02u)
+#define CHASSIS_FLAG_LINE_LOST                (0x04u)
+#define CHASSIS_FLAG_MARKER                   (0x08u)
+#define CHASSIS_FLAG_LEFT_SATURATED           (0x10u)
+#define CHASSIS_FLAG_RIGHT_SATURATED          (0x20u)
+#define CHASSIS_FLAG_KINEMATICS_VALID         (0x40u)
+#define CHASSIS_FLAG_UART_RX_OVERFLOW         (0x80u)
+
+static uint32 chassis_telemetry_last_ms;
+static uint16 chassis_telemetry_sequence;
 
 static uint8 chassis_telemetry_flags(
     motor_app_mode_enum mode,
@@ -167,53 +158,60 @@ static void chassis_telemetry_send(uint32 now_ms)
     uint16 crc;
 
     imu_get_snapshot(&imu);
-
     frame[0] = 0xA5u;
     frame[1] = 0x5Au;
-    frame[2] = CHASSIS_TELEMETRY_VERSION;
-    frame[3] = CHASSIS_TELEMETRY_TYPE;
+    frame[2] = 0x02u;
+    frame[3] = 0x81u;
     frame[4] = CHASSIS_TELEMETRY_FRAME_SIZE;
     frame[5] = (uint8)mode;
     frame[6] = chassis_telemetry_flags(mode, line, wheel);
     frame[7] = 0u;
-    chassis_write_u16_le(&frame[8], chassis_telemetry_sequence);
-    chassis_write_u32_le(&frame[10], now_ms);
-    chassis_write_scaled_i16(&frame[14], wheel->planned_speed_mps, 1000.0f);
-    chassis_write_scaled_i16(&frame[16], wheel->planned_accel_mps2, 1000.0f);
-    chassis_write_scaled_i16(&frame[18], wheel->left_target_rpm, 10.0f);
-    chassis_write_scaled_i16(&frame[20], wheel->right_target_rpm, 10.0f);
-    chassis_write_scaled_i16(&frame[22], wheel->left_measured_rpm, 10.0f);
-    chassis_write_scaled_i16(&frame[24], wheel->right_measured_rpm, 10.0f);
-    chassis_write_scaled_i16(&frame[26], wheel->left_feedforward_pwm, 1.0f);
-    chassis_write_scaled_i16(&frame[28], wheel->right_feedforward_pwm, 1.0f);
-    chassis_write_scaled_i16(&frame[30], wheel->left_feedback_pwm, 1.0f);
-    chassis_write_scaled_i16(&frame[32], wheel->right_feedback_pwm, 1.0f);
-    chassis_write_scaled_i16(&frame[34], (float)wheel->left_duty, 1.0f);
-    chassis_write_scaled_i16(&frame[36], (float)wheel->right_duty, 1.0f);
-    chassis_write_scaled_i16(&frame[38], wheel->measured_speed_mps, 1000.0f);
-    chassis_write_scaled_i16(&frame[40], wheel->measured_accel_mps2, 1000.0f);
-    chassis_write_scaled_i16(&frame[42], line->error, 1.0f);
-    chassis_write_u32_le(&frame[44], uart3_maix_hw_get_tx_drop_count());
-    chassis_write_u16_le(&frame[48],
+    telemetry_write_u16_le(&frame[8], chassis_telemetry_sequence);
+    telemetry_write_u32_le(&frame[10], now_ms);
+    telemetry_write_scaled_i16(&frame[14], wheel->planned_speed_mps, 1000.0f);
+    telemetry_write_scaled_i16(&frame[16], wheel->planned_accel_mps2, 1000.0f);
+    telemetry_write_scaled_i16(&frame[18], wheel->left_target_rpm, 10.0f);
+    telemetry_write_scaled_i16(&frame[20], wheel->right_target_rpm, 10.0f);
+    telemetry_write_scaled_i16(&frame[22], wheel->left_measured_rpm, 10.0f);
+    telemetry_write_scaled_i16(&frame[24], wheel->right_measured_rpm, 10.0f);
+    telemetry_write_scaled_i16(&frame[26], wheel->left_feedforward_pwm, 1.0f);
+    telemetry_write_scaled_i16(&frame[28], wheel->right_feedforward_pwm, 1.0f);
+    telemetry_write_scaled_i16(&frame[30], wheel->left_feedback_pwm, 1.0f);
+    telemetry_write_scaled_i16(&frame[32], wheel->right_feedback_pwm, 1.0f);
+    telemetry_write_scaled_i16(&frame[34], (float)wheel->left_duty, 1.0f);
+    telemetry_write_scaled_i16(&frame[36], (float)wheel->right_duty, 1.0f);
+    telemetry_write_scaled_i16(&frame[38], wheel->measured_speed_mps, 1000.0f);
+    telemetry_write_scaled_i16(&frame[40], wheel->measured_accel_mps2, 1000.0f);
+    telemetry_write_scaled_i16(&frame[42], line->error, 1.0f);
+    telemetry_write_u32_le(&frame[44], uart3_maix_hw_get_tx_drop_count());
+    telemetry_write_u16_le(&frame[48],
         (uint16)((rx_overflow > 65535u) ? 65535u : rx_overflow));
     if (0u != (imu.flags & IMU_FLAG_ACCEL))
     {
-        chassis_write_scaled_i16(&frame[50], imu.accel.ax, 1000.0f);
+        telemetry_write_scaled_i16(&frame[50], imu.accel.ax, 1000.0f);
     }
     else
     {
-        chassis_write_u16_le(&frame[50], 0x8000u);
+        telemetry_write_u16_le(&frame[50], 0x8000u);
     }
     frame[52] = imu.flags;
     frame[53] = 0u;
-    crc = chassis_crc16_ccitt_false(frame, 54u);
-    chassis_write_u16_le(&frame[54], crc);
-
+    crc = telemetry_crc16_ccitt_false(frame, 54u);
+    telemetry_write_u16_le(&frame[54], crc);
     (void)uart3_maix_hw_write_atomic(frame, CHASSIS_TELEMETRY_FRAME_SIZE);
     chassis_telemetry_sequence++;
 }
+#endif
 
-#if (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u)
+#if (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
+#define BALANCE_TELEMETRY_PERIOD_MS           (10u)
+#define BALANCE_TELEMETRY_FRAME_SIZE          (20u)
+#define BALANCE_FLAG_DEMO_ACTIVE              (0x01u)
+#define BALANCE_FLAG_IMU_ANGLE_VALID          (0x02u)
+
+static uint32 balance_telemetry_last_ms;
+static uint16 balance_telemetry_sequence;
+
 static void balance_telemetry_send(uint32 now_ms)
 {
     uint8 frame[BALANCE_TELEMETRY_FRAME_SIZE];
@@ -222,38 +220,30 @@ static void balance_telemetry_send(uint32 now_ms)
     uint16 crc;
 
     imu_get_snapshot(&imu);
-    if (0u != emm42_demo_app_is_active())
-    {
-        flags |= BALANCE_FLAG_DEMO_ACTIVE;
-    }
-    if (0u != (imu.flags & IMU_FLAG_ANGLE))
-    {
-        flags |= BALANCE_FLAG_IMU_ANGLE_VALID;
-    }
-
+    if (0u != emm42_demo_app_is_active()) flags |= BALANCE_FLAG_DEMO_ACTIVE;
+    if (0u != (imu.flags & IMU_FLAG_ANGLE)) flags |= BALANCE_FLAG_IMU_ANGLE_VALID;
     frame[0] = 0xA5u;
     frame[1] = 0x5Au;
-    frame[2] = BALANCE_TELEMETRY_VERSION;
-    frame[3] = BALANCE_TELEMETRY_TYPE;
+    frame[2] = 0x01u;
+    frame[3] = 0x82u;
     frame[4] = BALANCE_TELEMETRY_FRAME_SIZE;
     frame[5] = flags;
     frame[6] = (uint8)emm42_demo_app_get_state();
     frame[7] = 0u;
-    chassis_write_u16_le(&frame[8], balance_telemetry_sequence);
-    chassis_write_u32_le(&frame[10], now_ms);
-    chassis_write_scaled_i16(&frame[14],
+    telemetry_write_u16_le(&frame[8], balance_telemetry_sequence);
+    telemetry_write_u32_le(&frame[10], now_ms);
+    telemetry_write_scaled_i16(&frame[14],
         emm42_demo_app_get_target_angle_deg(), 100.0f);
     if (0u != (flags & BALANCE_FLAG_IMU_ANGLE_VALID))
     {
-        chassis_write_scaled_i16(&frame[16], imu.angle.pitch, 100.0f);
+        telemetry_write_scaled_i16(&frame[16], imu.angle.pitch, 100.0f);
     }
     else
     {
-        chassis_write_u16_le(&frame[16], 0x8000u);
+        telemetry_write_u16_le(&frame[16], 0x8000u);
     }
-    crc = chassis_crc16_ccitt_false(frame, 18u);
-    chassis_write_u16_le(&frame[18], crc);
-
+    crc = telemetry_crc16_ccitt_false(frame, 18u);
+    telemetry_write_u16_le(&frame[18], crc);
     (void)uart3_maix_hw_write_atomic(frame, BALANCE_TELEMETRY_FRAME_SIZE);
     balance_telemetry_sequence++;
 }
@@ -261,62 +251,54 @@ static void balance_telemetry_send(uint32 now_ms)
 
 void uart3_maix_app_init(void)
 {
+    uint32 now_ms;
+
     uart3_maix_hw_init();
     vision_link_init();
-    uart3_maix_last_alive_ms = heartbeat_get_ms();
-    chassis_telemetry_last_ms = uart3_maix_last_alive_ms;
+    now_ms = heartbeat_get_ms();
+    uart3_maix_last_diagnostic_ms = now_ms;
+#if (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
+    chassis_telemetry_last_ms = now_ms;
     chassis_telemetry_sequence = 0u;
-    balance_telemetry_last_ms = uart3_maix_last_alive_ms;
-    balance_telemetry_sequence = 0u;
-
-#if (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u)
-    uart3_maix_hw_send_string("[link] ready,115200,balance=100Hz\r\n");
-#elif (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
-    uart3_maix_hw_send_string("[link] ready,115200,telemetry=100Hz\r\n");
-#else
-    uart3_maix_hw_send_string("[link] ready,115200,telemetry=off\r\n");
-#endif
     heartbeat_hw_uart_send_string(
-#if (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u)
-        "[mode] uart3 vision+balance telemetry, demo enabled\r\n");
-#elif (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
-        "[mode] uart3 vision+telemetry, chassis disabled\r\n");
+        "[mode] uart3 chassis telemetry debug, 0x81/100Hz\r\n");
+#elif (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
+    balance_telemetry_last_ms = now_ms;
+    balance_telemetry_sequence = 0u;
+    heartbeat_hw_uart_send_string(
+        "[mode] uart3 balance telemetry debug, 0x82/100Hz\r\n");
 #else
-        "[mode] uart3 vision only, chassis disabled\r\n");
+    heartbeat_hw_uart_send_string(
+        "[mode] uart3 normal, vision RX only, TX silent\r\n");
 #endif
 }
 
 void uart3_maix_app_process(void)
 {
-    uint32 now_ms;
+    uint32 now_ms = heartbeat_get_ms();
 
+#if (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
     uart3_maix_hw_tx_pump();
-
-    now_ms = heartbeat_get_ms();
-#if (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u)
-    if ((now_ms - balance_telemetry_last_ms) >=
-        BALANCE_TELEMETRY_PERIOD_MS)
-    {
-        balance_telemetry_last_ms = now_ms;
-        balance_telemetry_send(now_ms);
-    }
-#endif
-#if (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
-    if ((now_ms - chassis_telemetry_last_ms) >=
-        CHASSIS_TELEMETRY_PERIOD_MS)
+    if ((now_ms - chassis_telemetry_last_ms) >= CHASSIS_TELEMETRY_PERIOD_MS)
     {
         chassis_telemetry_last_ms = now_ms;
         chassis_telemetry_send(now_ms);
     }
+    uart3_maix_hw_tx_pump();
+#elif (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
+    uart3_maix_hw_tx_pump();
+    if ((now_ms - balance_telemetry_last_ms) >= BALANCE_TELEMETRY_PERIOD_MS)
+    {
+        balance_telemetry_last_ms = now_ms;
+        balance_telemetry_send(now_ms);
+    }
+    uart3_maix_hw_tx_pump();
 #endif
 
-    if ((now_ms - uart3_maix_last_alive_ms) >=
-        UART3_MAIX_ALIVE_PERIOD_MS)
+    if ((now_ms - uart3_maix_last_diagnostic_ms) >=
+        UART3_MAIX_DIAGNOSTIC_PERIOD_MS)
     {
-        uart3_maix_last_alive_ms = now_ms;
-        uart3_maix_hw_send_string("[link] alive\r\n");
+        uart3_maix_last_diagnostic_ms = now_ms;
         vision_link_send_diagnostic();
     }
-
-    uart3_maix_hw_tx_pump();
 }

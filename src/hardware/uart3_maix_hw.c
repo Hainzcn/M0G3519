@@ -54,7 +54,7 @@ uint8 uart3_maix_hw_read_byte(uint8 *data)
     return 1u;
 }
 
-uint16 uart3_maix_hw_write(const uint8 *data, uint16 length)
+static uint16 uart3_maix_hw_write(const uint8 *data, uint16 length)
 {
     uint16 written = 0u;
 
@@ -109,19 +109,6 @@ uint16 uart3_maix_hw_write_atomic(const uint8 *data, uint16 length)
     }
 
     return uart3_maix_hw_write(data, length);
-}
-
-void uart3_maix_hw_send_string(const char *str)
-{
-    while ((NULL != str) && ('\0' != *str))
-    {
-        uint8 byte = (uint8)(*str);
-        if (0u == uart3_maix_hw_write(&byte, 1u))
-        {
-            break;
-        }
-        str++;
-    }
 }
 
 void uart3_maix_hw_tx_pump(void)
