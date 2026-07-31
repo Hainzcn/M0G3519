@@ -22,10 +22,10 @@ CRC 使用 CRC-16/CCITT-FALSE：`poly=0x1021, init=0xFFFF, xorout=0`。
 | --- | --- | --- | --- |
 | `UART3_MAIX_MODE_NORMAL` | 视觉 V1 | 完全静默 | 正常工作，默认值 |
 | `UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG` | 视觉 V1 | `0x81` V2，100Hz | 底盘台架调试 |
-| `UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG` | 视觉 V1 | `0x82` V1，100Hz | 摆杆 Demo 调试 |
+| `UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG` | 视觉 V1 | `0x82` V2，100Hz | 摆杆 Demo 或闭环调试 |
 
-UART3 不发送启动、存活或诊断文本；所有人类可读诊断只走 UART0。摆杆 Demo 只在
-摆杆遥测调试模式编译启用。
+UART3 不发送启动、存活或诊断文本；所有人类可读诊断只走 UART0。`0x82` 的帧长
+由编译开关决定：运动 Demo 为 22 字节，闭环控制为 40 字节。
 
 ## 2. 视觉 V1 固定 24 字节帧
 
@@ -75,7 +75,23 @@ V1 不定义 ACK、重传、控制命令、自动波特率或跨芯片时钟同�
 ## 4. 两种 100Hz 调试遥测
 
 底盘调试帧为 `A5 5A 02 81 38`、固定 56 字节，字段见
-`UART3底盘遥测协议.md`。摆杆调试帧为 `A5 5A 02 82 28`、固定 40 字节：
+`UART3底盘遥测协议.md`。
+
+运动 Demo 帧为 `A5 5A 02 82 16`、固定 22 字节：
+
+| 偏移 | 长度 | 字段 | 定义 |
+| ---: | ---: | --- | --- |
+| 5 | 1 | `flags` | bit0 Demo 活跃，bit1 IMU 有效，bit2 电机位置有效 |
+| 6 | 1 | `demo_state` | 最低边界置零、回水平和正负 5 度往复状态 |
+| 7 | 1 | `reserved` | 固定 0 |
+| 8 | 2 | `sequence` | uint16，100Hz 递增 |
+| 10 | 4 | `mcu_ms` | MCU 本地毫秒时间 |
+| 14 | 2 | `target_angle_cdeg` | 目标摆杆角，0.01deg/LSB |
+| 16 | 2 | `imu_pitch_cdeg` | IMU 原始 pitch，0.01deg/LSB；无效为 `INT16_MIN` |
+| 18 | 2 | `motor_feedback_cdeg` | Emm42 当前电机轴角，0.01deg/LSB；无效为 `INT16_MIN` |
+| 20 | 2 | `crc16` | 对 0..19 计算 |
+
+闭环控制帧为 `A5 5A 02 82 28`、固定 40 字节：
 
 | 偏移 | 长度 | 字段 | 定义 |
 | ---: | ---: | --- | --- |
@@ -91,7 +107,7 @@ V1 不定义 ACK、重传、控制命令、自动波特率或跨芯片时钟同�
 | 22 | 2 | `desired_accel_mm_s2` | 期望球加速度，1mm/s^2/LSB |
 | 24 | 2 | `lever_angle_cdeg` | 摆杆目标角，0.01deg/LSB |
 | 26 | 2 | `motor_target_cdeg` | Emm42 绝对目标角，0.01deg/LSB |
-| 28 | 2 | `motor_feedback_cdeg` | Emm42 反馈角；无效为 `INT16_MIN` |
+| 28 | 2 | `motor_feedback_cdeg` | Emm42 `0x36` 当前电机轴角，100Hz 查询；无效为 `INT16_MIN` |
 | 30 | 2 | `vision_age_ms` | 有效测量年龄；无效为 `UINT16_MAX` |
 | 32 | 1 | `confidence` | 最近接受测量的置信度 |
 | 33 | 1 | `control_flags` | 测量新鲜、预测、边缘恢复及三类限幅标志 |
@@ -102,6 +118,11 @@ V1 不定义 ACK、重传、控制命令、自动波特率或跨芯片时钟同�
 MaixCAM2 在这两种模式下运行 `uart_log_receiver.py`，接收器原样轮转保存 `.bin`。
 摆杆日志由仓库 `tools/balance_log/analyze_balance_log.py` 离线生成 CSV 和调参曲线；
 原始文件始终是故障分析的权威数据。
+
+除故障锁存状态外，`balance_app` 每 10ms 发起一次 Emm42 `0x36` 当前位置查询；
+未完成启动标定时仅执行这一只读查询，不使能或移动电机。闭环状态收到位置响应后，
+同一 10ms 调度窗口仍可继续发送到期的绝对位置目标。遥测以 100Hz 发送最近收到的
+当前位置，bit1 表示电机反馈已经有效。
 
 ## 5. 联调顺序
 

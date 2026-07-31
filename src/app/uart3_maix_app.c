@@ -16,8 +16,12 @@
 #include "motor_app.h"
 #include "wheel_speed_control.h"
 #endif
-#if (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
+#if ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
+     (BALANCE_CONTROL_ENABLE != 0u))
 #include "balance_app.h"
+#elif ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
+       (EMM42_BALANCE_DEMO_ENABLE != 0u))
+#include "emm42_demo_app.h"
 #endif
 
 #define UART3_MAIX_DIAGNOSTIC_PERIOD_MS       (1000u)
@@ -205,10 +209,74 @@ static void chassis_telemetry_send(uint32 now_ms)
 
 #if (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
 #define BALANCE_TELEMETRY_PERIOD_MS           (10u)
-#define BALANCE_TELEMETRY_FRAME_SIZE          (40u)
 
 static uint32 balance_telemetry_last_ms;
 static uint16 balance_telemetry_sequence;
+
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+#define BALANCE_DEMO_TELEMETRY_FRAME_SIZE     (22u)
+#define BALANCE_DEMO_FLAG_ACTIVE              (0x01u)
+#define BALANCE_DEMO_FLAG_IMU_VALID           (0x02u)
+#define BALANCE_DEMO_FLAG_MOTOR_VALID         (0x04u)
+
+static void balance_telemetry_send(uint32 now_ms)
+{
+    uint8 frame[BALANCE_DEMO_TELEMETRY_FRAME_SIZE];
+    imu_snapshot_t imu;
+    uint8 flags = 0u;
+    uint16 crc;
+
+    imu_get_snapshot(&imu);
+    if (0u != emm42_demo_app_is_active())
+    {
+        flags |= BALANCE_DEMO_FLAG_ACTIVE;
+    }
+    if (0u != (imu.flags & IMU_FLAG_ANGLE))
+    {
+        flags |= BALANCE_DEMO_FLAG_IMU_VALID;
+    }
+    if (0u != emm42_demo_app_is_motor_feedback_valid())
+    {
+        flags |= BALANCE_DEMO_FLAG_MOTOR_VALID;
+    }
+
+    frame[0] = 0xA5u;
+    frame[1] = 0x5Au;
+    frame[2] = 0x02u;
+    frame[3] = 0x82u;
+    frame[4] = BALANCE_DEMO_TELEMETRY_FRAME_SIZE;
+    frame[5] = flags;
+    frame[6] = (uint8)emm42_demo_app_get_state();
+    frame[7] = 0u;
+    telemetry_write_u16_le(&frame[8], balance_telemetry_sequence);
+    telemetry_write_u32_le(&frame[10], now_ms);
+    telemetry_write_scaled_i16(&frame[14],
+        emm42_demo_app_get_target_angle_deg(), 100.0f);
+    if (0u != (flags & BALANCE_DEMO_FLAG_IMU_VALID))
+    {
+        telemetry_write_scaled_i16(&frame[16], imu.angle.pitch, 100.0f);
+    }
+    else
+    {
+        telemetry_write_u16_le(&frame[16], 0x8000u);
+    }
+    if (0u != (flags & BALANCE_DEMO_FLAG_MOTOR_VALID))
+    {
+        telemetry_write_scaled_i16(&frame[18],
+            emm42_demo_app_get_motor_feedback_deg(), 100.0f);
+    }
+    else
+    {
+        telemetry_write_u16_le(&frame[18], 0x8000u);
+    }
+    crc = telemetry_crc16_ccitt_false(frame, 20u);
+    telemetry_write_u16_le(&frame[20], crc);
+    (void)uart3_maix_hw_write_atomic(
+        frame, BALANCE_DEMO_TELEMETRY_FRAME_SIZE);
+    balance_telemetry_sequence++;
+}
+#else
+#define BALANCE_TELEMETRY_FRAME_SIZE          (40u)
 
 static void balance_telemetry_send(uint32 now_ms)
 {
@@ -263,6 +331,7 @@ static void balance_telemetry_send(uint32 now_ms)
     balance_telemetry_sequence++;
 }
 #endif
+#endif
 
 void uart3_maix_app_init(void)
 {
@@ -280,8 +349,13 @@ void uart3_maix_app_init(void)
 #elif (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
     balance_telemetry_last_ms = now_ms;
     balance_telemetry_sequence = 0u;
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
     heartbeat_hw_uart_send_string(
-        "[mode] uart3 balance telemetry V2, 0x82/100Hz\r\n");
+        "[mode] uart3 balance demo telemetry V2, 0x82/100Hz\r\n");
+#else
+    heartbeat_hw_uart_send_string(
+        "[mode] uart3 balance control telemetry V2, 0x82/100Hz\r\n");
+#endif
 #else
     heartbeat_hw_uart_send_string(
         "[mode] uart3 normal, vision RX only, TX silent\r\n");

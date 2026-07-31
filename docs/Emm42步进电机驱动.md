@@ -33,15 +33,15 @@ Emm42 独占 UART7。原 UART0（PA10/PA11）继续输出 `BOOT OK`、心跳和�
 
 ## 摆杆正负 5 度 Demo
 
-当前固件已在 `main.c` 中启用摆杆往复 Demo，代码位于 `src/app/emm42_demo_app.c`。Demo 使用实测尺寸进行连杆逆解，并检查目标位置是否满足机构可达条件。当前装配按曲柄位于右下方的 `s_theta=-1` 分支配置。
+当前固件已在 `main.c` 中启用摆杆往复 Demo，代码位于 `src/app/emm42_demo_app.c`。Demo 使用公共 `balance_linkage` 连杆逆解，并检查最低边界、水平和正负 5 度目标是否可达。
 
-Demo总开关为`src/middle/control_config.h`中的`EMM42_BALANCE_DEMO_ENABLE`。设为`1`时同时启用Demo和UART3的100 Hz `0x82`摆杆遥测；设为`0`时，两者同时从主循环关闭。
+Demo 总开关为 `src/middle/control_config.h` 中的 `EMM42_BALANCE_DEMO_ENABLE`。运行 Demo 时还应设置 `BALANCE_CONTROL_ENABLE=0`，并将 `UART3_MAIX_MODE` 设为 `UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG` 以启用 100Hz `0x82` Demo V2 遥测。
 
-上电前必须人工把摆杆保持在机械水平位置。固件启动后等待 3 秒，将 Emm42 当前位置设为水平零位，再以 30RPM 在摆杆 `+5 deg` 和 `-5 deg` 之间连续往复，每个端点间隔 1.5 秒。对应的电机目标不是简单的正负 5 度，而是由连杆公式算出的相对水平曲柄角，约为 `+22.96 deg` 和 `-18.23 deg`。UART0 输出 `[balance-demo]` 阶段日志。
+上电前摆杆必须自然停在机械最低边界，不再人工扶水平。`BALANCE_STARTUP_LEVER_ANGLE_DEG` 填写该边界相对水平的有符号摆杆角，当前为 `-10deg`。固件等待 3 秒后把最低边界设为 Emm42 `0deg`，使能电机并先移动到水平；位置误差不超过 `1deg` 且保持 200ms 后，才以 30RPM 在摆杆 `+5deg` 和 `-5deg` 间往复，每端保持 1.5 秒。当前几何对应电机绝对目标约为：水平 `+29.42deg`、摆杆 `+5deg` 时 `+52.38deg`、摆杆 `-5deg` 时 `+11.18deg`。UART0 输出 `[balance-demo]` 阶段日志。
 
-UART3遥测中的`target_angle`是Demo当前目标摆杆角，`imu_pitch`是IMU输出的原始俯仰角。当前未扣除IMU水平安装零偏，也未应用方向系数，比较曲线前应先测量水平位置的pitch并确认正方向。
+UART3 遥测中的 `target_angle` 是 Demo 当前目标摆杆角，`imu_pitch` 是 IMU 原始俯仰角，`motor_feedback` 是 Emm42 当前电机轴角。IMU 尚未扣除安装零偏或应用方向系数；电机轴角也不能直接当作摆杆角，两者应结合连杆逆解判断。
 
-首次运行必须架空机构或取下钢球，并确保急停、机械限位和连杆运动范围有效。如果实物水平位曲柄指向右上方，应将 `EMM42_DEMO_LINKAGE_BRANCH` 改为 `+1.0f` 后重新编译；如果摆杆运动方向相反，不要交换正负目标，应先核对装配分支、Emm42 方向设置和水平零位。
+首次运行必须架空机构或取下钢球，并确保急停、机械限位和连杆运动范围有效。如果摆杆运动方向相反，不要交换正负目标，应先核对公共 `balance_linkage` 装配分支、Emm42 方向设置及 `BALANCE_STARTUP_LEVER_ANGLE_DEG` 的符号。
 
 以下代码应由临时测试入口或后续摆杆应用调用，不要直接设为正式固件的上电动作：
 

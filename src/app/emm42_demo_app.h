@@ -8,6 +8,8 @@ typedef enum
     EMM42_DEMO_WAIT_POWER = 0,
     EMM42_DEMO_WAIT_ZERO,
     EMM42_DEMO_WAIT_ENABLE,
+    EMM42_DEMO_MOVE_LEVEL,
+    EMM42_DEMO_WAIT_LEVEL,
     EMM42_DEMO_MOVE_POSITIVE,
     EMM42_DEMO_WAIT_POSITIVE,
     EMM42_DEMO_MOVE_NEGATIVE,
@@ -19,6 +21,9 @@ void emm42_demo_app_init(void);
 void emm42_demo_app_process(void);
 emm42_demo_state_enum emm42_demo_app_get_state(void);
 float emm42_demo_app_get_target_angle_deg(void);
+float emm42_demo_app_get_target_motor_deg(void);
+float emm42_demo_app_get_motor_feedback_deg(void);
+uint8 emm42_demo_app_is_motor_feedback_valid(void);
 uint8 emm42_demo_app_is_active(void);
 
 #endif

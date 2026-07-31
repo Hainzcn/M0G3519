@@ -26,11 +26,35 @@ int main(void)
     oled_app_init();
     button_app_init();
     uart3_maix_app_init();
+
+    /* Preserve late startup diagnostics before the 256-byte UART0 queue fills. */
+    heartbeat_hw_uart_flush_blocking();
+    heartbeat_hw_uart_send_string(
+        "[boot-mode] " __DATE__ " " __TIME__);
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" demo=1");
+#else
+    heartbeat_hw_uart_send_string(" demo=0");
+#endif
+#if (BALANCE_CONTROL_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" balance=1");
+#else
+    heartbeat_hw_uart_send_string(" balance=0");
+#endif
+#if (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
+    heartbeat_hw_uart_send_string(" uart3=balance-telemetry\r\n");
+#elif (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
+    heartbeat_hw_uart_send_string(" uart3=chassis-telemetry\r\n");
+#else
+    heartbeat_hw_uart_send_string(" uart3=normal\r\n");
+#endif
+    heartbeat_hw_uart_flush_blocking();
 #if (BALANCE_CONTROL_ENABLE != 0u)
     balance_app_init();
 #endif
 #if (EMM42_BALANCE_DEMO_ENABLE != 0u)
     emm42_demo_app_init();
+    heartbeat_hw_uart_flush_blocking();
 #endif
 
     while (1)

@@ -344,18 +344,6 @@ static void balance_app_process_startup(uint32 now_ms)
     {
         (void)balance_app_send_motor_target(0.0f, now_ms);
     }
-    else if ((BALANCE_APP_MOVE_LEVEL == balance_status.state) &&
-             (0u != balance_level_move_acked) &&
-             (0u == balance_pending_command) &&
-             ((now_ms - balance_last_query_ms) >=
-              BALANCE_POSITION_QUERY_PERIOD_MS))
-    {
-        balance_last_query_ms = now_ms;
-        (void)balance_app_begin_command(
-            BALANCE_APP_COMMAND_POSITION,
-            emm42_query_position(BALANCE_APP_EMM42_ADDRESS), now_ms);
-    }
-
     if (BALANCE_APP_MOVE_LEVEL == balance_status.state)
     {
         if ((now_ms - balance_state_start_ms) >
@@ -413,15 +401,6 @@ static void balance_app_process_active(uint32 now_ms)
     {
         return;
     }
-    if ((now_ms - balance_last_query_ms) >=
-        BALANCE_POSITION_QUERY_PERIOD_MS)
-    {
-        balance_last_query_ms = now_ms;
-        (void)balance_app_begin_command(
-            BALANCE_APP_COMMAND_POSITION,
-            emm42_query_position(BALANCE_APP_EMM42_ADDRESS), now_ms);
-        return;
-    }
     if ((now_ms - balance_last_command_ms) >= BALANCE_COMMAND_PERIOD_MS)
     {
         (void)balance_app_send_motor_target(balance_status.lever_angle_deg,
@@ -452,6 +431,22 @@ static void balance_app_process_active(uint32 now_ms)
             balance_follow_error_count = 0u;
         }
     }
+}
+
+static void balance_app_query_position_if_due(uint32 now_ms)
+{
+    if ((BALANCE_APP_FAULT == balance_status.state) ||
+        (0u != balance_pending_command) ||
+        ((now_ms - balance_last_query_ms) <
+         BALANCE_POSITION_QUERY_PERIOD_MS))
+    {
+        return;
+    }
+
+    balance_last_query_ms = now_ms;
+    (void)balance_app_begin_command(
+        BALANCE_APP_COMMAND_POSITION,
+        emm42_query_position(BALANCE_APP_EMM42_ADDRESS), now_ms);
 }
 
 void balance_app_init(void)
@@ -554,6 +549,7 @@ void balance_app_process(void)
     {
         balance_app_process_active(now_ms);
     }
+    balance_app_query_position_if_due(now_ms);
 }
 
 const balance_app_status_t *balance_app_get_status(void)

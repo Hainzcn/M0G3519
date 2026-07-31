@@ -17,9 +17,13 @@
 #define UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG   (2u)
 #define UART3_MAIX_MODE                            (UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
 
-/* The balance controller replaces the legacy +/-5 degree actuator demo. */
-#define EMM42_BALANCE_DEMO_ENABLE              (0u)
-#define BALANCE_CONTROL_ENABLE                 (1u)
+/* Current bench mode: lower-stop startup, return to level, then +/-5 deg. */
+#ifndef EMM42_BALANCE_DEMO_ENABLE
+#define EMM42_BALANCE_DEMO_ENABLE              (1u)
+#endif
+#ifndef BALANCE_CONTROL_ENABLE
+#define BALANCE_CONTROL_ENABLE                 (0u)
+#endif
 
 /*
  * Measure the physical negative-angle startup stop before setting this flag.
@@ -27,15 +31,15 @@
  * enable or move the balance actuator.
  */
 #ifndef BALANCE_STARTUP_CALIBRATED
-#define BALANCE_STARTUP_CALIBRATED             (0u)
+#define BALANCE_STARTUP_CALIBRATED             (1u)
 #endif
 #ifndef BALANCE_STARTUP_LEVER_ANGLE_DEG
-#define BALANCE_STARTUP_LEVER_ANGLE_DEG        (-5.0f)
+#define BALANCE_STARTUP_LEVER_ANGLE_DEG        (-10.0f)
 #endif
 
 #define BALANCE_CONTROL_PERIOD_MS              (5u)
 #define BALANCE_COMMAND_PERIOD_MS              (10u)
-#define BALANCE_POSITION_QUERY_PERIOD_MS       (100u)
+#define BALANCE_POSITION_QUERY_PERIOD_MS       (10u)
 #define BALANCE_POWER_WAIT_MS                  (3000u)
 #define BALANCE_COMMAND_TIMEOUT_MS             (25u)
 #define BALANCE_MOVE_LEVEL_TIMEOUT_MS          (2500u)
@@ -85,6 +89,10 @@
 #endif
 #if ((BALANCE_CONTROL_ENABLE != 0u) && (EMM42_BALANCE_DEMO_ENABLE != 0u))
 #error "Balance controller and EMM42 demo are mutually exclusive"
+#endif
+#if ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
+     (BALANCE_CONTROL_ENABLE == 0u) && (EMM42_BALANCE_DEMO_ENABLE == 0u))
+#error "Balance telemetry mode requires balance control or EMM42 demo"
 #endif
 
 /* 实测车体几何参数，以及顺时针 1 m 直径圆的中心轨迹。 */
