@@ -385,7 +385,7 @@ static void test_command_timeouts_latch(void)
     assert(balance_app_get_status()->fault == BALANCE_FAULT_COMMAND_TIMEOUT);
 }
 
-static void test_active_position_query_and_move_run_at_10_hz(void)
+static void test_unchanged_target_is_not_resent_at_10_hz(void)
 {
     uint32 query_count;
     uint32 move_count;
@@ -429,19 +429,14 @@ static void test_active_position_query_and_move_run_at_10_hz(void)
     move_count = mock_move_count;
     mock_now_ms += BALANCE_POSITION_QUERY_PERIOD_MS;
     balance_app_process();
-    assert(mock_move_count == move_count + 1u);
-
-    queue_ack(0xFDu);
-    balance_app_process();
+    assert(mock_move_count == move_count);
     assert(mock_position_query_count == query_count + 1u);
     queue_position(level_motor_position());
     balance_app_process();
 
     mock_now_ms += BALANCE_POSITION_QUERY_PERIOD_MS;
     balance_app_process();
-    assert(mock_move_count == move_count + 2u);
-    queue_ack(0xFDu);
-    balance_app_process();
+    assert(mock_move_count == move_count);
     assert(mock_position_query_count == query_count + 2u);
 }
 #else
@@ -463,7 +458,7 @@ int main(void)
     test_successful_startup();
     test_waits_for_consecutive_acceptable_vision();
     test_command_timeouts_latch();
-    test_active_position_query_and_move_run_at_10_hz();
+    test_unchanged_target_is_not_resent_at_10_hz();
 #else
     test_unconfigured_mode_queries_without_motion();
 #endif

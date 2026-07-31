@@ -35,6 +35,7 @@ typedef enum
 #define BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED   (0x08u)
 #define BALANCE_APP_FLAG_COMMAND_PENDING        (0x10u)
 #define BALANCE_APP_FLAG_FAULT_LATCHED          (0x20u)
+#define BALANCE_APP_FLAG_LEVER_FEEDBACK_VALID   (0x40u)
 
 typedef struct
 {
@@ -55,6 +56,7 @@ typedef struct
     float position_error_m;
     float desired_ball_accel_mps2;
     float lever_angle_deg;
+    float actual_lever_angle_deg;
     float motor_target_deg;
     float motor_feedback_deg;
     uint16 command_error_count;

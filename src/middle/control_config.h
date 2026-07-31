@@ -37,7 +37,10 @@
 #define BALANCE_STARTUP_LEVER_ANGLE_DEG        (-5.0f)
 #endif
 
-#define BALANCE_CONTROL_PERIOD_MS              (5u)
+#define BALANCE_ESTIMATOR_PERIOD_MS            (5u)
+#define BALANCE_OUTER_CONTROL_PERIOD_MS        (20u)
+/* Compatibility name for the 200 Hz estimator/application tick. */
+#define BALANCE_CONTROL_PERIOD_MS              BALANCE_ESTIMATOR_PERIOD_MS
 #define BALANCE_COMMAND_PERIOD_MS              (100u)
 #define BALANCE_POSITION_QUERY_PERIOD_MS       (100u)
 #define BALANCE_POWER_WAIT_MS                  (3000u)
@@ -58,6 +61,8 @@
 #define BALANCE_MAX_LEVER_ANGLE_DEG            (4.0f)
 #define BALANCE_DEGRADED_LEVER_ANGLE_DEG       (2.0f)
 #define BALANCE_MAX_LEVER_RATE_DEG_S           (30.0f)
+#define BALANCE_MAX_LEVER_ACCEL_DEG_S2         (600.0f)
+#define BALANCE_LEVER_COMMAND_DEADBAND_DEG      (0.1f)
 #define BALANCE_EDGE_POSITION_M                (0.100f)
 #define BALANCE_HARD_EDGE_POSITION_M           (0.150f)
 #define BALANCE_FRESH_MEASUREMENT_MS           (30u)

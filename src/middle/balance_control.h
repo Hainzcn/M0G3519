@@ -35,6 +35,9 @@ typedef struct
     float measured_velocity_mps;
     uint32 measurement_age_ms;
     float car_accel_mps2;
+    uint8 actual_lever_valid;
+    uint8 update_control_output;
+    float actual_lever_angle_deg;
     float dt_s;
 } balance_control_input_t;
 

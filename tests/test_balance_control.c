@@ -40,6 +40,9 @@ static balance_control_input_t make_measurement(float position_m,
     input.measured_velocity_mps = velocity_mps;
     input.measurement_age_ms = 0u;
     input.car_accel_mps2 = 0.0f;
+    input.actual_lever_valid = 0u;
+    input.update_control_output = 1u;
+    input.actual_lever_angle_deg = 0.0f;
     input.dt_s = 0.005f;
     return input;
 }
@@ -51,18 +54,34 @@ int main(void)
     balance_control_input_t input;
     const balance_control_output_t *output;
     float motor_deg;
+    float lever_deg;
 
     assert(balance_linkage_relative_motor_deg(0.0f, 5.0f, &motor_deg));
     assert(near_value(motor_deg, 22.96f, 0.10f));
     assert(balance_linkage_relative_motor_deg(0.0f, -5.0f, &motor_deg));
     assert(near_value(motor_deg, -18.23f, 0.10f));
+    assert(balance_linkage_lever_from_relative_motor_deg(-5.0f,
+                                                         17.625f,
+                                                         &lever_deg));
+    assert(near_value(lever_deg, 0.0f, 0.001f));
+    assert(balance_linkage_lever_from_relative_motor_deg(-5.0f,
+                                                         40.0f,
+                                                         &lever_deg));
+    assert(near_value(lever_deg, 5.0f, 0.001f));
 
     balance_control_init(&control, &config);
     input = make_measurement(0.050f, 0.0f);
     balance_control_step(&control, &input);
     output = balance_control_get_output(&control);
     assert(output->lever_angle_deg > 0.0f);
-    assert(output->flags & BALANCE_CONTROL_FLAG_SLEW_SATURATED);
+
+    input.new_measurement = 0u;
+    input.actual_lever_valid = 1u;
+    input.actual_lever_angle_deg = 0.0f;
+    input.update_control_output = 0u;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(near_value(output->estimated_velocity_mps, 0.0f, 0.0001f));
 
     balance_control_reset(&control);
     input = make_measurement(-0.050f, 0.0f);

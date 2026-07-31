@@ -66,7 +66,6 @@ void balance_control_step(balance_control_t *control,
     float lever_rad;
     float lever_deg = 0.0f;
     float angle_limit;
-    float slew_limit;
     uint8 flags = 0u;
 
     if ((NULL == control) || (NULL == input) || (input->dt_s <= 0.0f))
@@ -77,7 +76,9 @@ void balance_control_step(balance_control_t *control,
 
     if (0u != output->has_state)
     {
-        lever_rad = output->lever_angle_deg * BALANCE_CONTROL_DEG_TO_RAD;
+        lever_rad = ((0u != input->actual_lever_valid) ?
+            input->actual_lever_angle_deg : output->lever_angle_deg) *
+            BALANCE_CONTROL_DEG_TO_RAD;
         model_accel = -BALANCE_CONTROL_ROLLING_FACTOR *
             (BALANCE_CONTROL_GRAVITY_MPS2 * sinf(lever_rad) +
              input->car_accel_mps2 * cosf(lever_rad));
@@ -128,6 +129,14 @@ void balance_control_step(balance_control_t *control,
     }
 
     output->position_error_m = -output->estimated_position_m;
+    if (0u == input->update_control_output)
+    {
+        output->flags = (uint8)((output->flags &
+            (uint8)(~(BALANCE_CONTROL_FLAG_MEASUREMENT_FRESH |
+                       BALANCE_CONTROL_FLAG_PREDICT_ONLY))) | flags);
+        return;
+    }
+
     if ((0u != output->has_state) &&
         (input->measurement_age_ms <= control->config.valid_measurement_ms))
     {
@@ -186,15 +195,6 @@ void balance_control_step(balance_control_t *control,
         lever_deg = balance_control_clamp(lever_deg, -angle_limit,
                                           angle_limit);
         flags |= BALANCE_CONTROL_FLAG_ANGLE_SATURATED;
-    }
-
-    slew_limit = control->config.max_lever_rate_deg_s * input->dt_s;
-    residual = lever_deg - output->lever_angle_deg;
-    if (balance_control_abs(residual) > slew_limit)
-    {
-        lever_deg = output->lever_angle_deg +
-            balance_control_clamp(residual, -slew_limit, slew_limit);
-        flags |= BALANCE_CONTROL_FLAG_SLEW_SATURATED;
     }
 
     output->desired_ball_accel_mps2 = desired_accel;

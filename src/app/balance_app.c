@@ -23,6 +23,7 @@ static balance_app_status_t balance_status;
 static emm42_frame_t balance_rx_frame;
 static uint32 balance_state_start_ms;
 static uint32 balance_last_control_ms;
+static uint32 balance_last_outer_control_ms;
 static uint32 balance_last_command_ms;
 static uint32 balance_last_query_ms;
 static uint32 balance_last_accepted_measurement_ms;
@@ -43,6 +44,11 @@ static uint32 balance_follow_error_start_ms;
 static uint8 balance_has_seen_vision_snapshot;
 static uint16 balance_last_seen_vision_sequence;
 static uint16 balance_last_seen_vision_boot_id;
+static float balance_trajectory_angle_deg;
+static float balance_trajectory_rate_deg_s;
+static float balance_last_sent_lever_deg;
+static uint8 balance_has_sent_lever_target;
+static uint8 balance_trajectory_saturated;
 
 static float balance_app_abs(float value)
 {
@@ -52,6 +58,50 @@ static float balance_app_abs(float value)
 static uint16 balance_app_u32_to_u16(uint32 value)
 {
     return (uint16)((value > 65535u) ? 65535u : value);
+}
+
+static float balance_app_clamp(float value, float low, float high)
+{
+    if (value > high)
+    {
+        return high;
+    }
+    if (value < low)
+    {
+        return low;
+    }
+    return value;
+}
+
+static void balance_app_update_trajectory(float target_angle_deg)
+{
+    const float dt_s = (float)BALANCE_OUTER_CONTROL_PERIOD_MS * 0.001f;
+    float error = target_angle_deg - balance_trajectory_angle_deg;
+    float stopping_rate = sqrtf(2.0f * BALANCE_MAX_LEVER_ACCEL_DEG_S2 *
+                                balance_app_abs(error));
+    float desired_rate = (error < 0.0f) ? -stopping_rate : stopping_rate;
+    float rate_delta;
+    float next_angle;
+
+    desired_rate = balance_app_clamp(desired_rate,
+        -BALANCE_MAX_LEVER_RATE_DEG_S, BALANCE_MAX_LEVER_RATE_DEG_S);
+    rate_delta = desired_rate - balance_trajectory_rate_deg_s;
+    rate_delta = balance_app_clamp(rate_delta,
+        -BALANCE_MAX_LEVER_ACCEL_DEG_S2 * dt_s,
+        BALANCE_MAX_LEVER_ACCEL_DEG_S2 * dt_s);
+    balance_trajectory_saturated =
+        (balance_app_abs(desired_rate - balance_trajectory_rate_deg_s) >
+         balance_app_abs(rate_delta) + 0.0001f) ? 1u : 0u;
+    balance_trajectory_rate_deg_s += rate_delta;
+    next_angle = balance_trajectory_angle_deg +
+                 balance_trajectory_rate_deg_s * dt_s;
+    if (((error >= 0.0f) && (next_angle >= target_angle_deg)) ||
+        ((error < 0.0f) && (next_angle <= target_angle_deg)))
+    {
+        next_angle = target_angle_deg;
+        balance_trajectory_rate_deg_s = 0.0f;
+    }
+    balance_trajectory_angle_deg = next_angle;
 }
 
 static void balance_app_set_state(balance_app_state_enum state, uint32 now_ms)
@@ -177,6 +227,22 @@ static void balance_app_drain_emm42(uint32 now_ms)
         {
             balance_status.motor_feedback_deg = position_deg;
             balance_status.flags |= BALANCE_APP_FLAG_MOTOR_FEEDBACK_VALID;
+            if (0u != balance_linkage_lever_from_relative_motor_deg(
+                    BALANCE_STARTUP_LEVER_ANGLE_DEG,
+                    position_deg / (float)BALANCE_EMM42_DIRECTION_SIGN,
+                    &balance_status.actual_lever_angle_deg))
+            {
+                balance_status.actual_lever_angle_deg *=
+                    (float)(BALANCE_LINKAGE_TARGET_SIGN *
+                            BALANCE_CONTROL_OUTPUT_SIGN);
+                balance_status.flags |=
+                    BALANCE_APP_FLAG_LEVER_FEEDBACK_VALID;
+            }
+            else
+            {
+                balance_status.flags &=
+                    (uint8)(~BALANCE_APP_FLAG_LEVER_FEEDBACK_VALID);
+            }
             balance_motor_feedback_new = 1u;
             if (BALANCE_APP_COMMAND_POSITION == balance_pending_command)
             {
@@ -203,13 +269,19 @@ static uint8 balance_app_send_motor_target(float lever_angle_deg,
     motor_deg *= (float)BALANCE_EMM42_DIRECTION_SIGN;
     balance_status.motor_target_deg = motor_deg;
     balance_last_command_ms = now_ms;
-    return balance_app_begin_command(
+    if (0u == balance_app_begin_command(
         BALANCE_APP_COMMAND_MOVE,
         emm42_move_angle(BALANCE_APP_EMM42_ADDRESS, motor_deg,
                          BALANCE_EMM42_MOVE_RPM,
                          BALANCE_EMM42_ACCELERATION,
                          EMM42_POSITION_ABSOLUTE, 0u),
-        now_ms);
+        now_ms))
+    {
+        return 0u;
+    }
+    balance_last_sent_lever_deg = lever_angle_deg;
+    balance_has_sent_lever_target = 1u;
+    return 1u;
 }
 
 static uint8 balance_app_measurement_acceptable(
@@ -224,7 +296,7 @@ static uint8 balance_app_measurement_acceptable(
         1u : 0u;
 }
 
-static void balance_app_control_step(uint32 now_ms)
+static void balance_app_control_step(uint32 now_ms, uint8 update_output)
 {
     balance_control_input_t input;
     const balance_control_output_t *output;
@@ -304,17 +376,32 @@ static void balance_app_control_step(uint32 now_ms)
         (float)measurement.velocity_mm_s * 0.001f : 0.0f;
     input.measurement_age_ms = measurement_age;
     input.car_accel_mps2 = 0.0f;
-    input.dt_s = (float)BALANCE_CONTROL_PERIOD_MS * 0.001f;
+    input.actual_lever_valid =
+        (0u != (balance_status.flags &
+                BALANCE_APP_FLAG_LEVER_FEEDBACK_VALID)) ? 1u : 0u;
+    input.actual_lever_angle_deg = balance_status.actual_lever_angle_deg;
+    input.update_control_output = update_output;
+    input.dt_s = (float)BALANCE_ESTIMATOR_PERIOD_MS * 0.001f;
     balance_control_step(&balance_controller, &input);
     output = balance_control_get_output(&balance_controller);
 
+    if (0u != update_output)
+    {
+        balance_app_update_trajectory(
+            (BALANCE_APP_WAIT_VISION == balance_status.state) ?
+                0.0f : output->lever_angle_deg);
+    }
     balance_status.control_flags = output->flags;
+    if (0u != balance_trajectory_saturated)
+    {
+        balance_status.control_flags |= BALANCE_CONTROL_FLAG_SLEW_SATURATED;
+    }
     balance_status.estimated_position_m = output->estimated_position_m;
     balance_status.estimated_velocity_mps = output->estimated_velocity_mps;
     balance_status.position_error_m = output->position_error_m;
     balance_status.desired_ball_accel_mps2 =
         output->desired_ball_accel_mps2;
-    balance_status.lever_angle_deg = output->lever_angle_deg;
+    balance_status.lever_angle_deg = balance_trajectory_angle_deg;
 
     if (0u != (output->flags & BALANCE_CONTROL_FLAG_HARD_EDGE))
     {
@@ -442,6 +529,7 @@ static void balance_app_process_startup(uint32 now_ms)
                         (uint8)(~BALANCE_APP_FLAG_ACTIVE);
                     balance_app_set_state(BALANCE_APP_WAIT_VISION, now_ms);
                     balance_last_control_ms = now_ms;
+                    balance_last_outer_control_ms = now_ms;
                     balance_last_command_ms = now_ms;
                     balance_last_query_ms = now_ms;
                 }
@@ -458,15 +546,28 @@ static void balance_app_process_active(uint32 now_ms)
 {
     float follow_error;
     float command_angle;
+    uint8 update_output = 0u;
 
-    if ((now_ms - balance_last_control_ms) >= BALANCE_CONTROL_PERIOD_MS)
+    if ((now_ms - balance_last_control_ms) >= BALANCE_ESTIMATOR_PERIOD_MS)
     {
-        balance_last_control_ms += BALANCE_CONTROL_PERIOD_MS;
-        if ((now_ms - balance_last_control_ms) >= BALANCE_CONTROL_PERIOD_MS)
+        balance_last_control_ms += BALANCE_ESTIMATOR_PERIOD_MS;
+        if ((now_ms - balance_last_control_ms) >= BALANCE_ESTIMATOR_PERIOD_MS)
         {
             balance_last_control_ms = now_ms;
         }
-        balance_app_control_step(now_ms);
+        if ((now_ms - balance_last_outer_control_ms) >=
+            BALANCE_OUTER_CONTROL_PERIOD_MS)
+        {
+            balance_last_outer_control_ms +=
+                BALANCE_OUTER_CONTROL_PERIOD_MS;
+            if ((now_ms - balance_last_outer_control_ms) >=
+                BALANCE_OUTER_CONTROL_PERIOD_MS)
+            {
+                balance_last_outer_control_ms = now_ms;
+            }
+            update_output = 1u;
+        }
+        balance_app_control_step(now_ms, update_output);
     }
 
     if ((BALANCE_APP_FAULT == balance_status.state) ||
@@ -478,7 +579,12 @@ static void balance_app_process_active(uint32 now_ms)
     {
         command_angle = (BALANCE_APP_WAIT_VISION == balance_status.state) ?
             0.0f : balance_status.lever_angle_deg;
-        (void)balance_app_send_motor_target(command_angle, now_ms);
+        if ((0u == balance_has_sent_lever_target) ||
+            (balance_app_abs(command_angle - balance_last_sent_lever_deg) >=
+             BALANCE_LEVER_COMMAND_DEADBAND_DEG))
+        {
+            (void)balance_app_send_motor_target(command_angle, now_ms);
+        }
     }
 
     if (0u != balance_motor_feedback_new)
@@ -568,6 +674,7 @@ void balance_app_init(void)
     balance_status.position_error_m = 0.0f;
     balance_status.desired_ball_accel_mps2 = 0.0f;
     balance_status.lever_angle_deg = 0.0f;
+    balance_status.actual_lever_angle_deg = 0.0f;
     balance_status.motor_target_deg = 0.0f;
     balance_status.motor_feedback_deg = 0.0f;
     balance_status.command_error_count = 0u;
@@ -586,8 +693,14 @@ void balance_app_init(void)
     balance_has_seen_vision_snapshot = 0u;
     balance_last_seen_vision_sequence = 0u;
     balance_last_seen_vision_boot_id = 0u;
+    balance_trajectory_angle_deg = 0.0f;
+    balance_trajectory_rate_deg_s = 0.0f;
+    balance_last_sent_lever_deg = 0.0f;
+    balance_has_sent_lever_target = 0u;
+    balance_trajectory_saturated = 0u;
     balance_state_start_ms = now_ms;
     balance_last_control_ms = now_ms;
+    balance_last_outer_control_ms = now_ms;
     balance_last_command_ms = now_ms;
     balance_last_query_ms = now_ms;
     balance_last_accepted_measurement_ms = 0u;
