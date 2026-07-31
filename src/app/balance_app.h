@@ -13,6 +13,9 @@ typedef enum
     BALANCE_APP_ACTIVE,
     BALANCE_APP_RECOVERY,
     BALANCE_APP_FAULT,
+    BALANCE_APP_DISABLE,
+    BALANCE_APP_WAIT_LOWER_STOP,
+    BALANCE_APP_WAIT_VISION,
 } balance_app_state_enum;
 
 typedef enum
@@ -40,8 +43,13 @@ typedef struct
     uint8 flags;
     uint8 control_flags;
     uint8 vision_confidence;
+    uint8 vision_raw_flags;
+    uint8 vision_raw_confidence;
     uint16 vision_sequence;
+    uint16 vision_raw_sequence;
     uint32 vision_age_ms;
+    int16 vision_raw_position_dmm;
+    int16 vision_raw_velocity_mm_s;
     float estimated_position_m;
     float estimated_velocity_mps;
     float position_error_m;

@@ -18,26 +18,26 @@ virtualFolder:
       folders: []
     - name: Hardware
       files:
-        - path: ../src/hardware/uart3_maix_hw.c
-        - path: ../src/hardware/uart3_maix_hw.h
-        - path: ../src/hardware/emm42_hw.c
-        - path: ../src/hardware/emm42_hw.h
-        - path: ../src/hardware/encoder_hw.c
-        - path: ../src/hardware/encoder_hw.h
-        - path: ../src/hardware/grayscale_hw.c
-        - path: ../src/hardware/grayscale_hw.h
-        - path: ../src/hardware/i2c_bus.c
-        - path: ../src/hardware/i2c_bus.h
-        - path: ../src/hardware/imu_hw.c
-        - path: ../src/hardware/imu_hw.h
-        - path: ../src/hardware/motor_hw.c
-        - path: ../src/hardware/motor_hw.h
-        - path: ../src/hardware/heartbeat_hw.c
-        - path: ../src/hardware/heartbeat_hw.h
-        - path: ../src/hardware/button_hw.c
-        - path: ../src/hardware/button_hw.h
-        - path: ../src/hardware/oled_hw.c
-        - path: ../src/hardware/oled_hw.h
+        - path: ../src/middle/hardware/uart3_maix_hw.c
+        - path: ../src/middle/hardware/uart3_maix_hw.h
+        - path: ../src/middle/hardware/emm42_hw.c
+        - path: ../src/middle/hardware/emm42_hw.h
+        - path: ../src/middle/hardware/encoder_hw.c
+        - path: ../src/middle/hardware/encoder_hw.h
+        - path: ../src/middle/hardware/grayscale_hw.c
+        - path: ../src/middle/hardware/grayscale_hw.h
+        - path: ../src/middle/hardware/i2c_bus.c
+        - path: ../src/middle/hardware/i2c_bus.h
+        - path: ../src/middle/hardware/imu_hw.c
+        - path: ../src/middle/hardware/imu_hw.h
+        - path: ../src/middle/hardware/motor_hw.c
+        - path: ../src/middle/hardware/motor_hw.h
+        - path: ../src/middle/hardware/heartbeat_hw.c
+        - path: ../src/middle/hardware/heartbeat_hw.h
+        - path: ../src/middle/hardware/button_hw.c
+        - path: ../src/middle/hardware/button_hw.h
+        - path: ../src/middle/hardware/oled_hw.c
+        - path: ../src/middle/hardware/oled_hw.h
       folders: []
     - name: Middle
       files:
@@ -119,7 +119,7 @@ targets:
       incList:
         - .
         - ..
-        - ../src/hardware
+        - ../src/middle/hardware
         - ../src/middle
         - ../src/app
         - ../src/MSPM0G3519_Library/zf_common

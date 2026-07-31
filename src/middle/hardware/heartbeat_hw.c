@@ -49,26 +49,17 @@ static void heartbeat_hw_uart_tx_send_one(void)
     heartbeat_hw_tx_tail = heartbeat_hw_tx_next_index(tail);
 }
 
-static void heartbeat_hw_uart_enqueue_byte(uint8 byte)
+static uint16 heartbeat_hw_uart_tx_free(void)
 {
-    uint32 primask;
-    uint16 head;
-    uint16 next;
+    uint16 head = heartbeat_hw_tx_head;
+    uint16 tail = heartbeat_hw_tx_tail;
 
-    primask = interrupt_global_disable();
-    head    = heartbeat_hw_tx_head;
-    next    = heartbeat_hw_tx_next_index(head);
-
-    if (next != heartbeat_hw_tx_tail)
+    if (head >= tail)
     {
-        heartbeat_hw_tx_buffer[head] = byte;
-        heartbeat_hw_tx_head         = next;
+        return (uint16)(HEARTBEAT_HW_TX_FIFO_SIZE -
+                        (head - tail) - 1u);
     }
-    else
-    {
-        heartbeat_hw_tx_drop_count ++;
-    }
-    interrupt_global_enable(primask);
+    return (uint16)(tail - head - 1u);
 }
 
 void heartbeat_hw_init(uint32 tick_period_ms)
@@ -93,11 +84,40 @@ void heartbeat_hw_led_toggle(void)
 
 void heartbeat_hw_uart_send_string(const char *str)
 {
-    while ((NULL != str) && ('\0' != *str))
+    uint32 primask;
+    uint16 length = 0u;
+    uint16 head;
+    uint16 index;
+
+    if (NULL == str)
     {
-        heartbeat_hw_uart_enqueue_byte((uint8)(*str));
-        str ++;
+        return;
     }
+    while ((length < 0xFFFFu) && ('\0' != str[length]))
+    {
+        length++;
+    }
+    if (0u == length)
+    {
+        return;
+    }
+
+    primask = interrupt_global_disable();
+    if (length > heartbeat_hw_uart_tx_free())
+    {
+        heartbeat_hw_tx_drop_count += length;
+        interrupt_global_enable(primask);
+        return;
+    }
+
+    head = heartbeat_hw_tx_head;
+    for (index = 0u; index < length; index++)
+    {
+        heartbeat_hw_tx_buffer[head] = (uint8)str[index];
+        head = heartbeat_hw_tx_next_index(head);
+    }
+    heartbeat_hw_tx_head = head;
+    interrupt_global_enable(primask);
 }
 
 void heartbeat_hw_uart_tx_pump(void)

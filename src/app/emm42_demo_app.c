@@ -15,7 +15,7 @@
 #define EMM42_DEMO_LEVEL_SETTLE_MS          (200u)
 #define EMM42_DEMO_LEVEL_TOLERANCE_DEG      (1.0f)
 #define EMM42_DEMO_ENDPOINT_WAIT_MS         (1500u)
-#define EMM42_DEMO_POSITION_QUERY_PERIOD_MS (10u)
+#define EMM42_DEMO_POSITION_QUERY_PERIOD_MS (100u)
 #define EMM42_DEMO_ALPHA_DEG                (5.0f)
 
 static emm42_demo_state_enum emm42_demo_state;
@@ -57,16 +57,25 @@ static void emm42_demo_fail(uint32 now_ms, const char *message)
 
 static uint8 emm42_demo_calculate_targets(void)
 {
-    return (
-        (0u != balance_linkage_relative_motor_deg(
+    if ((0u == balance_linkage_relative_motor_deg(
             BALANCE_STARTUP_LEVER_ANGLE_DEG, 0.0f,
-            &emm42_demo_level_motor_deg)) &&
-        (0u != balance_linkage_relative_motor_deg(
-            BALANCE_STARTUP_LEVER_ANGLE_DEG, EMM42_DEMO_ALPHA_DEG,
-            &emm42_demo_positive_motor_deg)) &&
-        (0u != balance_linkage_relative_motor_deg(
-            BALANCE_STARTUP_LEVER_ANGLE_DEG, -EMM42_DEMO_ALPHA_DEG,
-            &emm42_demo_negative_motor_deg))) ? 1u : 0u;
+            &emm42_demo_level_motor_deg)) ||
+        (0u == balance_linkage_relative_motor_deg(
+            BALANCE_STARTUP_LEVER_ANGLE_DEG,
+            (float)BALANCE_LINKAGE_TARGET_SIGN * EMM42_DEMO_ALPHA_DEG,
+            &emm42_demo_positive_motor_deg)) ||
+        (0u == balance_linkage_relative_motor_deg(
+            BALANCE_STARTUP_LEVER_ANGLE_DEG,
+            (float)BALANCE_LINKAGE_TARGET_SIGN * -EMM42_DEMO_ALPHA_DEG,
+            &emm42_demo_negative_motor_deg)))
+    {
+        return 0u;
+    }
+
+    emm42_demo_level_motor_deg *= (float)BALANCE_EMM42_DIRECTION_SIGN;
+    emm42_demo_positive_motor_deg *= (float)BALANCE_EMM42_DIRECTION_SIGN;
+    emm42_demo_negative_motor_deg *= (float)BALANCE_EMM42_DIRECTION_SIGN;
+    return 1u;
 }
 
 static uint8 emm42_demo_move_to(float lever_angle_deg, float motor_angle_deg,
@@ -101,7 +110,12 @@ static void emm42_demo_drain_position(void)
 
 static void emm42_demo_query_position_if_due(uint32 now_ms)
 {
-    if ((EMM42_DEMO_ERROR != emm42_demo_state) &&
+    uint8 query_enabled =
+        ((EMM42_DEMO_WAIT_LEVEL == emm42_demo_state) ||
+         (EMM42_DEMO_WAIT_POSITIVE == emm42_demo_state) ||
+         (EMM42_DEMO_WAIT_NEGATIVE == emm42_demo_state)) ? 1u : 0u;
+
+    if ((0u != query_enabled) &&
         ((now_ms - emm42_demo_last_query_ms) >=
          EMM42_DEMO_POSITION_QUERY_PERIOD_MS))
     {

@@ -107,7 +107,7 @@ V1 不定义 ACK、重传、控制命令、自动波特率或跨芯片时钟同�
 | 22 | 2 | `desired_accel_mm_s2` | 期望球加速度，1mm/s^2/LSB |
 | 24 | 2 | `lever_angle_cdeg` | 摆杆目标角，0.01deg/LSB |
 | 26 | 2 | `motor_target_cdeg` | Emm42 绝对目标角，0.01deg/LSB |
-| 28 | 2 | `motor_feedback_cdeg` | Emm42 `0x36` 当前电机轴角，100Hz 查询；无效为 `INT16_MIN` |
+| 28 | 2 | `motor_feedback_cdeg` | Emm42 `0x36` 当前电机轴角，10Hz 查询并缓存；无效为 `INT16_MIN` |
 | 30 | 2 | `vision_age_ms` | 有效测量年龄；无效为 `UINT16_MAX` |
 | 32 | 1 | `confidence` | 最近接受测量的置信度 |
 | 33 | 1 | `control_flags` | 测量新鲜、预测、边缘恢复及三类限幅标志 |
@@ -119,10 +119,15 @@ MaixCAM2 在这两种模式下运行 `uart_log_receiver.py`，接收器原样轮
 摆杆日志由仓库 `tools/balance_log/analyze_balance_log.py` 离线生成 CSV 和调参曲线；
 原始文件始终是故障分析的权威数据。
 
-除故障锁存状态外，`balance_app` 每 10ms 发起一次 Emm42 `0x36` 当前位置查询；
+除故障锁存状态外，`balance_app` 每 100ms 发起一次 Emm42 `0x36` 当前位置查询；
 未完成启动标定时仅执行这一只读查询，不使能或移动电机。闭环状态收到位置响应后，
-同一 10ms 调度窗口仍可继续发送到期的绝对位置目标。遥测以 100Hz 发送最近收到的
+仍可按独立的 100ms 运动指令周期发送到期的绝对位置目标。遥测以 100Hz 发送最近收到的
 当前位置，bit1 表示电机反馈已经有效。
+
+回水平完成后状态机先进入 `WAIT_VISION` 并保持水平。连续 5 个完整合格状态帧后才
+置 ACTIVE；预测帧、低置信度帧或缺少跟踪器/标定有效位的帧都会清零连续计数。
+UART0 的 `[balance]` 诊断输出原始 flags、置信度、位置以及接受状态，避免将链路层
+`[vision] valid=1` 误判为控制层已经接受测量。
 
 ## 5. 联调顺序
 

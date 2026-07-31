@@ -13,7 +13,7 @@
  * TX 使用环形缓冲非阻塞发送，由主循环按硬件 FIFO 空位批量泵出。
  */
 
-#define HEARTBEAT_HW_TX_FIFO_SIZE      (256)
+#define HEARTBEAT_HW_TX_FIFO_SIZE      (1024)
 
 void heartbeat_hw_init(uint32 tick_period_ms);
 void heartbeat_hw_led_toggle(void);

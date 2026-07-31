@@ -38,7 +38,11 @@ static uint8 balance_level_move_acked;
 static uint8 balance_hard_edge_active;
 static uint8 balance_level_tolerance_active;
 static uint8 balance_motor_feedback_new;
-static uint8 balance_follow_error_count;
+static uint8 balance_follow_error_active;
+static uint32 balance_follow_error_start_ms;
+static uint8 balance_has_seen_vision_snapshot;
+static uint16 balance_last_seen_vision_sequence;
+static uint16 balance_last_seen_vision_boot_id;
 
 static float balance_app_abs(float value)
 {
@@ -127,7 +131,14 @@ static void balance_app_handle_ack(uint8 command, uint8 ack_status,
     }
 
     balance_app_accept_command();
-    if ((BALANCE_APP_SET_REFERENCE == balance_status.state) &&
+    if ((BALANCE_APP_DISABLE == balance_status.state) &&
+        (BALANCE_APP_COMMAND_ENABLE == command))
+    {
+        balance_app_set_state(BALANCE_APP_WAIT_LOWER_STOP, now_ms);
+        heartbeat_hw_uart_send_string(
+            "[balance] disabled; wait for lower stop\r\n");
+    }
+    else if ((BALANCE_APP_SET_REFERENCE == balance_status.state) &&
         (BALANCE_APP_COMMAND_SET_ZERO == command))
     {
         balance_app_set_state(BALANCE_APP_ENABLE, now_ms);
@@ -181,11 +192,15 @@ static uint8 balance_app_send_motor_target(float lever_angle_deg,
     float motor_deg;
 
     if (0u == balance_linkage_relative_motor_deg(
-            BALANCE_STARTUP_LEVER_ANGLE_DEG, lever_angle_deg, &motor_deg))
+            BALANCE_STARTUP_LEVER_ANGLE_DEG,
+            (float)(BALANCE_LINKAGE_TARGET_SIGN *
+                    BALANCE_CONTROL_OUTPUT_SIGN) * lever_angle_deg,
+            &motor_deg))
     {
         balance_app_enter_fault(BALANCE_FAULT_LINKAGE_UNREACHABLE, now_ms);
         return 0u;
     }
+    motor_deg *= (float)BALANCE_EMM42_DIRECTION_SIGN;
     balance_status.motor_target_deg = motor_deg;
     balance_last_command_ms = now_ms;
     return balance_app_begin_command(
@@ -216,6 +231,7 @@ static void balance_app_control_step(uint32 now_ms)
     vision_link_snapshot_t measurement;
     vision_link_status_t vision_status;
     uint8 new_measurement = 0u;
+    uint8 new_snapshot = 0u;
     uint32 measurement_age = BALANCE_APP_AGE_INVALID;
 
     vision_link_get_status(&vision_status);
@@ -228,18 +244,47 @@ static void balance_app_control_step(uint32 now_ms)
         balance_status.flags &= (uint8)(~BALANCE_APP_FLAG_LINK_ONLINE);
     }
 
-    if ((0u != vision_link_take_new_valid_measurement(&measurement)) &&
-        (0u != balance_app_measurement_acceptable(&measurement)))
+    if (0u != vision_link_get_latest_snapshot(&measurement))
     {
-        new_measurement = 1u;
-        balance_has_accepted_measurement = 1u;
-        balance_last_accepted_measurement_ms = measurement.received_ms;
-        balance_status.vision_sequence = measurement.sequence;
-        balance_status.vision_confidence = measurement.confidence;
-        balance_status.flags |= BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED;
-        if (balance_recovery_valid_frames < 255u)
+        new_snapshot = ((0u == balance_has_seen_vision_snapshot) ||
+                        (measurement.boot_id !=
+                         balance_last_seen_vision_boot_id) ||
+                        (measurement.sequence !=
+                         balance_last_seen_vision_sequence)) ? 1u : 0u;
+        if (0u != new_snapshot)
         {
-            balance_recovery_valid_frames++;
+            balance_has_seen_vision_snapshot = 1u;
+            balance_last_seen_vision_boot_id = measurement.boot_id;
+            balance_last_seen_vision_sequence = measurement.sequence;
+            balance_status.vision_raw_flags = measurement.flags;
+            balance_status.vision_raw_confidence = measurement.confidence;
+            balance_status.vision_raw_sequence = measurement.sequence;
+            balance_status.vision_raw_position_dmm =
+                measurement.position_dmm;
+            balance_status.vision_raw_velocity_mm_s =
+                measurement.velocity_mm_s;
+
+            if (0u != balance_app_measurement_acceptable(&measurement))
+            {
+                new_measurement = 1u;
+                balance_has_accepted_measurement = 1u;
+                balance_last_accepted_measurement_ms =
+                    measurement.received_ms;
+                balance_status.vision_sequence = measurement.sequence;
+                balance_status.vision_confidence = measurement.confidence;
+                balance_status.flags |=
+                    BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED;
+                if (balance_recovery_valid_frames < 255u)
+                {
+                    balance_recovery_valid_frames++;
+                }
+            }
+            else
+            {
+                balance_recovery_valid_frames = 0u;
+                balance_status.flags &=
+                    (uint8)(~BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED);
+            }
         }
     }
 
@@ -293,16 +338,21 @@ static void balance_app_control_step(uint32 now_ms)
         ((measurement_age > BALANCE_VALID_MEASUREMENT_MS) ||
          (0u == vision_status.link_online)))
     {
+        balance_status.flags &=
+            (uint8)(~BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED);
         if (BALANCE_APP_ACTIVE == balance_status.state)
         {
             balance_recovery_valid_frames = 0u;
+            balance_status.flags &= (uint8)(~BALANCE_APP_FLAG_ACTIVE);
             balance_app_set_state(BALANCE_APP_RECOVERY, now_ms);
         }
     }
-    else if ((BALANCE_APP_RECOVERY == balance_status.state) &&
+    else if (((BALANCE_APP_RECOVERY == balance_status.state) ||
+              (BALANCE_APP_WAIT_VISION == balance_status.state)) &&
              (balance_recovery_valid_frames >=
               BALANCE_RECOVERY_VALID_FRAMES))
     {
+        balance_status.flags |= BALANCE_APP_FLAG_ACTIVE;
         balance_app_set_state(BALANCE_APP_ACTIVE, now_ms);
     }
 }
@@ -314,6 +364,26 @@ static void balance_app_process_startup(uint32 now_ms)
     if ((BALANCE_APP_POWER_WAIT == balance_status.state) &&
         ((now_ms - balance_state_start_ms) >= BALANCE_POWER_WAIT_MS) &&
         (0u == balance_pending_command))
+    {
+        if (0u != balance_app_begin_command(
+                BALANCE_APP_COMMAND_ENABLE,
+                emm42_set_enabled(BALANCE_APP_EMM42_ADDRESS, 0u, 0u),
+                now_ms))
+        {
+            balance_app_set_state(BALANCE_APP_DISABLE, now_ms);
+        }
+    }
+    else if ((BALANCE_APP_DISABLE == balance_status.state) &&
+             (0u == balance_pending_command))
+    {
+        (void)balance_app_begin_command(
+            BALANCE_APP_COMMAND_ENABLE,
+            emm42_set_enabled(BALANCE_APP_EMM42_ADDRESS, 0u, 0u), now_ms);
+    }
+    else if ((BALANCE_APP_WAIT_LOWER_STOP == balance_status.state) &&
+             ((now_ms - balance_state_start_ms) >=
+              BALANCE_LOWER_STOP_SETTLE_MS) &&
+             (0u == balance_pending_command))
     {
         if (0u != balance_app_begin_command(
                 BALANCE_APP_COMMAND_SET_ZERO,
@@ -367,8 +437,10 @@ static void balance_app_process_startup(uint32 now_ms)
                 else if ((now_ms - balance_level_tolerance_start_ms) >=
                          BALANCE_LEVEL_SETTLE_MS)
                 {
-                    balance_status.flags |= BALANCE_APP_FLAG_ACTIVE;
-                    balance_app_set_state(BALANCE_APP_ACTIVE, now_ms);
+                    balance_recovery_valid_frames = 0u;
+                    balance_status.flags &=
+                        (uint8)(~BALANCE_APP_FLAG_ACTIVE);
+                    balance_app_set_state(BALANCE_APP_WAIT_VISION, now_ms);
                     balance_last_control_ms = now_ms;
                     balance_last_command_ms = now_ms;
                     balance_last_query_ms = now_ms;
@@ -385,6 +457,7 @@ static void balance_app_process_startup(uint32 now_ms)
 static void balance_app_process_active(uint32 now_ms)
 {
     float follow_error;
+    float command_angle;
 
     if ((now_ms - balance_last_control_ms) >= BALANCE_CONTROL_PERIOD_MS)
     {
@@ -403,8 +476,9 @@ static void balance_app_process_active(uint32 now_ms)
     }
     if ((now_ms - balance_last_command_ms) >= BALANCE_COMMAND_PERIOD_MS)
     {
-        (void)balance_app_send_motor_target(balance_status.lever_angle_deg,
-                                            now_ms);
+        command_angle = (BALANCE_APP_WAIT_VISION == balance_status.state) ?
+            0.0f : balance_status.lever_angle_deg;
+        (void)balance_app_send_motor_target(command_angle, now_ms);
     }
 
     if (0u != balance_motor_feedback_new)
@@ -414,28 +488,37 @@ static void balance_app_process_active(uint32 now_ms)
                                        balance_status.motor_target_deg);
         if (follow_error > BALANCE_MOTOR_FOLLOW_ERROR_DEG)
         {
-            balance_status.command_error_count++;
-            if (balance_follow_error_count < 255u)
+            if (0u == balance_follow_error_active)
             {
-                balance_follow_error_count++;
+                balance_follow_error_active = 1u;
+                balance_follow_error_start_ms = now_ms;
             }
-            if (balance_follow_error_count >=
-                BALANCE_MAX_CONSECUTIVE_COMMAND_ERRORS)
+            else if ((now_ms - balance_follow_error_start_ms) >=
+                     BALANCE_MOTOR_FOLLOW_ERROR_TIMEOUT_MS)
             {
+                balance_status.command_error_count++;
                 balance_app_enter_fault(
                     BALANCE_FAULT_MOTOR_FOLLOW_ERROR, now_ms);
             }
         }
         else
         {
-            balance_follow_error_count = 0u;
+            balance_follow_error_active = 0u;
         }
     }
 }
 
 static void balance_app_query_position_if_due(uint32 now_ms)
 {
-    if ((BALANCE_APP_FAULT == balance_status.state) ||
+    uint8 query_enabled =
+        ((BALANCE_APP_UNCONFIGURED == balance_status.state) ||
+         ((BALANCE_APP_MOVE_LEVEL == balance_status.state) &&
+          (0u != balance_level_move_acked)) ||
+         (BALANCE_APP_ACTIVE == balance_status.state) ||
+         (BALANCE_APP_RECOVERY == balance_status.state) ||
+         (BALANCE_APP_WAIT_VISION == balance_status.state)) ? 1u : 0u;
+
+    if ((0u == query_enabled) ||
         (0u != balance_pending_command) ||
         ((now_ms - balance_last_query_ms) <
          BALANCE_POSITION_QUERY_PERIOD_MS))
@@ -473,8 +556,13 @@ void balance_app_init(void)
     balance_status.flags = 0u;
     balance_status.control_flags = 0u;
     balance_status.vision_confidence = 0u;
+    balance_status.vision_raw_flags = 0u;
+    balance_status.vision_raw_confidence = 0u;
     balance_status.vision_sequence = 0u;
+    balance_status.vision_raw_sequence = 0u;
     balance_status.vision_age_ms = BALANCE_APP_AGE_INVALID;
+    balance_status.vision_raw_position_dmm = 0;
+    balance_status.vision_raw_velocity_mm_s = 0;
     balance_status.estimated_position_m = 0.0f;
     balance_status.estimated_velocity_mps = 0.0f;
     balance_status.position_error_m = 0.0f;
@@ -493,7 +581,11 @@ void balance_app_init(void)
     balance_hard_edge_active = 0u;
     balance_level_tolerance_active = 0u;
     balance_motor_feedback_new = 0u;
-    balance_follow_error_count = 0u;
+    balance_follow_error_active = 0u;
+    balance_follow_error_start_ms = 0u;
+    balance_has_seen_vision_snapshot = 0u;
+    balance_last_seen_vision_sequence = 0u;
+    balance_last_seen_vision_boot_id = 0u;
     balance_state_start_ms = now_ms;
     balance_last_control_ms = now_ms;
     balance_last_command_ms = now_ms;
@@ -512,6 +604,7 @@ void balance_app_init(void)
     }
     else
     {
+        balance_level_motor_deg *= (float)BALANCE_EMM42_DIRECTION_SIGN;
         balance_app_set_state(BALANCE_APP_POWER_WAIT, now_ms);
         heartbeat_hw_uart_send_string(
             "[balance] calibrated startup armed\r\n");
@@ -538,6 +631,8 @@ void balance_app_process(void)
     }
 
     if ((BALANCE_APP_POWER_WAIT == balance_status.state) ||
+        (BALANCE_APP_DISABLE == balance_status.state) ||
+        (BALANCE_APP_WAIT_LOWER_STOP == balance_status.state) ||
         (BALANCE_APP_SET_REFERENCE == balance_status.state) ||
         (BALANCE_APP_ENABLE == balance_status.state) ||
         (BALANCE_APP_MOVE_LEVEL == balance_status.state))
@@ -545,7 +640,8 @@ void balance_app_process(void)
         balance_app_process_startup(now_ms);
     }
     else if ((BALANCE_APP_ACTIVE == balance_status.state) ||
-             (BALANCE_APP_RECOVERY == balance_status.state))
+             (BALANCE_APP_RECOVERY == balance_status.state) ||
+             (BALANCE_APP_WAIT_VISION == balance_status.state))
     {
         balance_app_process_active(now_ms);
     }

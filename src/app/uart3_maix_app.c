@@ -16,11 +16,11 @@
 #include "motor_app.h"
 #include "wheel_speed_control.h"
 #endif
-#if ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
-     (BALANCE_CONTROL_ENABLE != 0u))
+#if (BALANCE_CONTROL_ENABLE != 0u)
 #include "balance_app.h"
-#elif ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
-       (EMM42_BALANCE_DEMO_ENABLE != 0u))
+#endif
+#if ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
+     (EMM42_BALANCE_DEMO_ENABLE != 0u))
 #include "emm42_demo_app.h"
 #endif
 
@@ -56,6 +56,39 @@ static void vision_link_send_diagnostic(void)
         (unsigned int)status.uart_rx_overflows);
     heartbeat_hw_uart_send_string(message);
 }
+
+#if (BALANCE_CONTROL_ENABLE != 0u)
+static void balance_send_diagnostic(void)
+{
+    char message[192];
+    const balance_app_status_t *status = balance_app_get_status();
+    uint32 age = (0xFFFFFFFFu == status->vision_age_ms) ? 999999u :
+        status->vision_age_ms;
+
+    snprintf(message, sizeof(message),
+        "[balance] st=%u fault=%u fl=%02X ctl=%02X raw=%02X "
+        "conf=%u/%u seq=%u/%u age=%u pos=%d vel=%d "
+        "lever=%d mt=%d mf=%d err=%u drop=%u\r\n",
+        (unsigned int)status->state,
+        (unsigned int)status->fault,
+        (unsigned int)status->flags,
+        (unsigned int)status->control_flags,
+        (unsigned int)status->vision_raw_flags,
+        (unsigned int)status->vision_confidence,
+        (unsigned int)status->vision_raw_confidence,
+        (unsigned int)status->vision_sequence,
+        (unsigned int)status->vision_raw_sequence,
+        (unsigned int)age,
+        (int)status->vision_raw_position_dmm,
+        (int)status->vision_raw_velocity_mm_s,
+        (int)(status->lever_angle_deg * 100.0f),
+        (int)(status->motor_target_deg * 100.0f),
+        (int)(status->motor_feedback_deg * 100.0f),
+        (unsigned int)status->command_error_count,
+        (unsigned int)heartbeat_hw_uart_get_drop_count());
+    heartbeat_hw_uart_send_string(message);
+}
+#endif
 
 #if (UART3_MAIX_MODE != UART3_MAIX_MODE_NORMAL)
 static void telemetry_write_u16_le(uint8 *buffer, uint16 value)
@@ -389,5 +422,8 @@ void uart3_maix_app_process(void)
     {
         uart3_maix_last_diagnostic_ms = now_ms;
         vision_link_send_diagnostic();
+#if (BALANCE_CONTROL_ENABLE != 0u)
+        balance_send_diagnostic();
+#endif
     }
 }

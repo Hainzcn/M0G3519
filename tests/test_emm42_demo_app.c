@@ -124,31 +124,34 @@ int main(void)
 
     process_at(3000u);
     assert(emm42_demo_app_get_state() == EMM42_DEMO_WAIT_ZERO);
+    assert(mock_query_count == 0u);
     process_at(3100u);
     assert(emm42_demo_app_get_state() == EMM42_DEMO_WAIT_ENABLE);
+    assert(mock_query_count == 0u);
     process_at(3200u);
     process_at(3200u);
     assert(emm42_demo_app_get_state() == EMM42_DEMO_WAIT_LEVEL);
     assert(mock_move_count == 1u);
+    assert(mock_query_count == 0u);
     level_motor_deg = mock_last_move_deg;
-    assert(fabsf(level_motor_deg - 29.424f) < 0.02f);
+    assert(fabsf(level_motor_deg - (-29.424f)) < 0.02f);
     assert(emm42_demo_app_get_target_angle_deg() == 0.0f);
 
-    process_at(3210u);
+    process_at(3300u);
     assert(mock_query_count > 0u);
     queue_position(level_motor_deg);
-    process_at(3210u);
+    process_at(3300u);
     assert(emm42_demo_app_is_motor_feedback_valid() != 0u);
-    process_at(3410u);
-    process_at(3410u);
+    process_at(3500u);
+    process_at(3500u);
     assert(emm42_demo_app_get_state() == EMM42_DEMO_WAIT_POSITIVE);
-    assert(fabsf(mock_last_move_deg - 52.379f) < 0.02f);
+    assert(fabsf(mock_last_move_deg - (-11.184f)) < 0.02f);
     assert(emm42_demo_app_get_target_angle_deg() == 5.0f);
 
-    process_at(4910u);
-    process_at(4910u);
+    process_at(5000u);
+    process_at(5000u);
     assert(emm42_demo_app_get_state() == EMM42_DEMO_WAIT_NEGATIVE);
-    assert(fabsf(mock_last_move_deg - 11.184f) < 0.02f);
+    assert(fabsf(mock_last_move_deg - (-52.379f)) < 0.02f);
     assert(emm42_demo_app_get_target_angle_deg() == -5.0f);
 
     puts("emm42 demo app tests passed");
