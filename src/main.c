@@ -1,3 +1,8 @@
+#include "button_app.h"
+#include "control_config.h"
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+#include "emm42_demo_app.h"
+#endif
 #include "uart3_maix_app.h"
 #include "grayscale_app.h"
 #include "heartbeat_app.h"
@@ -18,7 +23,11 @@ int main(void)
     motor_app_init();
     imu_app_init();
     oled_app_init();
+    button_app_init();
     uart3_maix_app_init();
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+    emm42_demo_app_init();
+#endif
 
     while (1)
     {
@@ -30,6 +39,10 @@ int main(void)
         motor_app_process();
         uart3_maix_app_process();
         heartbeat_app_process();
+        button_app_process();
         oled_app_process();
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+        emm42_demo_app_process();
+#endif
     }
 }

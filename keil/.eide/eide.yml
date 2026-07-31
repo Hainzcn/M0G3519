@@ -34,6 +34,8 @@ virtualFolder:
         - path: ../src/hardware/motor_hw.h
         - path: ../src/hardware/heartbeat_hw.c
         - path: ../src/hardware/heartbeat_hw.h
+        - path: ../src/hardware/button_hw.c
+        - path: ../src/hardware/button_hw.h
         - path: ../src/hardware/oled_hw.c
         - path: ../src/hardware/oled_hw.h
       folders: []
@@ -52,6 +54,8 @@ virtualFolder:
         - path: ../src/middle/motor.h
         - path: ../src/middle/heartbeat.c
         - path: ../src/middle/heartbeat.h
+        - path: ../src/middle/button.c
+        - path: ../src/middle/button.h
         - path: ../src/middle/imu.c
         - path: ../src/middle/imu.h
         - path: ../src/middle/line_control.c
@@ -75,6 +79,8 @@ virtualFolder:
         - path: ../src/app/motor_app.h
         - path: ../src/app/heartbeat_app.c
         - path: ../src/app/heartbeat_app.h
+        - path: ../src/app/button_app.c
+        - path: ../src/app/button_app.h
         - path: ../src/app/imu_app.c
         - path: ../src/app/imu_app.h
         - path: ../src/app/oled_app.c

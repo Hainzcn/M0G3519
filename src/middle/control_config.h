@@ -8,8 +8,12 @@
 #define MOTOR_APP_AUTO_START_LINE_FOLLOW      (0u)
 #define MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO (0u)
 
+/* 上电运行摆杆 +/-5 deg Demo，并启用 UART3 100 Hz 摆杆遥测（0x82）。 */
+#define EMM42_BALANCE_DEMO_ENABLE              (1u)
+
 /* 上电后通过 UART3 向 Maix 发送 100 Hz 底盘遥测 V2（0x81）。 */
 #define UART3_MAIX_CHASSIS_TELEMETRY_ENABLE   (0u)
+#define UART3_MAIX_BALANCE_TELEMETRY_ENABLE   (EMM42_BALANCE_DEMO_ENABLE)
 
 #if ((MOTOR_APP_AUTO_START_LINE_FOLLOW != 0u) && \
      (MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO != 0u))
@@ -18,6 +22,14 @@
 #if ((UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u) && \
      (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 1u))
 #error "UART3_MAIX_CHASSIS_TELEMETRY_ENABLE must be 0 or 1"
+#endif
+#if ((EMM42_BALANCE_DEMO_ENABLE != 0u) && \
+     (EMM42_BALANCE_DEMO_ENABLE != 1u))
+#error "EMM42_BALANCE_DEMO_ENABLE must be 0 or 1"
+#endif
+#if ((UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u) && \
+     (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u))
+#error "UART3 chassis and balance telemetry modes are mutually exclusive"
 #endif
 
 /* 实测车体几何参数，以及顺时针 1 m 直径圆的中心轨迹。 */

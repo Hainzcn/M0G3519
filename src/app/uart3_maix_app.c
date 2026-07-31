@@ -3,6 +3,9 @@
 #include <stdio.h>
 
 #include "control_config.h"
+#if (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u)
+#include "emm42_demo_app.h"
+#endif
 #include "uart3_maix_hw.h"
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
@@ -20,6 +23,14 @@
 #define CHASSIS_TELEMETRY_VERSION           (0x02u)
 #define CHASSIS_TELEMETRY_TYPE              (0x81u)
 
+#define BALANCE_TELEMETRY_HZ                (100u)
+#define BALANCE_TELEMETRY_PERIOD_MS         (1000u / BALANCE_TELEMETRY_HZ)
+#define BALANCE_TELEMETRY_FRAME_SIZE        (20u)
+#define BALANCE_TELEMETRY_VERSION           (0x01u)
+#define BALANCE_TELEMETRY_TYPE              (0x82u)
+#define BALANCE_FLAG_DEMO_ACTIVE            (0x01u)
+#define BALANCE_FLAG_IMU_ANGLE_VALID        (0x02u)
+
 #define CHASSIS_FLAG_CONTROL_ACTIVE         (0x01u)
 #define CHASSIS_FLAG_LINE_VALID             (0x02u)
 #define CHASSIS_FLAG_LINE_LOST              (0x04u)
@@ -32,6 +43,8 @@
 static uint32 uart3_maix_last_alive_ms;
 static uint32 chassis_telemetry_last_ms;
 static uint16 chassis_telemetry_sequence;
+static uint32 balance_telemetry_last_ms;
+static uint16 balance_telemetry_sequence;
 
 static void vision_link_send_diagnostic(void)
 {
@@ -200,6 +213,52 @@ static void chassis_telemetry_send(uint32 now_ms)
     chassis_telemetry_sequence++;
 }
 
+#if (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u)
+static void balance_telemetry_send(uint32 now_ms)
+{
+    uint8 frame[BALANCE_TELEMETRY_FRAME_SIZE];
+    imu_snapshot_t imu;
+    uint8 flags = 0u;
+    uint16 crc;
+
+    imu_get_snapshot(&imu);
+    if (0u != emm42_demo_app_is_active())
+    {
+        flags |= BALANCE_FLAG_DEMO_ACTIVE;
+    }
+    if (0u != (imu.flags & IMU_FLAG_ANGLE))
+    {
+        flags |= BALANCE_FLAG_IMU_ANGLE_VALID;
+    }
+
+    frame[0] = 0xA5u;
+    frame[1] = 0x5Au;
+    frame[2] = BALANCE_TELEMETRY_VERSION;
+    frame[3] = BALANCE_TELEMETRY_TYPE;
+    frame[4] = BALANCE_TELEMETRY_FRAME_SIZE;
+    frame[5] = flags;
+    frame[6] = (uint8)emm42_demo_app_get_state();
+    frame[7] = 0u;
+    chassis_write_u16_le(&frame[8], balance_telemetry_sequence);
+    chassis_write_u32_le(&frame[10], now_ms);
+    chassis_write_scaled_i16(&frame[14],
+        emm42_demo_app_get_target_angle_deg(), 100.0f);
+    if (0u != (flags & BALANCE_FLAG_IMU_ANGLE_VALID))
+    {
+        chassis_write_scaled_i16(&frame[16], imu.angle.pitch, 100.0f);
+    }
+    else
+    {
+        chassis_write_u16_le(&frame[16], 0x8000u);
+    }
+    crc = chassis_crc16_ccitt_false(frame, 18u);
+    chassis_write_u16_le(&frame[18], crc);
+
+    (void)uart3_maix_hw_write_atomic(frame, BALANCE_TELEMETRY_FRAME_SIZE);
+    balance_telemetry_sequence++;
+}
+#endif
+
 void uart3_maix_app_init(void)
 {
     uart3_maix_hw_init();
@@ -207,14 +266,20 @@ void uart3_maix_app_init(void)
     uart3_maix_last_alive_ms = heartbeat_get_ms();
     chassis_telemetry_last_ms = uart3_maix_last_alive_ms;
     chassis_telemetry_sequence = 0u;
+    balance_telemetry_last_ms = uart3_maix_last_alive_ms;
+    balance_telemetry_sequence = 0u;
 
-#if (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
+#if (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u)
+    uart3_maix_hw_send_string("[link] ready,115200,balance=100Hz\r\n");
+#elif (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
     uart3_maix_hw_send_string("[link] ready,115200,telemetry=100Hz\r\n");
 #else
     uart3_maix_hw_send_string("[link] ready,115200,telemetry=off\r\n");
 #endif
     heartbeat_hw_uart_send_string(
-#if (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
+#if (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u)
+        "[mode] uart3 vision+balance telemetry, demo enabled\r\n");
+#elif (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
         "[mode] uart3 vision+telemetry, chassis disabled\r\n");
 #else
         "[mode] uart3 vision only, chassis disabled\r\n");
@@ -228,6 +293,14 @@ void uart3_maix_app_process(void)
     uart3_maix_hw_tx_pump();
 
     now_ms = heartbeat_get_ms();
+#if (UART3_MAIX_BALANCE_TELEMETRY_ENABLE != 0u)
+    if ((now_ms - balance_telemetry_last_ms) >=
+        BALANCE_TELEMETRY_PERIOD_MS)
+    {
+        balance_telemetry_last_ms = now_ms;
+        balance_telemetry_send(now_ms);
+    }
+#endif
 #if (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
     if ((now_ms - chassis_telemetry_last_ms) >=
         CHASSIS_TELEMETRY_PERIOD_MS)
