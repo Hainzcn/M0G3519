@@ -8,9 +8,16 @@
 #define MOTOR_APP_AUTO_START_LINE_FOLLOW      (0u)
 #define MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO (0u)
 
+/* 上电后通过 UART3 向 Maix 发送 100 Hz 底盘遥测 V2（0x81）。 */
+#define UART3_MAIX_CHASSIS_TELEMETRY_ENABLE   (0u)
+
 #if ((MOTOR_APP_AUTO_START_LINE_FOLLOW != 0u) && \
      (MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO != 0u))
 #error "Only one motor app auto-start mode may be enabled"
+#endif
+#if ((UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u) && \
+     (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 1u))
+#error "UART3_MAIX_CHASSIS_TELEMETRY_ENABLE must be 0 or 1"
 #endif
 
 /* 实测车体几何参数，以及顺时针 1 m 直径圆的中心轨迹。 */

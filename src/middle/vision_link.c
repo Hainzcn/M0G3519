@@ -1,6 +1,6 @@
 #include "vision_link.h"
 
-#include "bluetooth_hw.h"
+#include "uart3_maix_hw.h"
 #include "heartbeat.h"
 
 #define VISION_LINK_MAGIC_0                    (0xA5u)
@@ -356,7 +356,7 @@ void vision_link_process(void)
     uint8 byte;
     uint32 now_ms = heartbeat_get_ms();
 
-    while (0u != bluetooth_hw_read_byte(&byte))
+    while (0u != uart3_maix_hw_read_byte(&byte))
     {
         vision_link_consume_byte(byte, now_ms);
     }
@@ -429,7 +429,7 @@ void vision_link_get_status(vision_link_status_t *status)
         1u : 0u;
     status->boot_id = vision_link_boot_id;
     status->last_sequence = vision_link_last_sequence;
-    status->received_bytes = bluetooth_hw_get_rx_count();
+    status->received_bytes = uart3_maix_hw_get_rx_count();
     status->crc_ok_frames = vision_link_crc_ok_frames;
     status->accepted_frames = vision_link_accepted_frames;
     status->valid_measurement_frames = vision_link_valid_measurement_frames;
@@ -441,5 +441,5 @@ void vision_link_get_status(vision_link_status_t *status)
     status->sequence_gap_frames = vision_link_sequence_gap_frames;
     status->boot_changes = vision_link_boot_changes;
     status->resync_dropped_bytes = vision_link_resync_dropped_bytes;
-    status->uart_rx_overflows = bluetooth_hw_get_rx_overflow_count();
+    status->uart_rx_overflows = uart3_maix_hw_get_rx_overflow_count();
 }

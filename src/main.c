@@ -1,4 +1,4 @@
-#include "bluetooth_test_app.h"
+#include "uart3_maix_app.h"
 #include "grayscale_app.h"
 #include "heartbeat_app.h"
 #include "heartbeat_hw.h"
@@ -18,7 +18,7 @@ int main(void)
     motor_app_init();
     imu_app_init();
     oled_app_init();
-    bluetooth_test_app_init();
+    uart3_maix_app_init();
 
     while (1)
     {
@@ -28,7 +28,7 @@ int main(void)
         grayscale_app_process();
         vision_link_process();
         motor_app_process();
-        bluetooth_test_app_process();
+        uart3_maix_app_process();
         heartbeat_app_process();
         oled_app_process();
     }

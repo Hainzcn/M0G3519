@@ -1,8 +1,9 @@
-#include "bluetooth_test_app.h"
+#include "uart3_maix_app.h"
 
 #include <stdio.h>
 
-#include "bluetooth_hw.h"
+#include "control_config.h"
+#include "uart3_maix_hw.h"
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
 #include "imu.h"
@@ -11,7 +12,7 @@
 #include "wheel_speed_control.h"
 #include "vision_link.h"
 
-#define BLUETOOTH_TEST_ALIVE_PERIOD_MS      (1000u)
+#define UART3_MAIX_ALIVE_PERIOD_MS      (1000u)
 /* Match the 100 Hz wheel-speed loop. Reduce to 50/20 Hz if tx_drop_bytes rises. */
 #define CHASSIS_TELEMETRY_HZ                (100u)
 #define CHASSIS_TELEMETRY_PERIOD_MS         (1000u / CHASSIS_TELEMETRY_HZ)
@@ -28,7 +29,7 @@
 #define CHASSIS_FLAG_KINEMATICS_VALID        (0x40u)
 #define CHASSIS_FLAG_UART_RX_OVERFLOW        (0x80u)
 
-static uint32 bluetooth_test_last_alive_ms;
+static uint32 uart3_maix_last_alive_ms;
 static uint32 chassis_telemetry_last_ms;
 static uint16 chassis_telemetry_sequence;
 
@@ -134,7 +135,7 @@ static uint8 chassis_telemetry_flags(
     if (0u != wheel->left_saturated) flags |= CHASSIS_FLAG_LEFT_SATURATED;
     if (0u != wheel->right_saturated) flags |= CHASSIS_FLAG_RIGHT_SATURATED;
     if (0u != wheel->kinematics_valid) flags |= CHASSIS_FLAG_KINEMATICS_VALID;
-    if (0u != bluetooth_hw_get_rx_overflow_count())
+    if (0u != uart3_maix_hw_get_rx_overflow_count())
     {
         flags |= CHASSIS_FLAG_UART_RX_OVERFLOW;
     }
@@ -149,7 +150,7 @@ static void chassis_telemetry_send(uint32 now_ms)
         wheel_speed_control_get_status();
     imu_snapshot_t imu;
     motor_app_mode_enum mode = motor_app_get_mode();
-    uint32 rx_overflow = bluetooth_hw_get_rx_overflow_count();
+    uint32 rx_overflow = uart3_maix_hw_get_rx_overflow_count();
     uint16 crc;
 
     imu_get_snapshot(&imu);
@@ -179,7 +180,7 @@ static void chassis_telemetry_send(uint32 now_ms)
     chassis_write_scaled_i16(&frame[38], wheel->measured_speed_mps, 1000.0f);
     chassis_write_scaled_i16(&frame[40], wheel->measured_accel_mps2, 1000.0f);
     chassis_write_scaled_i16(&frame[42], line->error, 1.0f);
-    chassis_write_u32_le(&frame[44], bluetooth_hw_get_tx_drop_count());
+    chassis_write_u32_le(&frame[44], uart3_maix_hw_get_tx_drop_count());
     chassis_write_u16_le(&frame[48],
         (uint16)((rx_overflow > 65535u) ? 65535u : rx_overflow));
     if (0u != (imu.flags & IMU_FLAG_ACCEL))
@@ -195,44 +196,54 @@ static void chassis_telemetry_send(uint32 now_ms)
     crc = chassis_crc16_ccitt_false(frame, 54u);
     chassis_write_u16_le(&frame[54], crc);
 
-    (void)bluetooth_hw_write_atomic(frame, CHASSIS_TELEMETRY_FRAME_SIZE);
+    (void)uart3_maix_hw_write_atomic(frame, CHASSIS_TELEMETRY_FRAME_SIZE);
     chassis_telemetry_sequence++;
 }
 
-void bluetooth_test_app_init(void)
+void uart3_maix_app_init(void)
 {
-    bluetooth_hw_init();
+    uart3_maix_hw_init();
     vision_link_init();
-    bluetooth_test_last_alive_ms = heartbeat_get_ms();
-    chassis_telemetry_last_ms = bluetooth_test_last_alive_ms;
+    uart3_maix_last_alive_ms = heartbeat_get_ms();
+    chassis_telemetry_last_ms = uart3_maix_last_alive_ms;
     chassis_telemetry_sequence = 0u;
 
-    bluetooth_hw_send_string("[link] ready,115200,telemetry=100Hz\r\n");
+#if (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
+    uart3_maix_hw_send_string("[link] ready,115200,telemetry=100Hz\r\n");
+#else
+    uart3_maix_hw_send_string("[link] ready,115200,telemetry=off\r\n");
+#endif
     heartbeat_hw_uart_send_string(
+#if (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
         "[mode] uart3 vision+telemetry, chassis disabled\r\n");
+#else
+        "[mode] uart3 vision only, chassis disabled\r\n");
+#endif
 }
 
-void bluetooth_test_app_process(void)
+void uart3_maix_app_process(void)
 {
     uint32 now_ms;
 
-    bluetooth_hw_tx_pump();
+    uart3_maix_hw_tx_pump();
 
     now_ms = heartbeat_get_ms();
+#if (UART3_MAIX_CHASSIS_TELEMETRY_ENABLE != 0u)
     if ((now_ms - chassis_telemetry_last_ms) >=
         CHASSIS_TELEMETRY_PERIOD_MS)
     {
         chassis_telemetry_last_ms = now_ms;
         chassis_telemetry_send(now_ms);
     }
+#endif
 
-    if ((now_ms - bluetooth_test_last_alive_ms) >=
-        BLUETOOTH_TEST_ALIVE_PERIOD_MS)
+    if ((now_ms - uart3_maix_last_alive_ms) >=
+        UART3_MAIX_ALIVE_PERIOD_MS)
     {
-        bluetooth_test_last_alive_ms = now_ms;
-        bluetooth_hw_send_string("[link] alive\r\n");
+        uart3_maix_last_alive_ms = now_ms;
+        uart3_maix_hw_send_string("[link] alive\r\n");
         vision_link_send_diagnostic();
     }
 
-    bluetooth_hw_tx_pump();
+    uart3_maix_hw_tx_pump();
 }
