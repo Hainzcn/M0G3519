@@ -15,7 +15,7 @@ typedef enum
 
 #define IMU_ANGLE_DATA_SIZE          (6u)
 #define IMU_ACCEL_GYRO_DATA_SIZE     (12u)
-#define IMU_PROCESS_MAX_BLOCKS       (3u)
+#define IMU_PROCESS_MAX_BLOCKS       (IMU_HW_DMA_BLOCK_COUNT)
 
 static imu_angle_t imu_angle_data;
 static imu_accel_t imu_accel_data;
@@ -129,6 +129,11 @@ static void imu_feed_byte(uint8 byte)
             else
             {
                 imu_parser_reset();
+                if (IMU_FRAME_HEADER == byte)
+                {
+                    imu_checksum = byte;
+                    imu_parse_state = IMU_PARSE_SYNC_2;
+                }
             }
             break;
 
@@ -227,7 +232,7 @@ void imu_process(void)
 
     if (0u != imu_hw_take_rx_error())
     {
-        imu_bad_frame_count++;
+        /* DMA/UART overruns lose byte alignment; resync without bad++ . */
         imu_parser_reset();
     }
 

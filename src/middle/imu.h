@@ -27,8 +27,12 @@
 #define IMU_ACCEL_SCALE_MPS2        \
     (IMU_ACCEL_FSR_G * IMU_GRAVITY_MPS2 / 32768.0f)
 
-/* Ten samples at 200 Hz. */
-#define IMU_STALE_TIMEOUT_MS        (50u)
+/* Module active report rate; must match ATK-MS901M configuration. */
+#define IMU_REPORT_RATE_HZ          (100u)
+
+/* Allow ~10 sample periods before clearing a cached frame type. */
+#define IMU_STALE_TIMEOUT_MS        ((1000u + IMU_REPORT_RATE_HZ - 1u) / \
+                                     IMU_REPORT_RATE_HZ * 10u)
 
 typedef struct
 {

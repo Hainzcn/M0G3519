@@ -41,6 +41,10 @@ virtualFolder:
       folders: []
     - name: Middle
       files:
+        - path: ../src/middle/balance_control.c
+        - path: ../src/middle/balance_control.h
+        - path: ../src/middle/balance_linkage.c
+        - path: ../src/middle/balance_linkage.h
         - path: ../src/middle/control_config.h
         - path: ../src/middle/control_pid.c
         - path: ../src/middle/control_pid.h
@@ -69,6 +73,8 @@ virtualFolder:
       folders: []
     - name: App
       files:
+        - path: ../src/app/balance_app.c
+        - path: ../src/app/balance_app.h
         - path: ../src/app/uart3_maix_app.c
         - path: ../src/app/uart3_maix_app.h
         - path: ../src/app/emm42_demo_app.c

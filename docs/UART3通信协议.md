@@ -1,6 +1,6 @@
 # MaixCAM2 与 MSPM0G3519 UART3 通信协议
 
-版本：视觉 V1 / 底盘遥测 V2 / 摆杆遥测 V1
+版本：视觉 V1 / 底盘遥测 V2 / 摆杆遥测 V2
 
 日期：2026-07-31
 
@@ -75,22 +75,33 @@ V1 不定义 ACK、重传、控制命令、自动波特率或跨芯片时钟同�
 ## 4. 两种 100Hz 调试遥测
 
 底盘调试帧为 `A5 5A 02 81 38`、固定 56 字节，字段见
-`UART3底盘遥测协议.md`。摆杆调试帧为 `A5 5A 01 82 14`、固定 20 字节：
+`UART3底盘遥测协议.md`。摆杆调试帧为 `A5 5A 02 82 28`、固定 40 字节：
 
 | 偏移 | 长度 | 字段 | 定义 |
 | ---: | ---: | --- | --- |
-| 5 | 1 | `flags` | bit0 Demo 活跃，bit1 IMU pitch 有效 |
-| 6 | 1 | `demo_state` | 摆杆 Demo 状态 |
-| 7 | 1 | `reserved` | 固定 0 |
+| 5 | 1 | `flags` | bit0 ACTIVE，bit1 电机反馈有效，bit2 视觉在线，bit3 已接受测量，bit4 命令等待，bit5 故障锁存 |
+| 6 | 1 | `balance_state` | 摆杆状态机 |
+| 7 | 1 | `fault` | 锁存故障码，0 表示无故障 |
 | 8 | 2 | `sequence` | uint16，100Hz 递增 |
 | 10 | 4 | `mcu_ms` | MCU 本地毫秒时间 |
-| 14 | 2 | `target_angle_cdeg` | 目标角，0.01deg/LSB |
-| 16 | 2 | `imu_pitch_cdeg` | IMU pitch；无效为 `INT16_MIN` |
-| 18 | 2 | `crc16` | 对 0..17 计算 |
+| 14 | 2 | `vision_sequence` | 最近接受的视觉帧序号 |
+| 16 | 2 | `position_dmm` | 估计球位置，0.1mm/LSB |
+| 18 | 2 | `velocity_mm_s` | 估计球速度，1mm/s/LSB |
+| 20 | 2 | `error_dmm` | 中心目标位置误差，0.1mm/LSB |
+| 22 | 2 | `desired_accel_mm_s2` | 期望球加速度，1mm/s^2/LSB |
+| 24 | 2 | `lever_angle_cdeg` | 摆杆目标角，0.01deg/LSB |
+| 26 | 2 | `motor_target_cdeg` | Emm42 绝对目标角，0.01deg/LSB |
+| 28 | 2 | `motor_feedback_cdeg` | Emm42 反馈角；无效为 `INT16_MIN` |
+| 30 | 2 | `vision_age_ms` | 有效测量年龄；无效为 `UINT16_MAX` |
+| 32 | 1 | `confidence` | 最近接受测量的置信度 |
+| 33 | 1 | `control_flags` | 测量新鲜、预测、边缘恢复及三类限幅标志 |
+| 34 | 2 | `command_errors` | Emm42 命令错误累计值 |
+| 36 | 2 | `emm42_rx_overflows` | UART7 RX 溢出累计值，饱和到 65535 |
+| 38 | 2 | `crc16` | 对 0..37 计算 |
 
-MaixCAM2 在这两种模式下单独运行 `uart_log_receiver.py`。接收器原样轮转保存 `.bin`，
-并分别生成 `chassis_telemetry.csv`、`balance_telemetry.csv` 和
-`receiver_status.csv`。原始文件始终是故障分析的权威数据。
+MaixCAM2 在这两种模式下运行 `uart_log_receiver.py`，接收器原样轮转保存 `.bin`。
+摆杆日志由仓库 `tools/balance_log/analyze_balance_log.py` 离线生成 CSV 和调参曲线；
+原始文件始终是故障分析的权威数据。
 
 ## 5. 联调顺序
 

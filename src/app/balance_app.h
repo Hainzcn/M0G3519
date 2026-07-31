@@ -1,0 +1,60 @@
+#ifndef BALANCE_APP_H_
+#define BALANCE_APP_H_
+
+#include "zf_common_typedef.h"
+
+typedef enum
+{
+    BALANCE_APP_UNCONFIGURED = 0,
+    BALANCE_APP_POWER_WAIT,
+    BALANCE_APP_SET_REFERENCE,
+    BALANCE_APP_ENABLE,
+    BALANCE_APP_MOVE_LEVEL,
+    BALANCE_APP_ACTIVE,
+    BALANCE_APP_RECOVERY,
+    BALANCE_APP_FAULT,
+} balance_app_state_enum;
+
+typedef enum
+{
+    BALANCE_FAULT_NONE = 0,
+    BALANCE_FAULT_LINKAGE_UNREACHABLE,
+    BALANCE_FAULT_COMMAND_TIMEOUT,
+    BALANCE_FAULT_COMMAND_REJECTED,
+    BALANCE_FAULT_MOVE_LEVEL_TIMEOUT,
+    BALANCE_FAULT_MOTOR_FOLLOW_ERROR,
+    BALANCE_FAULT_BALL_HARD_EDGE,
+} balance_app_fault_enum;
+
+#define BALANCE_APP_FLAG_ACTIVE                 (0x01u)
+#define BALANCE_APP_FLAG_MOTOR_FEEDBACK_VALID   (0x02u)
+#define BALANCE_APP_FLAG_LINK_ONLINE            (0x04u)
+#define BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED   (0x08u)
+#define BALANCE_APP_FLAG_COMMAND_PENDING        (0x10u)
+#define BALANCE_APP_FLAG_FAULT_LATCHED          (0x20u)
+
+typedef struct
+{
+    balance_app_state_enum state;
+    balance_app_fault_enum fault;
+    uint8 flags;
+    uint8 control_flags;
+    uint8 vision_confidence;
+    uint16 vision_sequence;
+    uint32 vision_age_ms;
+    float estimated_position_m;
+    float estimated_velocity_mps;
+    float position_error_m;
+    float desired_ball_accel_mps2;
+    float lever_angle_deg;
+    float motor_target_deg;
+    float motor_feedback_deg;
+    uint16 command_error_count;
+    uint16 emm42_rx_overflow_count;
+} balance_app_status_t;
+
+void balance_app_init(void);
+void balance_app_process(void);
+const balance_app_status_t *balance_app_get_status(void);
+
+#endif

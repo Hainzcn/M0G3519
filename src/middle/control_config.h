@@ -15,11 +15,53 @@
 #define UART3_MAIX_MODE_NORMAL                    (0u)
 #define UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG   (1u)
 #define UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG   (2u)
-#define UART3_MAIX_MODE                            (UART3_MAIX_MODE_NORMAL)
+#define UART3_MAIX_MODE                            (UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
 
-/* 摆杆遥测调试模式同时挂载 +/-5 deg Demo，正常模式默认关闭执行器 Demo。 */
-#define EMM42_BALANCE_DEMO_ENABLE \
-    (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
+/* The balance controller replaces the legacy +/-5 degree actuator demo. */
+#define EMM42_BALANCE_DEMO_ENABLE              (0u)
+#define BALANCE_CONTROL_ENABLE                 (1u)
+
+/*
+ * Measure the physical negative-angle startup stop before setting this flag.
+ * Keeping CALIBRATED at zero makes the firmware initialize UART7 but never
+ * enable or move the balance actuator.
+ */
+#ifndef BALANCE_STARTUP_CALIBRATED
+#define BALANCE_STARTUP_CALIBRATED             (0u)
+#endif
+#ifndef BALANCE_STARTUP_LEVER_ANGLE_DEG
+#define BALANCE_STARTUP_LEVER_ANGLE_DEG        (-5.0f)
+#endif
+
+#define BALANCE_CONTROL_PERIOD_MS              (5u)
+#define BALANCE_COMMAND_PERIOD_MS              (10u)
+#define BALANCE_POSITION_QUERY_PERIOD_MS       (100u)
+#define BALANCE_POWER_WAIT_MS                  (3000u)
+#define BALANCE_COMMAND_TIMEOUT_MS             (25u)
+#define BALANCE_MOVE_LEVEL_TIMEOUT_MS          (2500u)
+#define BALANCE_LEVEL_SETTLE_MS                (200u)
+#define BALANCE_HARD_EDGE_TIMEOUT_MS           (200u)
+#define BALANCE_MAX_CONSECUTIVE_COMMAND_ERRORS (3u)
+#define BALANCE_RECOVERY_VALID_FRAMES          (5u)
+#define BALANCE_MIN_VISION_CONFIDENCE          (50u)
+
+#define BALANCE_KP                             (8.0f)
+#define BALANCE_KD                             (4.0f)
+#define BALANCE_ESTIMATOR_POSITION_GAIN        (0.65f)
+#define BALANCE_ESTIMATOR_VELOCITY_GAIN        (0.50f)
+#define BALANCE_MAX_BALL_ACCEL_MPS2            (0.45f)
+#define BALANCE_MAX_LEVER_ANGLE_DEG            (4.0f)
+#define BALANCE_DEGRADED_LEVER_ANGLE_DEG       (2.0f)
+#define BALANCE_MAX_LEVER_RATE_DEG_S           (30.0f)
+#define BALANCE_EDGE_POSITION_M                (0.100f)
+#define BALANCE_HARD_EDGE_POSITION_M           (0.115f)
+#define BALANCE_FRESH_MEASUREMENT_MS           (30u)
+#define BALANCE_VALID_MEASUREMENT_MS           (80u)
+
+#define BALANCE_EMM42_MOVE_RPM                 (30u)
+#define BALANCE_EMM42_ACCELERATION             (20u)
+#define BALANCE_LEVEL_MOTOR_TOLERANCE_DEG      (1.0f)
+#define BALANCE_MOTOR_FOLLOW_ERROR_DEG         (5.0f)
 
 #if ((MOTOR_APP_AUTO_START_LINE_FOLLOW != 0u) && \
      (MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO != 0u))
@@ -33,6 +75,16 @@
 #if ((EMM42_BALANCE_DEMO_ENABLE != 0u) && \
      (EMM42_BALANCE_DEMO_ENABLE != 1u))
 #error "EMM42_BALANCE_DEMO_ENABLE must be 0 or 1"
+#endif
+#if ((BALANCE_CONTROL_ENABLE != 0u) && (BALANCE_CONTROL_ENABLE != 1u))
+#error "BALANCE_CONTROL_ENABLE must be 0 or 1"
+#endif
+#if ((BALANCE_STARTUP_CALIBRATED != 0u) && \
+     (BALANCE_STARTUP_CALIBRATED != 1u))
+#error "BALANCE_STARTUP_CALIBRATED must be 0 or 1"
+#endif
+#if ((BALANCE_CONTROL_ENABLE != 0u) && (EMM42_BALANCE_DEMO_ENABLE != 0u))
+#error "Balance controller and EMM42 demo are mutually exclusive"
 #endif
 
 /* 实测车体几何参数，以及顺时针 1 m 直径圆的中心轨迹。 */
