@@ -1,0 +1,194 @@
+version: "4.1"
+name: M0G3519_nortos_keil
+type: ARM
+deviceName: null
+packDir: null
+srcDirs: []
+virtualFolder:
+  name: <virtual_root>
+  files: []
+  folders:
+    - name: Source
+      files:
+        - path: ../src/main.c
+        - path: ../M0G3519.syscfg
+        - path: startup_mspm0g351x_uvision.s
+        - path: ./ti_msp_dl_config.h
+        - path: ./ti_msp_dl_config.c
+      folders: []
+    - name: Hardware
+      files:
+        - path: ../src/hardware/bluetooth_hw.c
+        - path: ../src/hardware/bluetooth_hw.h
+        - path: ../src/hardware/emm42_hw.c
+        - path: ../src/hardware/emm42_hw.h
+        - path: ../src/hardware/encoder_hw.c
+        - path: ../src/hardware/encoder_hw.h
+        - path: ../src/hardware/grayscale_hw.c
+        - path: ../src/hardware/grayscale_hw.h
+        - path: ../src/hardware/i2c_bus.c
+        - path: ../src/hardware/i2c_bus.h
+        - path: ../src/hardware/imu_hw.c
+        - path: ../src/hardware/imu_hw.h
+        - path: ../src/hardware/motor_hw.c
+        - path: ../src/hardware/motor_hw.h
+        - path: ../src/hardware/heartbeat_hw.c
+        - path: ../src/hardware/heartbeat_hw.h
+        - path: ../src/hardware/oled_hw.c
+        - path: ../src/hardware/oled_hw.h
+      folders: []
+    - name: Middle
+      files:
+        - path: ../src/middle/control_config.h
+        - path: ../src/middle/control_pid.c
+        - path: ../src/middle/control_pid.h
+        - path: ../src/middle/emm42.c
+        - path: ../src/middle/emm42.h
+        - path: ../src/middle/encoder.c
+        - path: ../src/middle/encoder.h
+        - path: ../src/middle/grayscale.c
+        - path: ../src/middle/grayscale.h
+        - path: ../src/middle/motor.c
+        - path: ../src/middle/motor.h
+        - path: ../src/middle/heartbeat.c
+        - path: ../src/middle/heartbeat.h
+        - path: ../src/middle/imu.c
+        - path: ../src/middle/imu.h
+        - path: ../src/middle/line_control.c
+        - path: ../src/middle/line_control.h
+        - path: ../src/middle/oled.c
+        - path: ../src/middle/oled.h
+        - path: ../src/middle/vision_link.c
+        - path: ../src/middle/vision_link.h
+        - path: ../src/middle/wheel_speed_control.c
+        - path: ../src/middle/wheel_speed_control.h
+      folders: []
+    - name: App
+      files:
+        - path: ../src/app/bluetooth_test_app.c
+        - path: ../src/app/bluetooth_test_app.h
+        - path: ../src/app/emm42_demo_app.c
+        - path: ../src/app/emm42_demo_app.h
+        - path: ../src/app/grayscale_app.c
+        - path: ../src/app/grayscale_app.h
+        - path: ../src/app/motor_app.c
+        - path: ../src/app/motor_app.h
+        - path: ../src/app/heartbeat_app.c
+        - path: ../src/app/heartbeat_app.h
+        - path: ../src/app/imu_app.c
+        - path: ../src/app/imu_app.h
+        - path: ../src/app/oled_app.c
+        - path: ../src/app/oled_app.h
+      folders: []
+    - name: Libraries
+      files:
+        - path: ../src/MSPM0G3519_Library/zf_common/zf_common_clock.c
+        - path: ../src/MSPM0G3519_Library/zf_common/zf_common_debug.c
+        - path: ../src/MSPM0G3519_Library/zf_common/zf_common_fifo.c
+        - path: ../src/MSPM0G3519_Library/zf_common/zf_common_interrupt.c
+        - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_delay.c
+        - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_encoder.c
+        - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_gpio.c
+        - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_pwm.c
+        - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_timer.c
+        - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_uart.c
+      folders: []
+dependenceList: []
+outDir: build
+miscInfo:
+  uid: a7c3e91f2b584d6e9f0a1c2d3e4f5a6b
+targets:
+  M0G3519_nortos_keil:
+    cppPreprocessAttrs:
+      defineList:
+        - __MSPM0G3519__
+      incList:
+        - .
+        - ..
+        - ../src/hardware
+        - ../src/middle
+        - ../src/app
+        - ../src/MSPM0G3519_Library/zf_common
+        - ../src/MSPM0G3519_Library/zf_driver
+        - A:/ti/mspm0_sdk_2_10_00_04/source
+        - A:/ti/mspm0_sdk_2_10_00_04/source/third_party/CMSIS/Core/Include
+        - .cmsis/include
+        - RTE/_M0G3519_nortos_keil
+      libList: []
+    excludeList: []
+    settings:
+      debugger: cortex-debug
+    toolchain: AC6
+    toolchainConfigMap:
+      AC6:
+        archExtensions: ""
+        cpuType: Cortex-M0+
+        floatingPointHardware: none
+        options:
+          version: 3
+          afterBuildTasks: []
+          asm-compiler:
+            $use: asm-auto
+            misc-controls: ""
+          beforeBuildTasks:
+            - name: linking syscfg
+              abortAfterFailed: true
+              command: '"${projectRoot}/syscfg.bat" "${projectRoot}" M0G3519.syscfg'
+              disable: false
+              stopBuildAfterFailed: true
+          c/cpp-compiler:
+            language-c: c99
+            language-cpp: c++11
+            link-time-optimization: false
+            optimization: level-2
+            short-enums#wchar: true
+            warnings: misra-compatible
+          global:
+            output-debug-info: enable
+            use-microLIB: false
+          linker:
+            $outputTaskExcludes:
+              - .bin
+            misc-controls: A:/ti/mspm0_sdk_2_10_00_04/source/ti/driverlib/lib/keil/m0p/mspm0gx51x/driverlib.a --diag_suppress=L6329
+            output-format: elf
+        scatterFilePath: ./mspm0g3519.sct
+        storageLayout:
+          RAM:
+            - id: 1
+              isChecked: true
+              mem:
+                size: "0x10000"
+                startAddr: "0x20200000"
+              noInit: false
+              tag: IRAM
+            - id: 2
+              isChecked: true
+              mem:
+                size: "0x10000"
+                startAddr: "0x20210000"
+              noInit: false
+              tag: IRAM
+          ROM:
+            - id: 1
+              isChecked: true
+              isStartup: true
+              mem:
+                size: "0x80000"
+                startAddr: "0x00000000"
+              tag: IROM
+        useCustomScatterFile: true
+    uploadConfigMap:
+      Custom:
+        bin: ""
+        commandLine: '"A:/ti/XDS110_3519/dslite-CORTEX_M0P.bat" --config="A:/ti/XDS110_3519/user_files/configs/MSPM0G3519.ccxml" -e -f -v "${ExecutableName}.hex"'
+        eraseChipCommand: '"A:/ti/XDS110_3519/dslite-CORTEX_M0P.bat" --config="A:/ti/XDS110_3519/user_files/configs/MSPM0G3519.ccxml" -e'
+      JLink:
+        baseAddr: ""
+        bin: ""
+        cpuInfo:
+          cpuName: "null"
+          vendor: "null"
+        otherCmds: ""
+        proType: 1
+        speed: 8000
+    uploader: Custom

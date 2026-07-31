@@ -1,5 +1,7 @@
 #include "bluetooth_test_app.h"
 
+#include <stdio.h>
+
 #include "bluetooth_hw.h"
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
@@ -7,9 +9,9 @@
 #include "line_control.h"
 #include "motor_app.h"
 #include "wheel_speed_control.h"
+#include "vision_link.h"
 
 #define BLUETOOTH_TEST_ALIVE_PERIOD_MS      (1000u)
-#define BLUETOOTH_TEST_MAX_ECHO_BYTES       (64u)
 /* Match the 100 Hz wheel-speed loop. Reduce to 50/20 Hz if tx_drop_bytes rises. */
 #define CHASSIS_TELEMETRY_HZ                (100u)
 #define CHASSIS_TELEMETRY_PERIOD_MS         (1000u / CHASSIS_TELEMETRY_HZ)
@@ -29,6 +31,35 @@
 static uint32 bluetooth_test_last_alive_ms;
 static uint32 chassis_telemetry_last_ms;
 static uint16 chassis_telemetry_sequence;
+
+static void vision_link_send_diagnostic(void)
+{
+    char message[192];
+    vision_link_status_t status;
+
+    vision_link_get_status(&status);
+    snprintf(message, sizeof(message),
+        "[vision] on=%u valid=%u age=%u/%u seq=%u boot=%04X "
+        "ok=%u accept=%u crc=%u hdr=%u sem=%u dup=%u back=%u gap=%u "
+        "restart=%u ovf=%u\r\n",
+        (unsigned int)status.link_online,
+        (unsigned int)status.measurement_valid,
+        (unsigned int)status.link_age_ms,
+        (unsigned int)status.measurement_age_ms,
+        (unsigned int)status.last_sequence,
+        (unsigned int)status.boot_id,
+        (unsigned int)status.crc_ok_frames,
+        (unsigned int)status.accepted_frames,
+        (unsigned int)status.crc_errors,
+        (unsigned int)status.header_errors,
+        (unsigned int)status.semantic_errors,
+        (unsigned int)status.duplicate_frames,
+        (unsigned int)status.backward_frames,
+        (unsigned int)status.sequence_gap_frames,
+        (unsigned int)status.boot_changes,
+        (unsigned int)status.uart_rx_overflows);
+    heartbeat_hw_uart_send_string(message);
+}
 
 static void chassis_write_u16_le(uint8 *buffer, uint16 value)
 {
@@ -171,29 +202,21 @@ static void chassis_telemetry_send(uint32 now_ms)
 void bluetooth_test_app_init(void)
 {
     bluetooth_hw_init();
+    vision_link_init();
     bluetooth_test_last_alive_ms = heartbeat_get_ms();
     chassis_telemetry_last_ms = bluetooth_test_last_alive_ms;
     chassis_telemetry_sequence = 0u;
 
-    bluetooth_hw_send_string("[bt] ready,115200,telemetry=100Hz\r\n");
+    bluetooth_hw_send_string("[link] ready,115200,telemetry=100Hz\r\n");
     heartbeat_hw_uart_send_string(
-        "[mode] uart3 telemetry enabled\r\n");
+        "[mode] uart3 vision+telemetry, chassis disabled\r\n");
 }
 
 void bluetooth_test_app_process(void)
 {
-    uint8 byte;
-    uint8 echo_count = 0u;
     uint32 now_ms;
 
     bluetooth_hw_tx_pump();
-
-    while ((echo_count < BLUETOOTH_TEST_MAX_ECHO_BYTES) &&
-           (0u != bluetooth_hw_read_byte(&byte)))
-    {
-        (void)bluetooth_hw_write(&byte, 1u);
-        echo_count++;
-    }
 
     now_ms = heartbeat_get_ms();
     if ((now_ms - chassis_telemetry_last_ms) >=
@@ -207,7 +230,8 @@ void bluetooth_test_app_process(void)
         BLUETOOTH_TEST_ALIVE_PERIOD_MS)
     {
         bluetooth_test_last_alive_ms = now_ms;
-        bluetooth_hw_send_string("[bt] alive\r\n");
+        bluetooth_hw_send_string("[link] alive\r\n");
+        vision_link_send_diagnostic();
     }
 
     bluetooth_hw_tx_pump();

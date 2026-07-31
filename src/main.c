@@ -7,6 +7,7 @@
 #include "motor_app.h"
 #include "oled_app.h"
 #include "zf_common_clock.h"
+#include "vision_link.h"
 
 int main(void)
 {
@@ -25,6 +26,7 @@ int main(void)
         heartbeat_hw_uart_tx_pump();
         imu_app_process();
         grayscale_app_process();
+        vision_link_process();
         motor_app_process();
         bluetooth_test_app_process();
         heartbeat_app_process();

@@ -4,8 +4,8 @@
 /* 底盘控制公共配置，100 Hz 周期；请在实车上标定。 */
 #define CHASSIS_CONTROL_PERIOD_MS             (10u)
 
-/* 上电自动进入循迹；与 RIGHT_CIRCLE_DEMO 二选一。 */
-#define MOTOR_APP_AUTO_START_LINE_FOLLOW      (1u)
+/* 通信联调阶段上电保持底盘停机；与 RIGHT_CIRCLE_DEMO 二选一。 */
+#define MOTOR_APP_AUTO_START_LINE_FOLLOW      (0u)
 #define MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO (0u)
 
 #if ((MOTOR_APP_AUTO_START_LINE_FOLLOW != 0u) && \
