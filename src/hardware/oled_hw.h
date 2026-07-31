@@ -6,11 +6,9 @@
 /*
  * GME12864-49（0.96 寸 128×64，4 针 I2C，SSD1306/兼容）硬件层。
  *
- * 使用 SysConfig 配置的硬件 I2C0（400 kHz）：
- *   SCL = B0 (PB0, I2C0_SCL)
- *   SDA = B1 (PB1, I2C0_SDA)
- *
- * 注：PB12/PB13 无 I2C 复用，硬件 I2C 须接 B0/B1。
+ * 使用 SysConfig 配置的独立硬件 I2C0（400 kHz）：
+ *   SCL = B17 (PB17, I2C0_SCL)
+ *   SDA = B18 (PB18, I2C0_SDA)
  *
  * VCC = 3.3V；GND 共地。
  * I2C 7 位地址默认 0x3C；SA0 接高时改为 0x3D。

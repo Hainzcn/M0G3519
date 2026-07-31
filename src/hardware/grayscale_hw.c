@@ -1,36 +1,50 @@
 #include "grayscale_hw.h"
 
-#include "zf_driver_gpio.h"
+#include "i2c_bus.h"
+
+static uint8 grayscale_hw_register = GRAYSCALE_HW_DATA_REGISTER;
+static uint8 grayscale_hw_sensor_bits;
+static uint32 grayscale_hw_error_count;
 
 void grayscale_hw_init(void)
 {
-    gpio_init(GRAYSCALE_HW_AD0_PIN, GPO, GPIO_LOW, GPO_PUSH_PULL);
-    gpio_init(GRAYSCALE_HW_AD1_PIN, GPO, GPIO_LOW, GPO_PUSH_PULL);
-    gpio_init(GRAYSCALE_HW_AD2_PIN, GPO, GPIO_LOW, GPO_PUSH_PULL);
-    gpio_init(GRAYSCALE_HW_OUT_PIN, GPI, GPIO_LOW, GPI_PULL_UP);
-    grayscale_hw_select_channel(0u);
+    i2c_bus_init();
+    grayscale_hw_sensor_bits = 0u;
+    grayscale_hw_error_count = 0u;
 }
 
-void grayscale_hw_select_channel(uint8 ch)
+void grayscale_hw_process(void)
 {
-    uint32 address_value;
-    const uint32 address_mask =
-        DL_GPIO_PIN_15 | DL_GPIO_PIN_16 | DL_GPIO_PIN_12;
+    i2c_bus_process();
+}
 
-    ch &= 0x07u;
-    address_value = ((0u != (ch & 0x01u)) ? DL_GPIO_PIN_15 : 0u) |
-                    ((0u != (ch & 0x02u)) ? DL_GPIO_PIN_16 : 0u) |
-                    ((0u != (ch & 0x04u)) ? DL_GPIO_PIN_12 : 0u);
+uint8 grayscale_hw_start_read(void)
+{
+    return i2c_bus_start_write_read(I2C_BUS_CLIENT_IR_TRACKING,
+        GRAYSCALE_HW_I2C_ADDR, &grayscale_hw_register, 1u,
+        &grayscale_hw_sensor_bits, 1u);
+}
 
-    /* Force all address bits low first, then set the required high bits. */
-    DL_GPIO_clearPins(GPIOA, address_mask);
-    if (0u != address_value)
+uint8 grayscale_hw_take_read(uint8 *sensor_bits)
+{
+    i2c_bus_result_t result =
+        i2c_bus_take_result(I2C_BUS_CLIENT_IR_TRACKING);
+
+    if (I2C_BUS_RESULT_ERROR == result)
     {
-        DL_GPIO_setPins(GPIOA, address_value);
+        grayscale_hw_error_count++;
+        return 2u;
     }
+    if (I2C_BUS_RESULT_DONE != result)
+    {
+        return 0u;
+    }
+
+    *sensor_bits = grayscale_hw_sensor_bits;
+    return 1u;
 }
 
-uint8 grayscale_hw_read_out(void)
+uint32 grayscale_hw_get_error_count(void)
 {
-    return gpio_get_level(GRAYSCALE_HW_OUT_PIN);
+    return grayscale_hw_error_count;
 }

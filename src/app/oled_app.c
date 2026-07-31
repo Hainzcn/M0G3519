@@ -20,6 +20,7 @@
 
 #define OLED_APP_PAGE_TITLE             (0)
 #define OLED_APP_PAGE_YAW               (1)
+#define OLED_APP_PAGE_IR_STATUS         (2)
 #define OLED_APP_PAGE_RPM               (3)
 #define OLED_APP_PAGE_TURN              (5)
 #define OLED_APP_PAGE_GS                (7)
@@ -34,6 +35,7 @@
 
 #define OLED_APP_TEXT_DIRTY_YAW          (0x01u)
 #define OLED_APP_TEXT_DIRTY_RPM          (0x02u)
+#define OLED_APP_TEXT_DIRTY_IR           (0x04u)
 
 static uint32 oled_app_last_gs_ms;
 static uint32 oled_app_last_text_ms;
@@ -45,6 +47,9 @@ static int32  oled_app_yaw_cache;
 static int32  oled_app_left_rpm_cache;
 static int32  oled_app_right_rpm_cache;
 static uint8  oled_app_turn_cache;
+static uint8  oled_app_ir_online_cache;
+static uint8  oled_app_ir_raw_cache;
+static uint32 oled_app_ir_error_cache;
 
 /* 16x16 Song bitmap rows for "turning", rendered as black on white. */
 static const uint16 oled_app_glyph_turn[16] =
@@ -131,6 +136,9 @@ static uint8 oled_app_render_text(void)
     int32 yaw_cache;
     uint8 dirty_pages = 0u;
     uint8 yaw_ready;
+    uint8 ir_online;
+    uint8 ir_raw;
+    uint32 ir_errors;
 
     angle     = imu_get_angle();
     yaw_ready = imu_is_type_ready(IMU_FLAG_ANGLE);
@@ -138,12 +146,45 @@ static uint8 oled_app_render_text(void)
     left_rpm  = encoder_get_left_rpm();
     right_rpm = encoder_get_right_rpm();
     yaw_cache = yaw_ready ? yaw : 0x7FFFFFFEL;
+    ir_online = grayscale_is_online();
+    ir_raw = grayscale_get_raw_bits();
+    ir_errors = grayscale_get_error_count();
 
     if ((yaw_cache == oled_app_yaw_cache) &&
         (left_rpm == oled_app_left_rpm_cache) &&
-        (right_rpm == oled_app_right_rpm_cache))
+        (right_rpm == oled_app_right_rpm_cache) &&
+        (ir_online == oled_app_ir_online_cache) &&
+        (ir_raw == oled_app_ir_raw_cache) &&
+        (ir_errors == oled_app_ir_error_cache))
     {
         return 0;
+    }
+
+    if ((ir_online != oled_app_ir_online_cache) ||
+        (ir_raw != oled_app_ir_raw_cache) ||
+        (ir_errors != oled_app_ir_error_cache))
+    {
+        dirty_pages |= OLED_APP_TEXT_DIRTY_IR;
+        oled_app_ir_online_cache = ir_online;
+        oled_app_ir_raw_cache = ir_raw;
+        oled_app_ir_error_cache = ir_errors;
+
+        oled_clear_page(OLED_APP_PAGE_IR_STATUS);
+        oled_show_string(0, OLED_APP_PAGE_IR_STATUS, "IR:", OLED_FONT_6X8);
+        if (0u != ir_online)
+        {
+            oled_show_uint(18, OLED_APP_PAGE_IR_STATUS, ir_raw,
+                           OLED_FONT_6X8);
+        }
+        else
+        {
+            oled_show_string(18, OLED_APP_PAGE_IR_STATUS, "OFF",
+                             OLED_FONT_6X8);
+        }
+        oled_show_string(64, OLED_APP_PAGE_IR_STATUS, "E:", OLED_FONT_6X8);
+        oled_show_uint(76, OLED_APP_PAGE_IR_STATUS,
+                       (ir_errors > 99999999u) ? 99999999u : ir_errors,
+                       OLED_FONT_6X8);
     }
 
     if (yaw_cache != oled_app_yaw_cache)
@@ -204,6 +245,9 @@ void oled_app_init(void)
     oled_app_left_rpm_cache  = 0x7FFFFFFF;
     oled_app_right_rpm_cache = 0x7FFFFFFF;
     oled_app_turn_cache      = 0xFFu;
+    oled_app_ir_online_cache = 0xFFu;
+    oled_app_ir_raw_cache    = 0xFFu;
+    oled_app_ir_error_cache  = 0xFFFFFFFFu;
 
     oled_app_draw_static_labels();
     oled_app_render_text();
@@ -257,6 +301,11 @@ void oled_app_process(void)
         if (0u != (text_dirty_pages & OLED_APP_TEXT_DIRTY_RPM))
         {
             oled_refresh_pages(OLED_APP_PAGE_RPM, OLED_APP_PAGE_RPM);
+        }
+        if (0u != (text_dirty_pages & OLED_APP_TEXT_DIRTY_IR))
+        {
+            oled_refresh_pages(OLED_APP_PAGE_IR_STATUS,
+                               OLED_APP_PAGE_IR_STATUS);
         }
     }
 

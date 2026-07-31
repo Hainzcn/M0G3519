@@ -281,37 +281,42 @@ RPM 换算：`rpm = Δcount × 60000 / (1320 × period_ms)`
 
 ## 循迹模块（grayscale）
 
-八路数字灰度：**3 位地址 AD0~AD2 + 1 位 OUT**，非阻塞扫描，禁止主循环 busy-wait。
+八路红外循迹：通过独立 **I2C1 @ 400 kHz** 读取数字状态寄存器 `0x30`，非阻塞轮询，禁止主循环 busy-wait。
 
-引脚：**AD0=A15，AD1=A16，AD2=A12，OUT=A13**。PA17 停用；PA18 为 BSL 脚，不可作 OUT。
+引脚：**SCL=A15，SDA=A16**；7 位地址 `0x12`。X1 对应 bit7，X8 对应 bit0。
 
 ### 应用层 — `src/app/grayscale_app.h`
 
 | 函数 | 说明 |
 | --- | --- |
 | `grayscale_app_init()` | 调用 `grayscale_init()` |
-| `grayscale_app_process()` | 推进扫描；每完成一轮且间隔 ≥1 s 发送 `[gs]` |
+| `grayscale_app_process()` | 推进 I2C 读取；每完成一轮且间隔 ≥1 s 发送 `[gs]` |
 
 ### 中间层 — `src/middle/grayscale.h`
 
 | 函数 | 说明 |
 | --- | --- |
-| `grayscale_init()` | 初始化 GPIO 与状态机 |
+| `grayscale_init()` | 初始化 I2C1 读取状态机 |
 | `grayscale_process()` | 主循环每轮调用，立即返回 |
 | `grayscale_get_values()` | 最近一轮完整 8 路快照（0/1） |
 | `grayscale_is_scan_ready()` | 是否至少完成过一轮 |
 | `grayscale_take_scan_ready()` | 取走就绪标志（app 层用） |
 | `grayscale_get_scan_sequence()` | 扫描轮次序号；控制环用于判新数据 |
+| `grayscale_get_raw_bits()` | 模块 `0x30` 寄存器最近原始字节 |
+| `grayscale_is_online()` | 最近 20 ms 内是否收到有效数据 |
+| `grayscale_get_last_update_ms()` | 最近成功更新时间 |
+| `grayscale_get_error_count()` | I2C 错误累计值 |
 
-整轮扫描完成后原子发布 `values[]`，避免控制/OLED 读到撕裂数据。
+每次收到完整的 8 位寄存器后发布 `values[]`，避免控制/OLED 读到撕裂数据。
 
 ### 硬件层 — `src/hardware/grayscale_hw.h`
 
 | 函数 | 说明 |
 | --- | --- |
-| `grayscale_hw_init()` | AD0~AD2 推挽，OUT 上拉；默认选通道 0 |
-| `grayscale_hw_select_channel(ch)` | 写通道 0~7（先 clear 再 set） |
-| `grayscale_hw_read_out()` | 读 OUT 0/1 |
+| `grayscale_hw_init()` | 初始化独立 I2C1 客户端 |
+| `grayscale_hw_start_read()` | 非阻塞启动 `0x30` 寄存器读取 |
+| `grayscale_hw_take_read(bits)` | 查询并取出 8 位结果 |
+| `grayscale_hw_get_error_count()` | I2C NACK/超时等错误计数 |
 
 ---
 
@@ -396,7 +401,7 @@ typedef struct {
 
 ## OLED 模块（oled）
 
-GME12864-49（128×64 SSD1306），**I2C0 @ 400 kHz**，SCL=B0，SDA=B1，地址 0x3C。
+GME12864-49（128×64 SSD1306），独立 **I2C0 @ 400 kHz**，SCL=B17，SDA=B18，地址 0x3C。B0/B1 已释放。
 
 ### 应用层 — `src/app/oled_app.h`
 
@@ -466,7 +471,7 @@ int main(void)
 
 ### `clock_init(uint32 clock)` — `zf_common_clock.h`
 
-外设上电、`SYSCFG_DL_init()`（UART0/1/7、I2C0、DMA）、`interrupt_init()`。
+外设上电、`SYSCFG_DL_init()`（UART0/1/3/7、I2C0/1、DMA）、`interrupt_init()`。
 
 ---
 
@@ -607,10 +612,10 @@ void periodic_task(void)
 ## 依赖与约束
 
 1. 电机 PWM：**TIM_A0**（A0/A1）；方向 GPIO B2~B5；编码器 QEI：**TIMG8/TIMG9**。
-2. **UART0/1/7、I2C0、DMA** 由 SysConfig 初始化；勿对这些串口再次调用逐飞 `uart_init()`。
+2. **UART0/1/3/7、I2C0/1、DMA** 由 SysConfig 初始化；勿对这些外设再次调用逐飞初始化函数。
 3. **禁止阻塞延时**：主循环及传感器/IMU 路径不得 busy-wait。
-4. 灰度 GPIO（A12/A13/A15/A16）运行时 `gpio_init`，不改 `M0G3519.syscfg`。
-5. **OLED I2C 刷新**、**控制环**、**IMU 解析**均在主循环；禁止在 ISR 中调用。
+4. 红外循迹独占 I2C1（A15/A16），OLED 独占 I2C0（B17/B18）；B0/B1 预留。
+5. **OLED I2C 刷新**、**红外 I2C 轮询**、**控制环**、**IMU 解析**均在主循环推进；ISR 只搬运数据和更新状态。
 6. 主循环须每轮调用 `motor_watchdog_kick()` 与 `heartbeat_hw_uart_tx_pump()`。
 7. 灰度消费者须读 `grayscale_get_values()` 完整快照，并用 `scan_sequence` 判新数据。
 8. 比赛前建议降低或关闭 `[ctl]`/`[gs]`/`[imu]` 文本遥测。

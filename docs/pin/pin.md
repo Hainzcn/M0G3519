@@ -167,28 +167,52 @@ PA23/PA24 当前未被 PWM、QEI、灰度、OLED、IMU 或调试串口占用。�
 
 节拍来源使用 Cortex-M0+ 的 `SysTick` 1ms 中断，不占用电机 PWM 使用的 `TIM_A0` 或其他通用定时器。中断中只累积待处理标志；主循环调用 `heartbeat_app_process()` 后才翻转状态灯并通过 UART0 发送心跳报文。`main()` 必须通过 `clock_init()` 完成外设上电，否则 UART0 无法工作。
 
-## 八路循迹模块（已实现）
+## 八路红外循迹模块（I2C，已实现）
 
-模块为 **3 位地址（AD0~AD2）+ 1 位数字输出（OUT）** 的多路复用结构，MCU 依次写入通道号 0~7 并读取 OUT 电平（0/1）。厂家例程使用 PA14~PA17，本工程 **A14 已作状态灯**；地址线使用 A15、A16、A12，OUT 接 A13。PA17 实测无法拉低，已停用。
+新模块独占硬件 I2C1 的 400 kHz 快速模式，7 位地址为 `0x12`。读取寄存器 `0x30` 可一次获得全部八路数字量：X1 对应 bit7，X8 对应 bit0。独立控制器避免 OLED 刷新占用循迹总线。
 
 | 模块信号 | MCU 引脚 | 方向 | 说明 |
 | --- | --- | --- | --- |
-| AD0 | A15 (PA15) | 输出推挽 | 地址 bit0 |
-| AD1 | A16 (PA16) | 输出推挽 | 地址 bit1 |
-| AD2 | A12 (PA12) | 输出推挽 | 地址 bit2；替代异常的 PA17 |
-| OUT | A13 (PA13) | 输入上拉 | 数字输出；上拉兼容开漏型模块 |
-| VCC | 3.3V | — | 优先使用 3.3V，避免 5V OUT 超出 MCU GPIO 电压范围 |
-| GND | GND | — | 与 MCU 共地 |
+| SCL | A15 (PA15) | MCU -> 模块 | I2C1_SCL，PF4 |
+| SDA | A16 (PA16) | 双向 | I2C1_SDA，PF4 |
+| VCC | 5V | — | 与官方例程接线一致 |
+| GND | GND | — | 与 MCU、OLED 共地 |
 
-> **禁止将 OUT 接到 PA18。** PA18 是芯片的低有效 `BSL_invoke` 启动采样脚；模块先上电且 OUT 为低时，MCU 会进入 ROM BSL 而不执行用户程序。若模块只能使用 5V 供电，OUT 必须经过电平转换或分压后再接 PA13。
+原灰度模块的 AD0/AD1/AD2/OUT 接线已停用，A12/A13 释放；A15/A16 改作红外模块 I2C1。模块虽然按官方说明使用 5V 供电，但 **SDA/SCL 高电平必须实测不超过 3.3V**；若模块板将 I2C 上拉到 5V，必须移除该上拉并改接 3.3V，或增加双向电平转换器。
 
-读取逻辑见 `src/hardware/grayscale_hw.c`（GPIO）、`src/middle/grayscale.c`（非阻塞扫描状态机）。地址切换后约 50 µs 稳定时间通过 TIMG7 轮询实现，并以 1 ms 系统节拍作为定时器故障兜底。`grayscale_process()` 在主循环中分步推进，不使用阻塞延时。
+读取逻辑见 `src/hardware/i2c_bus.c`（双控制器非阻塞事务）、`src/hardware/grayscale_hw.c`（I2C1 `0x30` 寄存器事务）和 `src/middle/grayscale.c`（位图转换与发布）。循迹以 2 ms 周期请求快照，主循环不使用阻塞延时；I2C1 中断优先级高于 OLED 的 I2C0。
 
-串口调试：上电后除 `[hb]` 心跳外，每 1 s 输出一路 `[gs]` 报文，格式为：
+### 硬件 I2C 引脚复用检查
 
-`[gs] <序号>,v=<v0><v1><v2><v3><v4><v5><v6><v7>`
+下表按数据手册的自然成对引脚列出。一个控制器的 SCL/SDA 也可从各自候选中重新组合，但应优先选同排针相邻引脚。
 
-例如 `[gs] 12,v=00111100`。地址引脚电平回读字段已删除。
+| 控制器 | 常用硬件引脚对（SCL/SDA） | 当前结论 |
+| --- | --- | --- |
+| I2C0 | PA1/PA0 | 冲突：电机 PWM |
+| I2C0 | PA9/PA8 | 冲突：IMU UART1 |
+| I2C0 | PA11/PA10 | 冲突：调试 UART0 |
+| I2C0 | PA31/PA28 | 可用，排针距离较远 |
+| I2C0 | PB0/PB1 | **已释放，可供后续外设使用** |
+| I2C0 | PB17/PB18 | **OLED 当前使用** |
+| I2C0 | PB21/PB22 | 可用；PB20 也是 I2C0_SDA 候选 |
+| I2C1 | PA4/PA3、PA6/PA5 | 芯片支持，当前核心板排针未引出 PA3~PA6 |
+| I2C1 | PA11/PA10 | 冲突：调试 UART0 |
+| I2C1 | PA15/PA16 | **红外循迹当前使用** |
+| I2C1 | PA17/PA18 | 不采用：PA18 是 BSL 启动采样脚 |
+| I2C1 | PA20/PA19 | 不采用：SWD 调试口 |
+| I2C1 | PA29/PA30 | 可用 |
+| I2C1 | PB2/PB3 | 冲突：电机方向 |
+| I2C2 | PA15/PA16 | 冲突：红外 I2C1 |
+| I2C2 | PA23/PA24 | 冲突：Emm42 UART7 |
+| I2C2 | PA29/PA30 | 可用（与 I2C1 候选复用冲突） |
+| I2C2 | PB6/PB7、PB8/PB9 | 冲突：PB7/PB9 为右轮 QEI |
+| I2C2 | PB15/PB16 | 可用 |
+
+串口调试：上电后无论模块是否在线，每 1 s 输出一路 `[gs]` 报文，格式为：
+
+`[gs] <序号>,on=<0/1>,raw=<HEX>,v=<v0>...<v7>,err=<错误数>,age=<数据年龄ms>`
+
+例如 `[gs] 12,on=1,raw=3C,v=00111100,err=0,age=1`。OLED 第 2 页同步显示 `IR:<raw>` 与 `E:<错误数>`；离线时显示 `IR:OFF`，底部第 7 页为八路循迹带。
 
 其中 `v0`~`v7` 对应 X1~X8 探头，值为 0 或 1（厂家说明：灯亮/检测到为 1）。传感器联调阶段建议将 `motor_app.c` 中 `MOTOR_APP_DEMO_ENABLE` 设为 `0`，避免电机转动干扰读数。
 
@@ -238,28 +262,29 @@ PA23/PA24 当前未被 PWM、QEI、灰度、OLED、IMU 或调试串口占用。�
 
 ## OLED 显示模块（GME12864-49，已实现）
 
-0.96 寸 **128×64** 单色 OLED，4 针 I2C（控制器 SSD1306/兼容），使用 **硬件 I2C0**（400 kHz，SysConfig 初始化）。
+0.96 寸 **128×64** 单色 OLED，4 针 I2C（控制器 SSD1306/兼容），使用独立的 **硬件 I2C0**（400 kHz，SysConfig 初始化）。原 B0/B1 接线已迁移并释放。
 
 | 模块信号 | MCU 引脚 | 说明 |
 | --- | --- | --- |
 | VCC | 3.3V | 模块亦兼容 5V（板载 LDO） |
 | GND | GND | 与 MCU 共地 |
-| SCL | B0 (PB0) | I2C0_SCL（硬件 I2C） |
-| SDA | B1 (PB1) | I2C0_SDA（硬件 I2C） |
+| SCL | B17 (PB17) | I2C0_SCL，PF4 |
+| SDA | B18 (PB18) | I2C0_SDA，PF4 |
 
-**PB12/PB13 不支持 I2C 硬件复用**，若此前按软件 I2C 接在 B12/B13，请改接到 **B0/B1**。
+**PB12/PB13 不支持 I2C 硬件复用**。B0/B1 现已释放，不再连接 OLED 或红外模块。
 
 I2C 7 位地址默认 **0x3C**；若屏不亮且 SA0 已接高，可在 `oled_hw.h` 将 `OLED_HW_I2C_ADDR` 改为 **0x3D**。
 
 软件分层：
 
-- `src/hardware/oled_hw.c/h` — 硬件 I2C0 + SSD1306 初始化/写命令/写显存
+- `src/hardware/i2c_bus.c/h` — I2C0/I2C1 两个独立控制器的非阻塞事务管理
+- `src/hardware/oled_hw.c/h` — I2C0 SSD1306 初始化/写命令/写显存
 - `src/middle/oled.c/h` — 1 KB 帧缓冲、6×8/8×16 字库显示、刷新
 - `src/app/oled_app.c/h` — 每 500 ms 刷新：标题、Yaw、左右 RPM、八路循迹指示
 
 上电后若 I2C 无 ACK（模块未接或地址错误），`oled_app_process()` 自动跳过，不影响心跳/电机/IMU 等功能。
 
-与现有外设无冲突（B0/B1 为 I2C0；避开 B0/B1 用户按键区；A0/A1 已作电机 PWM）。
+与现有外设无冲突：OLED 使用 PB17/PB18，红外使用 PA15/PA16，PB0/PB1 已释放。
 
 ## 第三方库位置
 

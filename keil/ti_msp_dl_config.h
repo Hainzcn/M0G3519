@@ -92,13 +92,27 @@ bool SYSCFG_DL_SYSCTL_SYSPLL_init(void);
 #define I2C_OLED_INST_INT_IRQN                                     I2C0_INT_IRQn
 #define I2C_OLED_BUS_SPEED_HZ                                             400000
 #define GPIO_I2C_OLED_SDA_PORT                                             GPIOB
-#define GPIO_I2C_OLED_SDA_PIN                                      DL_GPIO_PIN_1
-#define GPIO_I2C_OLED_IOMUX_SDA                                  (IOMUX_PINCM13)
-#define GPIO_I2C_OLED_IOMUX_SDA_FUNC                   IOMUX_PINCM13_PF_I2C0_SDA
+#define GPIO_I2C_OLED_SDA_PIN                                     DL_GPIO_PIN_18
+#define GPIO_I2C_OLED_IOMUX_SDA                                  (IOMUX_PINCM44)
+#define GPIO_I2C_OLED_IOMUX_SDA_FUNC                   IOMUX_PINCM44_PF_I2C0_SDA
 #define GPIO_I2C_OLED_SCL_PORT                                             GPIOB
-#define GPIO_I2C_OLED_SCL_PIN                                      DL_GPIO_PIN_0
-#define GPIO_I2C_OLED_IOMUX_SCL                                  (IOMUX_PINCM12)
-#define GPIO_I2C_OLED_IOMUX_SCL_FUNC                   IOMUX_PINCM12_PF_I2C0_SCL
+#define GPIO_I2C_OLED_SCL_PIN                                     DL_GPIO_PIN_17
+#define GPIO_I2C_OLED_IOMUX_SCL                                  (IOMUX_PINCM43)
+#define GPIO_I2C_OLED_IOMUX_SCL_FUNC                   IOMUX_PINCM43_PF_I2C0_SCL
+
+/* Defines for I2C_IR_TRACKING */
+#define I2C_IR_TRACKING_INST                                                I2C1
+#define I2C_IR_TRACKING_INST_IRQHandler                          I2C1_IRQHandler
+#define I2C_IR_TRACKING_INST_INT_IRQN                              I2C1_INT_IRQn
+#define I2C_IR_TRACKING_BUS_SPEED_HZ                                      400000
+#define GPIO_I2C_IR_TRACKING_SDA_PORT                                      GPIOA
+#define GPIO_I2C_IR_TRACKING_SDA_PIN                              DL_GPIO_PIN_16
+#define GPIO_I2C_IR_TRACKING_IOMUX_SDA                           (IOMUX_PINCM38)
+#define GPIO_I2C_IR_TRACKING_IOMUX_SDA_FUNC               IOMUX_PINCM38_PF_I2C1_SDA
+#define GPIO_I2C_IR_TRACKING_SCL_PORT                                      GPIOA
+#define GPIO_I2C_IR_TRACKING_SCL_PIN                              DL_GPIO_PIN_15
+#define GPIO_I2C_IR_TRACKING_IOMUX_SCL                           (IOMUX_PINCM37)
+#define GPIO_I2C_IR_TRACKING_IOMUX_SCL_FUNC               IOMUX_PINCM37_PF_I2C1_SCL
 
 
 /* Defines for UART_0 */
@@ -185,6 +199,7 @@ void SYSCFG_DL_SYSCTL_CLK_init(void);
 
 bool SYSCFG_DL_SYSCTL_SYSPLL_init(void);
 void SYSCFG_DL_I2C_OLED_init(void);
+void SYSCFG_DL_I2C_IR_TRACKING_init(void);
 void SYSCFG_DL_UART_0_init(void);
 void SYSCFG_DL_UART_1_init(void);
 void SYSCFG_DL_UART_EMM42_init(void);
