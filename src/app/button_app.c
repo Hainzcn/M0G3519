@@ -1,13 +1,18 @@
 #include "button_app.h"
 
 #include "button.h"
+#include "control_config.h"
 #include "oled.h"
+#if (BALANCE_CONTROL_ENABLE != 0u)
+#include "balance_app.h"
+#endif
 
 #define BUTTON_APP_PAGE                 (4)
 #define BUTTON_APP_LABEL_X              (0)
 #define BUTTON_APP_VALUE_X              (32)
 
 static button_id_t button_app_displayed = BUTTON_ID_NONE;
+static button_id_t button_app_previous = BUTTON_ID_NONE;
 static uint8       button_app_force_render = 1u;
 
 static void button_app_render(button_id_t active)
@@ -29,6 +34,7 @@ void button_app_init(void)
 {
     button_init();
     button_app_displayed     = BUTTON_ID_NONE;
+    button_app_previous      = BUTTON_ID_NONE;
     button_app_force_render  = 1u;
 }
 
@@ -45,6 +51,13 @@ void button_app_process(void)
     }
 
     active = button_get_active();
+#if (BALANCE_CONTROL_ENABLE != 0u)
+    if ((BUTTON_ID_SW1 == active) && (BUTTON_ID_SW1 != button_app_previous))
+    {
+        (void)balance_app_start_sequence();
+    }
+#endif
+    button_app_previous = active;
     if ((0u == button_app_force_render) && (active == button_app_displayed))
     {
         return;

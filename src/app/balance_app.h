@@ -2,6 +2,7 @@
 #define BALANCE_APP_H_
 
 #include "zf_common_typedef.h"
+#include "ball_motion_profile.h"
 
 typedef enum
 {
@@ -29,12 +30,23 @@ typedef enum
     BALANCE_FAULT_BALL_HARD_EDGE,
 } balance_app_fault_enum;
 
+typedef enum
+{
+    BALANCE_SEQUENCE_IDLE = 0,
+    BALANCE_SEQUENCE_TO_POSITIVE,
+    BALANCE_SEQUENCE_TO_NEGATIVE,
+    BALANCE_SEQUENCE_COMPLETE,
+    BALANCE_SEQUENCE_CANCELED,
+    BALANCE_SEQUENCE_TIMEOUT,
+} balance_app_sequence_state_enum;
+
 #define BALANCE_APP_FLAG_ACTIVE                 (0x01u)
 #define BALANCE_APP_FLAG_MOTOR_FEEDBACK_VALID   (0x02u)
 #define BALANCE_APP_FLAG_LINK_ONLINE            (0x04u)
 #define BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED   (0x08u)
 #define BALANCE_APP_FLAG_COMMAND_PENDING        (0x10u)
 #define BALANCE_APP_FLAG_FAULT_LATCHED          (0x20u)
+#define BALANCE_APP_FLAG_SEQUENCE_ACTIVE        (0x40u)
 
 typedef struct
 {
@@ -52,6 +64,10 @@ typedef struct
     int16 vision_raw_velocity_mm_s;
     float estimated_position_m;
     float estimated_velocity_mps;
+    float target_position_m;
+    float reference_position_m;
+    float reference_velocity_mps;
+    float reference_accel_mps2;
     float position_error_m;
     float desired_ball_accel_mps2;
     float lever_angle_deg;
@@ -59,10 +75,16 @@ typedef struct
     float motor_feedback_deg;
     uint16 command_error_count;
     uint16 emm42_rx_overflow_count;
+    uint32 sequence_elapsed_ms;
+    ball_motion_phase_enum motion_phase;
+    balance_app_sequence_state_enum sequence_state;
 } balance_app_status_t;
 
 void balance_app_init(void);
 void balance_app_process(void);
+uint8 balance_app_set_target_position_m(float target_position_m);
+uint8 balance_app_start_sequence(void);
+void balance_app_cancel_motion(void);
 const balance_app_status_t *balance_app_get_status(void);
 
 #endif

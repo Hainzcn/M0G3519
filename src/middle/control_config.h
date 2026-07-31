@@ -63,6 +63,21 @@
 #define BALANCE_FRESH_MEASUREMENT_MS           (30u)
 #define BALANCE_VALID_MEASUREMENT_MS           (80u)
 
+/* Ball reference profile; leave feedback headroom below the 0.45m/s2 limit. */
+#define BALANCE_PROFILE_DRIVE_ACCEL_MPS2       (0.25f)
+#define BALANCE_PROFILE_BRAKE_ACCEL_MPS2       (0.25f)
+#define BALANCE_PROFILE_MAX_VELOCITY_MPS       (0.15f)
+#define BALANCE_PROFILE_BRAKE_MARGIN_M         (0.002f)
+#define BALANCE_PROFILE_POSITION_TOLERANCE_M   (0.0005f)
+#define BALANCE_PROFILE_VELOCITY_TOLERANCE_MPS (0.002f)
+#define BALANCE_TARGET_POSITION_LIMIT_M        (0.090f)
+#define BALANCE_SEQUENCE_POSITIVE_TARGET_M     (0.050f)
+#define BALANCE_SEQUENCE_NEGATIVE_TARGET_M     (-0.050f)
+#define BALANCE_SEQUENCE_POSITION_TOLERANCE_M  (0.006f)
+#define BALANCE_SEQUENCE_VELOCITY_TOLERANCE_MPS (0.030f)
+#define BALANCE_SEQUENCE_SETTLE_MS             (100u)
+#define BALANCE_SEQUENCE_TIMEOUT_MS            (4800u)
+
 #define BALANCE_EMM42_MOVE_RPM                 (30u)
 #define BALANCE_EMM42_ACCELERATION             (20u)
 /* This installation raises the lever when the Emm42 shaft angle is negative. */

@@ -34,6 +34,9 @@ typedef struct
     float measured_position_m;
     float measured_velocity_mps;
     uint32 measurement_age_ms;
+    float reference_position_m;
+    float reference_velocity_mps;
+    float reference_accel_mps2;
     float car_accel_mps2;
     float dt_s;
 } balance_control_input_t;

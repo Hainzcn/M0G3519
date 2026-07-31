@@ -41,6 +41,8 @@ virtualFolder:
       folders: []
     - name: Middle
       files:
+        - path: ../src/middle/ball_motion_profile.c
+        - path: ../src/middle/ball_motion_profile.h
         - path: ../src/middle/balance_control.c
         - path: ../src/middle/balance_control.h
         - path: ../src/middle/balance_linkage.c

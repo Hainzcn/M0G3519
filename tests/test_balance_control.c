@@ -39,6 +39,9 @@ static balance_control_input_t make_measurement(float position_m,
     input.measured_position_m = position_m;
     input.measured_velocity_mps = velocity_mps;
     input.measurement_age_ms = 0u;
+    input.reference_position_m = 0.0f;
+    input.reference_velocity_mps = 0.0f;
+    input.reference_accel_mps2 = 0.0f;
     input.car_accel_mps2 = 0.0f;
     input.dt_s = 0.005f;
     return input;
@@ -69,6 +72,16 @@ int main(void)
     balance_control_step(&control, &input);
     output = balance_control_get_output(&control);
     assert(output->lever_angle_deg < 0.0f);
+
+    balance_control_reset(&control);
+    input = make_measurement(0.0f, 0.0f);
+    input.reference_position_m = 0.010f;
+    input.reference_velocity_mps = 0.020f;
+    input.reference_accel_mps2 = 0.100f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(near_value(output->position_error_m, 0.010f, 0.0001f));
+    assert(output->desired_ball_accel_mps2 > 0.20f);
 
     balance_control_reset(&control);
     input = make_measurement(0.105f, 0.0f);

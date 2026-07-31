@@ -127,12 +127,15 @@ void balance_control_step(balance_control_t *control,
         flags |= BALANCE_CONTROL_FLAG_PREDICT_ONLY;
     }
 
-    output->position_error_m = -output->estimated_position_m;
+    output->position_error_m = input->reference_position_m -
+        output->estimated_position_m;
     if ((0u != output->has_state) &&
         (input->measurement_age_ms <= control->config.valid_measurement_ms))
     {
-        desired_accel = control->config.kp * output->position_error_m -
-            control->config.kd * output->estimated_velocity_mps;
+        desired_accel = input->reference_accel_mps2 +
+            control->config.kp * output->position_error_m +
+            control->config.kd * (input->reference_velocity_mps -
+                                  output->estimated_velocity_mps);
         if (balance_control_abs(output->estimated_position_m) >=
             control->config.edge_position_m)
         {

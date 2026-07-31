@@ -68,7 +68,8 @@ static void balance_send_diagnostic(void)
     snprintf(message, sizeof(message),
         "[balance] st=%u fault=%u fl=%02X ctl=%02X raw=%02X "
         "conf=%u/%u seq=%u/%u age=%u pos=%d vel=%d "
-        "lever=%d mt=%d mf=%d err=%u drop=%u\r\n",
+        "tgt=%d ref=%d/%d ph=%u seqst=%u lever=%d mt=%d mf=%d "
+        "err=%u drop=%u\r\n",
         (unsigned int)status->state,
         (unsigned int)status->fault,
         (unsigned int)status->flags,
@@ -81,6 +82,11 @@ static void balance_send_diagnostic(void)
         (unsigned int)age,
         (int)status->vision_raw_position_dmm,
         (int)status->vision_raw_velocity_mm_s,
+        (int)(status->target_position_m * 10000.0f),
+        (int)(status->reference_position_m * 10000.0f),
+        (int)(status->reference_velocity_mps * 1000.0f),
+        (unsigned int)status->motion_phase,
+        (unsigned int)status->sequence_state,
         (int)(status->lever_angle_deg * 100.0f),
         (int)(status->motor_target_deg * 100.0f),
         (int)(status->motor_feedback_deg * 100.0f),
