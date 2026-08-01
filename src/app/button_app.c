@@ -1,13 +1,19 @@
 #include "button_app.h"
 
 #include "button.h"
+#include "control_config.h"
+#include "heartbeat_hw.h"
 #include "oled.h"
+#if (BALANCE_CONTROL_ENABLE != 0u)
+#include "balance_app.h"
+#endif
 
 #define BUTTON_APP_PAGE                 (4)
 #define BUTTON_APP_LABEL_X              (0)
 #define BUTTON_APP_VALUE_X              (32)
 
 static button_id_t button_app_displayed = BUTTON_ID_NONE;
+static button_id_t button_app_previous = BUTTON_ID_NONE;
 static uint8       button_app_force_render = 1u;
 
 static void button_app_render(button_id_t active)
@@ -29,6 +35,7 @@ void button_app_init(void)
 {
     button_init();
     button_app_displayed     = BUTTON_ID_NONE;
+    button_app_previous      = BUTTON_ID_NONE;
     button_app_force_render  = 1u;
 }
 
@@ -38,13 +45,25 @@ void button_app_process(void)
 
     button_process();
 
+    active = button_get_active();
+#if (BALANCE_CONTROL_ENABLE != 0u)
+    if ((BUTTON_ID_SW1 == active) && (BUTTON_ID_SW1 != button_app_previous))
+    {
+        if (0u == balance_app_start_sequence())
+        {
+            heartbeat_hw_uart_send_string(
+                "[balance] sequence rejected\r\n");
+        }
+    }
+#endif
+    button_app_previous = active;
+
     if (0u == oled_is_ready())
     {
         button_app_force_render = 1u;
         return;
     }
 
-    active = button_get_active();
     if ((0u == button_app_force_render) && (active == button_app_displayed))
     {
         return;

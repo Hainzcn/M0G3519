@@ -30,7 +30,7 @@ static uint32 uart3_maix_last_diagnostic_ms;
 
 static void vision_link_send_diagnostic(void)
 {
-    char message[192];
+    char message[256];
     vision_link_status_t status;
 
     vision_link_get_status(&status);
@@ -60,7 +60,7 @@ static void vision_link_send_diagnostic(void)
 #if (BALANCE_CONTROL_ENABLE != 0u)
 static void balance_send_diagnostic(void)
 {
-    char message[192];
+    char message[256];
     const balance_app_status_t *status = balance_app_get_status();
     uint32 age = (0xFFFFFFFFu == status->vision_age_ms) ? 999999u :
         status->vision_age_ms;
@@ -68,7 +68,8 @@ static void balance_send_diagnostic(void)
     snprintf(message, sizeof(message),
         "[balance] st=%u fault=%u fl=%02X ctl=%02X raw=%02X "
         "conf=%u/%u seq=%u/%u age=%u pos=%d vel=%d "
-        "lever=%d/%d mt=%d mf=%d err=%u drop=%u\r\n",
+        "tgt=%d ref=%d/%d ph=%u seqst=%u lever=%d/%d "
+        "mt=%d mf=%d err=%u drop=%u\r\n",
         (unsigned int)status->state,
         (unsigned int)status->fault,
         (unsigned int)status->flags,
@@ -81,6 +82,11 @@ static void balance_send_diagnostic(void)
         (unsigned int)age,
         (int)status->vision_raw_position_dmm,
         (int)status->vision_raw_velocity_mm_s,
+        (int)(status->target_position_m * 10000.0f),
+        (int)(status->reference_position_m * 10000.0f),
+        (int)(status->reference_velocity_mps * 1000.0f),
+        (unsigned int)status->motion_phase,
+        (unsigned int)status->sequence_state,
         (int)(status->lever_angle_deg * 100.0f),
         (int)(status->actual_lever_angle_deg * 100.0f),
         (int)(status->motor_target_deg * 100.0f),

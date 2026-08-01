@@ -17,7 +17,9 @@ typedef struct
     float kd;
     float position_correction_gain;
     float velocity_correction_gain;
+    float reference_accel_gain;
     float max_ball_accel_mps2;
+    float edge_recovery_accel_mps2;
     float max_lever_angle_deg;
     float degraded_lever_angle_deg;
     float max_lever_rate_deg_s;
@@ -34,6 +36,9 @@ typedef struct
     float measured_position_m;
     float measured_velocity_mps;
     uint32 measurement_age_ms;
+    float reference_position_m;
+    float reference_velocity_mps;
+    float reference_accel_mps2;
     float car_accel_mps2;
     uint8 actual_lever_valid;
     uint8 update_control_output;

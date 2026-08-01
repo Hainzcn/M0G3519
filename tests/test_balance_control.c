@@ -18,7 +18,9 @@ static balance_control_config_t make_config(void)
     config.kd = 4.0f;
     config.position_correction_gain = 0.65f;
     config.velocity_correction_gain = 0.50f;
+    config.reference_accel_gain = 0.50f;
     config.max_ball_accel_mps2 = 0.45f;
+    config.edge_recovery_accel_mps2 = 0.22f;
     config.max_lever_angle_deg = 4.0f;
     config.degraded_lever_angle_deg = 2.0f;
     config.max_lever_rate_deg_s = 30.0f;
@@ -39,6 +41,9 @@ static balance_control_input_t make_measurement(float position_m,
     input.measured_position_m = position_m;
     input.measured_velocity_mps = velocity_mps;
     input.measurement_age_ms = 0u;
+    input.reference_position_m = 0.0f;
+    input.reference_velocity_mps = 0.0f;
+    input.reference_accel_mps2 = 0.0f;
     input.car_accel_mps2 = 0.0f;
     input.actual_lever_valid = 0u;
     input.update_control_output = 1u;
@@ -90,11 +95,21 @@ int main(void)
     assert(output->lever_angle_deg < 0.0f);
 
     balance_control_reset(&control);
+    input = make_measurement(0.0f, 0.0f);
+    input.reference_position_m = 0.010f;
+    input.reference_velocity_mps = 0.020f;
+    input.reference_accel_mps2 = 0.100f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(near_value(output->position_error_m, 0.010f, 0.0001f));
+    assert(near_value(output->desired_ball_accel_mps2, 0.210f, 0.001f));
+
+    balance_control_reset(&control);
     input = make_measurement(0.105f, 0.0f);
     balance_control_step(&control, &input);
     output = balance_control_get_output(&control);
     assert(output->flags & BALANCE_CONTROL_FLAG_EDGE_RECOVERY);
-    assert(near_value(output->desired_ball_accel_mps2, -0.45f, 0.001f));
+    assert(near_value(output->desired_ball_accel_mps2, -0.22f, 0.001f));
 
     balance_control_reset(&control);
     input = make_measurement(-0.120f, 0.0f);

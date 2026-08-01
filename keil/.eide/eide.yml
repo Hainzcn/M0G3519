@@ -45,6 +45,8 @@ virtualFolder:
         - path: ../src/middle/balance_control.h
         - path: ../src/middle/balance_linkage.c
         - path: ../src/middle/balance_linkage.h
+        - path: ../src/middle/ball_motion_profile.c
+        - path: ../src/middle/ball_motion_profile.h
         - path: ../src/middle/control_config.h
         - path: ../src/middle/control_pid.c
         - path: ../src/middle/control_pid.h
