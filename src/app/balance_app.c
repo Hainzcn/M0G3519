@@ -819,6 +819,8 @@ void balance_app_init(void)
     profile_config.drive_accel_mps2 = BALANCE_PROFILE_DRIVE_ACCEL_MPS2;
     profile_config.brake_accel_mps2 = BALANCE_PROFILE_BRAKE_ACCEL_MPS2;
     profile_config.max_velocity_mps = BALANCE_PROFILE_MAX_VELOCITY_MPS;
+    profile_config.brake_lookahead_s =
+        BALANCE_PROFILE_BRAKE_LOOKAHEAD_S;
     profile_config.position_tolerance_m =
         BALANCE_PROFILE_POSITION_TOLERANCE_M;
     profile_config.velocity_tolerance_mps =

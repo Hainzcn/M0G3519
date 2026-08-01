@@ -53,8 +53,8 @@
 #define BALANCE_RECOVERY_VALID_FRAMES          (5u)
 #define BALANCE_MIN_VISION_CONFIDENCE          (50u)
 
-#define BALANCE_KP                             (8.0f)
-#define BALANCE_KD                             (4.0f)
+#define BALANCE_KP                             (3.0f)
+#define BALANCE_KD                             (1.5f)
 #define BALANCE_ESTIMATOR_POSITION_GAIN        (0.65f)
 #define BALANCE_ESTIMATOR_VELOCITY_GAIN        (0.50f)
 #define BALANCE_MAX_BALL_ACCEL_MPS2            (0.45f)
@@ -77,7 +77,9 @@
 /* Ball reference profile; leave feedback headroom below the 0.45m/s2 limit. */
 #define BALANCE_PROFILE_DRIVE_ACCEL_MPS2       (0.12f)
 #define BALANCE_PROFILE_BRAKE_ACCEL_MPS2       (0.16f)
-#define BALANCE_PROFILE_MAX_VELOCITY_MPS       (0.075f)
+#define BALANCE_PROFILE_MAX_VELOCITY_MPS       (0.060f)
+/* Lead the reference trajectory to compensate vision and actuator delay. */
+#define BALANCE_PROFILE_BRAKE_LOOKAHEAD_S       (0.12f)
 #define BALANCE_PROFILE_ACCEL_FF_GAIN           (1.00f)
 #define BALANCE_PROFILE_POSITION_TOLERANCE_M   (0.0005f)
 #define BALANCE_PROFILE_VELOCITY_TOLERANCE_MPS (0.002f)

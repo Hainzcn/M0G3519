@@ -16,6 +16,7 @@ typedef struct
     float drive_accel_mps2;
     float brake_accel_mps2;
     float max_velocity_mps;
+    float brake_lookahead_s;
     float position_tolerance_m;
     float velocity_tolerance_mps;
 } ball_motion_profile_config_t;
@@ -32,6 +33,7 @@ typedef struct
 typedef struct
 {
     ball_motion_profile_config_t config;
+    ball_motion_profile_output_t nominal_output;
     ball_motion_profile_output_t output;
 } ball_motion_profile_t;
 
