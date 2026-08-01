@@ -39,17 +39,12 @@
 #define LINE_SENSOR_MARKER_MIN_COUNT          (5u)
 #define LINE_LOST_HOLD_MS                     (100u)
 
-/* Sensor error is -2500 ... +2500, positive toward channel 5. */
-#define LINE_ERROR_MAX                        (2500.0f)
-#define LINE_STEERING_SIGN                    (1.0f)
-#define LINE_ERROR_FILTER_ALPHA               (0.20f)
+/* Six-channel lookup control for the H-problem's straight/semicircle track. */
+#define LINE_TABLE_TURN_RPM_STEP              (8.0f)
+#define LINE_TABLE_CURVE_RPM_REDUCTION        (6.0f)
+#define LINE_TABLE_MIN_INNER_RPM              (15.0f)
 #define LINE_TARGET_SLEW_RPM_PER_S            (300.0f)
 #define LINE_BASE_RPM_DEFAULT                 (60.0f)
 #define LINE_MIN_RPM_DEFAULT                  (25.0f)
-#define LINE_TURN_RPM_LIMIT                   (90.0f)
-#define LINE_KP                               (0.025f)
-#define LINE_KI                               (0.0f)
-#define LINE_KD                               (0.00015f)
-#define LINE_INTEGRAL_LIMIT                   (3000.0f)
 
 #endif

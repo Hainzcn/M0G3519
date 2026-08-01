@@ -5,6 +5,7 @@
 #include "motor.h"
 #include "motor_app.h"
 #include "oled_app.h"
+#include "power_app.h"
 #include "zf_common_clock.h"
 
 int main(void)
@@ -12,6 +13,7 @@ int main(void)
     clock_init(SYSTEM_CLOCK_80M);
 
     heartbeat_app_init();
+    power_app_init();
     grayscale_app_init();
     motor_app_init();
     imu_app_init();
@@ -24,6 +26,7 @@ int main(void)
         imu_app_process();
         grayscale_app_process();
         motor_app_process();
+        power_app_process();
         heartbeat_app_process();
         oled_app_process();
     }

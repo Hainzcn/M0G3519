@@ -57,7 +57,7 @@
               <MiscControls></MiscControls>
               <Define>__MSPM0G3519__</Define>
               <Undefine></Undefine>
-              <IncludePath>../,../../../../../../source/third_party/CMSIS/Core/Include,../../../../../../source</IncludePath>
+              <IncludePath>../,../src,../src/app,../src/middle,../src/hardware,../src/MSPM0G3519_Library/zf_common,../src/MSPM0G3519_Library/zf_driver,../../../../../../source/third_party/CMSIS/Core/Include,../../../../../../source</IncludePath>
             </VariousControls>
           </Cads>
           <LDads>
@@ -101,6 +101,61 @@
               <FileType>1</FileType>
               <FilePath>./ti_msp_dl_config.c</FilePath>
             </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application</GroupName>
+          <Files>
+            <File><FileName>grayscale_app.c</FileName><FileType>1</FileType><FilePath>../src/app/grayscale_app.c</FilePath></File>
+            <File><FileName>heartbeat_app.c</FileName><FileType>1</FileType><FilePath>../src/app/heartbeat_app.c</FilePath></File>
+            <File><FileName>imu_app.c</FileName><FileType>1</FileType><FilePath>../src/app/imu_app.c</FilePath></File>
+            <File><FileName>motor_app.c</FileName><FileType>1</FileType><FilePath>../src/app/motor_app.c</FilePath></File>
+            <File><FileName>oled_app.c</FileName><FileType>1</FileType><FilePath>../src/app/oled_app.c</FilePath></File>
+            <File><FileName>power_app.c</FileName><FileType>1</FileType><FilePath>../src/app/power_app.c</FilePath></File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middle</GroupName>
+          <Files>
+            <File><FileName>control_pid.c</FileName><FileType>1</FileType><FilePath>../src/middle/control_pid.c</FilePath></File>
+            <File><FileName>encoder.c</FileName><FileType>1</FileType><FilePath>../src/middle/encoder.c</FilePath></File>
+            <File><FileName>grayscale.c</FileName><FileType>1</FileType><FilePath>../src/middle/grayscale.c</FilePath></File>
+            <File><FileName>heartbeat.c</FileName><FileType>1</FileType><FilePath>../src/middle/heartbeat.c</FilePath></File>
+            <File><FileName>imu.c</FileName><FileType>1</FileType><FilePath>../src/middle/imu.c</FilePath></File>
+            <File><FileName>line_control.c</FileName><FileType>1</FileType><FilePath>../src/middle/line_control.c</FilePath></File>
+            <File><FileName>motor.c</FileName><FileType>1</FileType><FilePath>../src/middle/motor.c</FilePath></File>
+            <File><FileName>oled.c</FileName><FileType>1</FileType><FilePath>../src/middle/oled.c</FilePath></File>
+            <File><FileName>power.c</FileName><FileType>1</FileType><FilePath>../src/middle/power.c</FilePath></File>
+            <File><FileName>wheel_speed_control.c</FileName><FileType>1</FileType><FilePath>../src/middle/wheel_speed_control.c</FilePath></File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Hardware</GroupName>
+          <Files>
+            <File><FileName>encoder_hw.c</FileName><FileType>1</FileType><FilePath>../src/hardware/encoder_hw.c</FilePath></File>
+            <File><FileName>grayscale_hw.c</FileName><FileType>1</FileType><FilePath>../src/hardware/grayscale_hw.c</FilePath></File>
+            <File><FileName>heartbeat_hw.c</FileName><FileType>1</FileType><FilePath>../src/hardware/heartbeat_hw.c</FilePath></File>
+            <File><FileName>imu_hw.c</FileName><FileType>1</FileType><FilePath>../src/hardware/imu_hw.c</FilePath></File>
+            <File><FileName>motor_hw.c</FileName><FileType>1</FileType><FilePath>../src/hardware/motor_hw.c</FilePath></File>
+            <File><FileName>oled_hw.c</FileName><FileType>1</FileType><FilePath>../src/hardware/oled_hw.c</FilePath></File>
+            <File><FileName>power_hw.c</FileName><FileType>1</FileType><FilePath>../src/hardware/power_hw.c</FilePath></File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>SeekFree Library</GroupName>
+          <Files>
+            <File><FileName>zf_common_clock.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_common/zf_common_clock.c</FilePath></File>
+            <File><FileName>zf_common_debug.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_common/zf_common_debug.c</FilePath></File>
+            <File><FileName>zf_common_fifo.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_common/zf_common_fifo.c</FilePath></File>
+            <File><FileName>zf_common_font.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_common/zf_common_font.c</FilePath></File>
+            <File><FileName>zf_common_interrupt.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_common/zf_common_interrupt.c</FilePath></File>
+            <File><FileName>zf_driver_delay.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_driver/zf_driver_delay.c</FilePath></File>
+            <File><FileName>zf_driver_encoder.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_driver/zf_driver_encoder.c</FilePath></File>
+            <File><FileName>zf_driver_gpio.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_driver/zf_driver_gpio.c</FilePath></File>
+            <File><FileName>zf_driver_pwm.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_driver/zf_driver_pwm.c</FilePath></File>
+            <File><FileName>zf_driver_timer.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_driver/zf_driver_timer.c</FilePath></File>
+            <File><FileName>zf_driver_uart.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_driver/zf_driver_uart.c</FilePath></File>
+            <File><FileName>zf_sdk_compat.c</FileName><FileType>1</FileType><FilePath>../src/MSPM0G3519_Library/zf_driver/zf_sdk_compat.c</FilePath></File>
           </Files>
         </Group>
       </Groups>

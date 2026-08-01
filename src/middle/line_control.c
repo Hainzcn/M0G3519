@@ -1,21 +1,29 @@
 #include "line_control.h"
 
 #include "control_config.h"
-#include "control_pid.h"
 
-static const int16 line_sensor_weight[GRAYSCALE_CHANNELS] =
+/*
+ * Index bit 0 is X1 (left) and bit 5 is X6 (right).  The values are
+ * turn levels: negative turns left, positive turns right.  All wide-line
+ * patterns (five or six active sensors) intentionally map to straight.
+ */
+static const int8 line_turn_lookup[1u << GRAYSCALE_CHANNELS] =
 {
-    -2500, -1500, -500, 500, 1500, 2500,
+     0, -4, -2, -3, -1, -2, -2, -2,
+     1, -2, -1, -2,  0, -1, -1, -2,
+     2, -1,  0, -1,  1, -1,  0, -1,
+     2,  0,  0, -1,  1,  0,  0,  0,
+     4,  0,  1, -1,  2,  0,  0, -1,
+     2,  0,  1,  0,  1,  0,  0,  0,
+     3,  1,  1,  0,  2,  0,  1,  0,
+     2,  1,  1,  0,  2,  0,  0,  0,
 };
 
-static control_pid_t line_pid;
 static line_control_output_t line_output;
 static float line_base_rpm;
-static float line_last_error;
-static float line_filtered_error;
+static int8 line_last_turn_level;
 static uint32 line_last_valid_ms;
 static uint8 line_has_valid;
-static uint8 line_filter_initialized;
 
 static float line_abs(float value)
 {
@@ -50,23 +58,36 @@ static float line_slew(float current, float target, float max_delta)
 
 void line_control_init(void)
 {
-    const control_pid_config_t config =
-    {
-        .kp = LINE_KP,
-        .ki = LINE_KI,
-        .kd = LINE_KD,
-        .integral_limit = LINE_INTEGRAL_LIMIT,
-        .output_limit = LINE_TURN_RPM_LIMIT,
-    };
-
-    control_pid_init(&line_pid, &config);
     line_base_rpm = LINE_BASE_RPM_DEFAULT;
     line_control_reset();
 }
 
+static uint8 line_state_is_contiguous(uint8 state)
+{
+    uint8 index;
+    uint8 seen_line = 0u;
+    uint8 seen_background_after_line = 0u;
+
+    for (index = 0u; index < GRAYSCALE_CHANNELS; index++)
+    {
+        if (0u != (state & (uint8)(1u << index)))
+        {
+            if (0u != seen_background_after_line)
+            {
+                return 0u;
+            }
+            seen_line = 1u;
+        }
+        else if (0u != seen_line)
+        {
+            seen_background_after_line = 1u;
+        }
+    }
+    return 1u;
+}
+
 void line_control_reset(void)
 {
-    control_pid_reset(&line_pid);
     line_output.left_rpm = 0.0f;
     line_output.right_rpm = 0.0f;
     line_output.error = 0.0f;
@@ -75,11 +96,9 @@ void line_control_reset(void)
     line_output.line_valid = 0u;
     line_output.marker_detected = 0u;
     line_output.line_lost = 1u;
-    line_last_error = 0.0f;
-    line_filtered_error = 0.0f;
+    line_last_turn_level = 0;
     line_last_valid_ms = 0u;
     line_has_valid = 0u;
-    line_filter_initialized = 0u;
 }
 
 void line_control_set_base_rpm(float base_rpm)
@@ -90,13 +109,14 @@ void line_control_set_base_rpm(float base_rpm)
 void line_control_update(const uint8 values[GRAYSCALE_CHANNELS],
                          uint32 now_ms, float dt_s)
 {
-    int32 weighted_sum = 0;
     uint8 index;
     uint8 active_count = 0u;
-    float error;
-    float speed_scale;
+    uint8 state = 0u;
+    uint8 state_is_contiguous;
+    int8 turn_level;
     float base_rpm;
     float turn_rpm;
+    float turn_limit;
     float desired_left_rpm;
     float desired_right_rpm;
     float max_target_delta;
@@ -110,30 +130,28 @@ void line_control_update(const uint8 values[GRAYSCALE_CHANNELS],
     {
         if (LINE_SENSOR_ACTIVE_LEVEL == values[index])
         {
-            weighted_sum += line_sensor_weight[index];
+            state |= (uint8)(1u << index);
             active_count++;
         }
     }
 
+    state_is_contiguous = line_state_is_contiguous(state);
     line_output.active_count = active_count;
     line_output.marker_detected =
-        (active_count >= LINE_SENSOR_MARKER_MIN_COUNT) ? 1u : 0u;
+        ((0u != state_is_contiguous) &&
+         (active_count >= LINE_SENSOR_MARKER_MIN_COUNT)) ? 1u : 0u;
 
-    if (0u != active_count)
+    if ((0u != active_count) && (0u != state_is_contiguous))
     {
-        error = (float)weighted_sum / (float)active_count;
-        if (0u == line_filter_initialized)
+        if (0u != line_output.marker_detected)
         {
-            line_filtered_error = error;
-            line_filter_initialized = 1u;
+            turn_level = 0;
         }
         else
         {
-            line_filtered_error += LINE_ERROR_FILTER_ALPHA *
-                (error - line_filtered_error);
+            turn_level = line_turn_lookup[state];
         }
-        error = line_filtered_error;
-        line_last_error = line_filtered_error;
+        line_last_turn_level = turn_level;
         line_last_valid_ms = now_ms;
         line_has_valid = 1u;
         line_output.line_valid = 1u;
@@ -142,29 +160,30 @@ void line_control_update(const uint8 values[GRAYSCALE_CHANNELS],
     else if ((0u != line_has_valid) &&
              ((now_ms - line_last_valid_ms) <= LINE_LOST_HOLD_MS))
     {
-        error = line_last_error;
+        turn_level = line_last_turn_level;
         line_output.line_valid = 0u;
         line_output.line_lost = 0u;
     }
     else
     {
-        control_pid_reset(&line_pid);
         line_output.left_rpm = 0.0f;
         line_output.right_rpm = 0.0f;
-        line_output.error = line_last_error;
+        line_output.error = (float)line_last_turn_level;
         line_output.turn_rpm = 0.0f;
         line_output.line_valid = 0u;
         line_output.line_lost = 1u;
         return;
     }
 
-    turn_rpm = LINE_STEERING_SIGN *
-        control_pid_step(&line_pid, error, 0.0f, dt_s);
-    speed_scale = line_clamp(line_abs(error) / LINE_ERROR_MAX, 0.0f, 1.0f);
-    base_rpm = line_base_rpm -
-        (line_base_rpm - LINE_MIN_RPM_DEFAULT) * speed_scale;
+    base_rpm = line_base_rpm - (line_abs((float)turn_level) *
+        LINE_TABLE_CURVE_RPM_REDUCTION);
+    base_rpm = line_clamp(base_rpm, LINE_MIN_RPM_DEFAULT,
+                          WHEEL_TARGET_RPM_LIMIT);
+    turn_rpm = (float)turn_level * LINE_TABLE_TURN_RPM_STEP;
+    turn_limit = base_rpm - LINE_TABLE_MIN_INNER_RPM;
+    turn_rpm = line_clamp(turn_rpm, -turn_limit, turn_limit);
 
-    line_output.error = error;
+    line_output.error = (float)turn_level;
     line_output.turn_rpm = turn_rpm;
     desired_left_rpm = line_clamp(base_rpm + turn_rpm,
         -WHEEL_TARGET_RPM_LIMIT, WHEEL_TARGET_RPM_LIMIT);

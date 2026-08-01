@@ -402,7 +402,7 @@ int main(void)
 | --- | --- | --- |
 | 上电 | `BOOT OK\r\n` | `BOOT OK` |
 | 每 1 s | `[hb] <序号>,<左RPM>,<右RPM>\r\n` | `[hb] 3,120,-118` |
-| 每 1 s | `[gs] <序号>,v=<v0>…<v7>\r\n` | `[gs] 2,v=00110000` |
+| 每 1 s | `[gs] <序号>,ok=<0|1>,v=<v0>…<v5>,e=<I2C错误累计>\r\n` | `[gs] 2,ok=1,v=001100,e=0` |
 | 每 1 s（IMU 就绪） | `[imu] <序号>,<yaw>,<wz>\r\n` | `[imu] 3,12.34,-0.56` |
 | IMU 未就绪 | `[imu] 0,wait,flags=0x??\r\n` | `[imu] 0,wait,flags=0x01` |
 
