@@ -15,7 +15,7 @@
 #define UART3_MAIX_MODE_NORMAL                    (0u)
 #define UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG   (1u)
 #define UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG   (2u)
-#define UART3_MAIX_MODE                            (UART3_MAIX_MODE_NORMAL)
+#define UART3_MAIX_MODE                            (UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
 
 /* V1 static center stability closed-loop; demo is mutually exclusive. */
 #ifndef EMM42_BALANCE_DEMO_ENABLE
@@ -41,7 +41,7 @@
 #define BALANCE_OUTER_CONTROL_PERIOD_MS        (20u)
 /* Compatibility name for the 200 Hz estimator/application tick. */
 #define BALANCE_CONTROL_PERIOD_MS              BALANCE_ESTIMATOR_PERIOD_MS
-#define BALANCE_COMMAND_PERIOD_MS              (100u)
+#define BALANCE_COMMAND_PERIOD_MS              (20u)
 #define BALANCE_POSITION_QUERY_PERIOD_MS       (100u)
 #define BALANCE_POWER_WAIT_MS                  (3000u)
 #define BALANCE_LOWER_STOP_SETTLE_MS            (1500u)
@@ -53,8 +53,8 @@
 #define BALANCE_RECOVERY_VALID_FRAMES          (5u)
 #define BALANCE_MIN_VISION_CONFIDENCE          (50u)
 
-#define BALANCE_KP                             (4.0f)
-#define BALANCE_KD                             (1.8f)
+#define BALANCE_KP                             (8.0f)
+#define BALANCE_KD                             (4.0f)
 #define BALANCE_ESTIMATOR_POSITION_GAIN        (0.65f)
 #define BALANCE_ESTIMATOR_VELOCITY_GAIN        (0.50f)
 #define BALANCE_MAX_BALL_ACCEL_MPS2            (0.45f)
@@ -68,13 +68,17 @@
 #define BALANCE_EDGE_RECOVERY_ACCEL_MPS2       (0.22f)
 #define BALANCE_FRESH_MEASUREMENT_MS           (30u)
 #define BALANCE_VALID_MEASUREMENT_MS           (80u)
+#define BALANCE_VISION_TRANSPORT_LATENCY_MS     (3u)
+#define BALANCE_VISION_MAX_COMPENSATION_MS      (30u)
+#define BALANCE_CAR_ACCEL_FEEDFORWARD_GAIN      (1.0f)
+#define BALANCE_CAR_ACCEL_FEEDFORWARD_SIGN      (1.0f)
+#define BALANCE_CAR_ACCEL_LIMIT_MPS2            (2.0f)
 
 /* Ball reference profile; leave feedback headroom below the 0.45m/s2 limit. */
-#define BALANCE_PROFILE_DRIVE_ACCEL_MPS2       (0.08f)
-#define BALANCE_PROFILE_BRAKE_ACCEL_MPS2       (0.10f)
-#define BALANCE_PROFILE_MAX_VELOCITY_MPS       (0.05f)
-#define BALANCE_PROFILE_BRAKE_MARGIN_M         (0.010f)
-#define BALANCE_PROFILE_ACCEL_FF_GAIN           (0.50f)
+#define BALANCE_PROFILE_DRIVE_ACCEL_MPS2       (0.12f)
+#define BALANCE_PROFILE_BRAKE_ACCEL_MPS2       (0.16f)
+#define BALANCE_PROFILE_MAX_VELOCITY_MPS       (0.075f)
+#define BALANCE_PROFILE_ACCEL_FF_GAIN           (1.00f)
 #define BALANCE_PROFILE_POSITION_TOLERANCE_M   (0.0005f)
 #define BALANCE_PROFILE_VELOCITY_TOLERANCE_MPS (0.002f)
 #define BALANCE_TARGET_POSITION_LIMIT_M        (0.090f)

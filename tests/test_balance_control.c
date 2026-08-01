@@ -127,6 +127,14 @@ int main(void)
     assert(near_value(output->desired_ball_accel_mps2, 0.0f, 0.0001f));
     assert(fabsf(output->lever_angle_deg) <= 2.0f);
 
+    balance_control_reset(&control);
+    input = make_measurement(0.0f, 0.0f);
+    input.car_accel_mps2 = 0.50f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(output->lever_angle_deg < -2.0f);
+    assert(output->lever_angle_deg > -4.0f);
+
     puts("balance control tests passed");
     return 0;
 }

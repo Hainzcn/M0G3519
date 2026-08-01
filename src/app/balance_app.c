@@ -10,6 +10,7 @@
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
 #include "vision_link.h"
+#include "wheel_speed_control.h"
 
 #define BALANCE_APP_EMM42_ADDRESS        (EMM42_DEFAULT_ADDRESS)
 #define BALANCE_APP_ACK_SUCCESS          (0x02u)
@@ -29,6 +30,7 @@ static uint32 balance_last_outer_control_ms;
 static uint32 balance_last_command_ms;
 static uint32 balance_last_query_ms;
 static uint32 balance_last_accepted_measurement_ms;
+static uint32 balance_last_measurement_latency_ms;
 static uint32 balance_hard_edge_start_ms;
 static uint32 balance_level_tolerance_start_ms;
 static float balance_level_motor_deg;
@@ -339,7 +341,9 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
     uint8 new_measurement = 0u;
     uint8 new_snapshot = 0u;
     uint32 measurement_age = BALANCE_APP_AGE_INVALID;
+    uint32 measurement_latency_ms;
     const ball_motion_profile_output_t *profile_output;
+    const wheel_speed_control_status_t *wheel_status;
 
     vision_link_get_status(&vision_status);
     if (0u != vision_status.link_online)
@@ -377,6 +381,17 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
                 balance_has_accepted_measurement = 1u;
                 balance_last_accepted_measurement_ms =
                     measurement.received_ms;
+                measurement_latency_ms =
+                    (uint32)measurement.processing_ms +
+                    BALANCE_VISION_TRANSPORT_LATENCY_MS;
+                if (measurement_latency_ms >
+                    BALANCE_VISION_MAX_COMPENSATION_MS)
+                {
+                    measurement_latency_ms =
+                        BALANCE_VISION_MAX_COMPENSATION_MS;
+                }
+                balance_last_measurement_latency_ms =
+                    measurement_latency_ms;
                 balance_status.vision_sequence = measurement.sequence;
                 balance_status.vision_confidence = measurement.confidence;
                 balance_status.flags |=
@@ -398,6 +413,16 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
     if (0u != balance_has_accepted_measurement)
     {
         measurement_age = now_ms - balance_last_accepted_measurement_ms;
+        if (measurement_age <=
+            (BALANCE_APP_AGE_INVALID -
+             balance_last_measurement_latency_ms))
+        {
+            measurement_age += balance_last_measurement_latency_ms;
+        }
+        else
+        {
+            measurement_age = BALANCE_APP_AGE_INVALID;
+        }
     }
     balance_status.vision_age_ms = measurement_age;
 
@@ -406,7 +431,9 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
         ((0u != balance_has_accepted_measurement) &&
          (measurement_age <= BALANCE_VALID_MEASUREMENT_MS)) ? 1u : 0u;
     input.measured_position_m = (0u != new_measurement) ?
-        (float)measurement.position_dmm * 0.0001f : 0.0f;
+        (float)measurement.position_dmm * 0.0001f +
+        (float)measurement.velocity_mm_s * 0.001f *
+            (float)balance_last_measurement_latency_ms * 0.001f : 0.0f;
     input.measured_velocity_mps = (0u != new_measurement) ?
         (float)measurement.velocity_mm_s * 0.001f : 0.0f;
     input.measurement_age_ms = measurement_age;
@@ -420,7 +447,17 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
     input.reference_position_m = profile_output->position_m;
     input.reference_velocity_mps = profile_output->velocity_mps;
     input.reference_accel_mps2 = profile_output->accel_mps2;
+    wheel_status = wheel_speed_control_get_status();
     input.car_accel_mps2 = 0.0f;
+    if ((NULL != wheel_status) && (0u != wheel_status->kinematics_valid))
+    {
+        input.car_accel_mps2 = balance_app_clamp(
+            wheel_status->planned_accel_mps2 *
+                BALANCE_CAR_ACCEL_FEEDFORWARD_GAIN *
+                BALANCE_CAR_ACCEL_FEEDFORWARD_SIGN,
+            -BALANCE_CAR_ACCEL_LIMIT_MPS2,
+            BALANCE_CAR_ACCEL_LIMIT_MPS2);
+    }
     input.actual_lever_valid =
         (0u != (balance_status.flags &
                 BALANCE_APP_FLAG_LEVER_FEEDBACK_VALID)) ? 1u : 0u;
@@ -782,7 +819,6 @@ void balance_app_init(void)
     profile_config.drive_accel_mps2 = BALANCE_PROFILE_DRIVE_ACCEL_MPS2;
     profile_config.brake_accel_mps2 = BALANCE_PROFILE_BRAKE_ACCEL_MPS2;
     profile_config.max_velocity_mps = BALANCE_PROFILE_MAX_VELOCITY_MPS;
-    profile_config.brake_margin_m = BALANCE_PROFILE_BRAKE_MARGIN_M;
     profile_config.position_tolerance_m =
         BALANCE_PROFILE_POSITION_TOLERANCE_M;
     profile_config.velocity_tolerance_mps =
@@ -847,6 +883,7 @@ void balance_app_init(void)
     balance_last_command_ms = now_ms;
     balance_last_query_ms = now_ms;
     balance_last_accepted_measurement_ms = 0u;
+    balance_last_measurement_latency_ms = 0u;
     balance_hard_edge_start_ms = 0u;
     balance_level_tolerance_start_ms = 0u;
 

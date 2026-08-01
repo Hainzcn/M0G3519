@@ -97,8 +97,8 @@ void ball_motion_profile_step(ball_motion_profile_t *profile, float dt_s)
         output->phase = BALL_MOTION_PHASE_BRAKE;
     }
     else if ((velocity_toward > profile->config.velocity_tolerance_mps) &&
-             (distance <= stop_distance +
-              profile->config.brake_margin_m))
+             ((BALL_MOTION_PHASE_BRAKE == output->phase) ||
+              (distance <= stop_distance)))
     {
         output->accel_mps2 = -direction * profile->config.brake_accel_mps2;
         output->phase = BALL_MOTION_PHASE_BRAKE;

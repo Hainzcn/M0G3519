@@ -37,7 +37,7 @@ Emm42 独占 UART7。原 UART0（PA10/PA11）继续输出 `BOOT OK`、心跳和�
 
 Demo 总开关为 `src/middle/control_config.h` 中的 `EMM42_BALANCE_DEMO_ENABLE`。运行 Demo 时还应设置 `BALANCE_CONTROL_ENABLE=0`，并将 `UART3_MAIX_MODE` 设为 `UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG` 以启用 100Hz `0x82` Demo V2 遥测。
 
-上电前摆杆必须自然停在机械最低边界，不再人工扶水平。`BALANCE_STARTUP_LEVER_ANGLE_DEG` 填写该边界相对水平的有符号摆杆角，当前为 `-10deg`。固件等待 3 秒后把最低边界设为 Emm42 `0deg`，使能电机并先移动到水平；位置误差不超过 `1deg` 且保持 200ms 后，才以 30RPM 在摆杆 `+5deg` 和 `-5deg` 间往复，每端保持 1.5 秒。当前安装通过 `BALANCE_EMM42_DIRECTION_SIGN=-1` 将连杆机械角映射到 Emm42 驱动坐标，并通过 `BALANCE_LINKAGE_TARGET_SIGN=-1` 对齐逻辑摆杆角与连杆模型目标轴。对应绝对目标约为：水平 `-29.42deg`、摆杆 `+5deg` 时 `-11.18deg`、摆杆 `-5deg` 时 `-52.38deg`。UART0 输出 `[balance-demo]` 阶段日志。
+上电前摆杆必须自然停在机械最低边界，不再人工扶水平。`BALANCE_STARTUP_LEVER_ANGLE_DEG` 填写该边界相对水平的有符号摆杆角，当前固件配置为 `-5deg`，但每次机构或连杆调整后都必须重新实测，不能沿用文档数值。固件等待 3 秒后把最低边界设为 Emm42 `0deg`，使能电机并先移动到水平；位置误差不超过 `1deg` 且保持 200ms 后，才以 30RPM 在摆杆 `+5deg` 和 `-5deg` 间往复，每端保持 1.5 秒。当前安装通过 `BALANCE_EMM42_DIRECTION_SIGN=-1` 将连杆机械角映射到 Emm42 驱动坐标，并通过 `BALANCE_LINKAGE_TARGET_SIGN=-1` 对齐逻辑摆杆角与连杆模型目标轴。目标电机角统一由当前启动角和连杆模型计算，测试不得硬编码旧标定角对应的绝对数值。UART0 输出 `[balance-demo]` 阶段日志。
 
 UART3 遥测中的 `target_angle` 是 Demo 当前目标摆杆角，`imu_pitch` 是 IMU 原始俯仰角，`motor_feedback` 是 Emm42 当前电机轴角。IMU 尚未扣除安装零偏或应用方向系数；电机轴角也不能直接当作摆杆角，两者应结合连杆逆解判断。
 

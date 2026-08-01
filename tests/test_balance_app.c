@@ -6,6 +6,7 @@
 #include "control_config.h"
 #include "emm42.h"
 #include "vision_link.h"
+#include "wheel_speed_control.h"
 
 static uint32 mock_now_ms;
 static emm42_frame_t mock_frame;
@@ -21,6 +22,12 @@ static uint8 mock_last_command;
 static uint8 mock_vision_online;
 static uint8 mock_vision_has_snapshot;
 static vision_link_snapshot_t mock_vision_snapshot;
+static wheel_speed_control_status_t mock_wheel_status;
+
+const wheel_speed_control_status_t *wheel_speed_control_get_status(void)
+{
+    return &mock_wheel_status;
+}
 
 #if (BALANCE_STARTUP_CALIBRATED != 0u)
 static float level_motor_position(void)
@@ -195,7 +202,10 @@ static void reset_mocks(void)
     mock_last_command = 0u;
     mock_vision_online = 0u;
     mock_vision_has_snapshot = 0u;
+    mock_wheel_status.kinematics_valid = 0u;
+    mock_wheel_status.planned_accel_mps2 = 0.0f;
     mock_vision_snapshot.sequence = 0u;
+    mock_vision_snapshot.processing_ms = 0u;
 }
 
 static void publish_vision(uint8 flags, uint8 confidence,
@@ -405,7 +415,7 @@ static void test_command_timeouts_latch(void)
     assert(balance_app_get_status()->fault == BALANCE_FAULT_COMMAND_TIMEOUT);
 }
 
-static void test_unchanged_target_is_not_resent_at_10_hz(void)
+static void test_unchanged_target_is_not_resent_during_feedback_queries(void)
 {
     uint32 query_count;
     uint32 move_count;
@@ -478,7 +488,7 @@ int main(void)
     test_successful_startup();
     test_waits_for_consecutive_acceptable_vision();
     test_command_timeouts_latch();
-    test_unchanged_target_is_not_resent_at_10_hz();
+    test_unchanged_target_is_not_resent_during_feedback_queries();
 #else
     test_unconfigured_mode_queries_without_motion();
 #endif

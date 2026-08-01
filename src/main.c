@@ -64,10 +64,10 @@ int main(void)
         imu_app_process();
         grayscale_app_process();
         vision_link_process();
+        motor_app_process();
 #if (BALANCE_CONTROL_ENABLE != 0u)
         balance_app_process();
 #endif
-        motor_app_process();
         uart3_maix_app_process();
         heartbeat_app_process();
         button_app_process();

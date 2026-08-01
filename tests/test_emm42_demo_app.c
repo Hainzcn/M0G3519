@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "balance_linkage.h"
 #include "control_config.h"
 #include "emm42.h"
 #include "emm42_demo_app.h"
@@ -13,6 +14,17 @@ static float mock_position_deg;
 static float mock_last_move_deg;
 static uint32 mock_move_count;
 static uint32 mock_query_count;
+
+static float expected_motor_position(float lever_angle_deg)
+{
+    float motor_deg;
+
+    assert(0u != balance_linkage_relative_motor_deg(
+        BALANCE_STARTUP_LEVER_ANGLE_DEG,
+        (float)BALANCE_LINKAGE_TARGET_SIGN * lever_angle_deg,
+        &motor_deg));
+    return motor_deg * (float)BALANCE_EMM42_DIRECTION_SIGN;
+}
 
 static void queue_position(float position_deg)
 {
@@ -134,7 +146,7 @@ int main(void)
     assert(mock_move_count == 1u);
     assert(mock_query_count == 0u);
     level_motor_deg = mock_last_move_deg;
-    assert(fabsf(level_motor_deg - (-29.424f)) < 0.02f);
+    assert(fabsf(level_motor_deg - expected_motor_position(0.0f)) < 0.02f);
     assert(emm42_demo_app_get_target_angle_deg() == 0.0f);
 
     process_at(3300u);
@@ -145,13 +157,15 @@ int main(void)
     process_at(3500u);
     process_at(3500u);
     assert(emm42_demo_app_get_state() == EMM42_DEMO_WAIT_POSITIVE);
-    assert(fabsf(mock_last_move_deg - (-11.184f)) < 0.02f);
+    assert(fabsf(mock_last_move_deg - expected_motor_position(5.0f)) <
+           0.02f);
     assert(emm42_demo_app_get_target_angle_deg() == 5.0f);
 
     process_at(5000u);
     process_at(5000u);
     assert(emm42_demo_app_get_state() == EMM42_DEMO_WAIT_NEGATIVE);
-    assert(fabsf(mock_last_move_deg - (-52.379f)) < 0.02f);
+    assert(fabsf(mock_last_move_deg - expected_motor_position(-5.0f)) <
+           0.02f);
     assert(emm42_demo_app_get_target_angle_deg() == -5.0f);
 
     puts("emm42 demo app tests passed");
