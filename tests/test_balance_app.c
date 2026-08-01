@@ -329,6 +329,31 @@ static void test_successful_startup(void)
     assert(balance_app_get_status()->target_position_m < 0.0f);
     balance_app_cancel_motion();
     assert(balance_app_get_status()->sequence_state == BALANCE_SEQUENCE_IDLE);
+
+    assert(0u != balance_app_start_sequence());
+    mock_now_ms += BALANCE_SEQUENCE_TIMEOUT_MS;
+    publish_acceptable_vision(0);
+    process_and_answer_pending();
+    assert(balance_app_get_status()->sequence_state ==
+           BALANCE_SEQUENCE_TO_NEGATIVE);
+    assert(0u != (balance_app_get_status()->flags &
+                  BALANCE_APP_FLAG_SEQUENCE_ACTIVE));
+    assert(balance_app_get_status()->sequence_elapsed_ms == 0u);
+    mock_now_ms += BALANCE_ESTIMATOR_PERIOD_MS;
+    publish_acceptable_vision(0);
+    process_and_answer_pending();
+    assert(balance_app_get_status()->target_position_m < 0.0f);
+    mock_now_ms += BALANCE_SEQUENCE_TIMEOUT_MS;
+    publish_acceptable_vision(0);
+    process_and_answer_pending();
+    assert(balance_app_get_status()->sequence_state ==
+           BALANCE_SEQUENCE_TIMEOUT);
+    assert(0u == (balance_app_get_status()->flags &
+                  BALANCE_APP_FLAG_SEQUENCE_ACTIVE));
+    mock_now_ms += BALANCE_ESTIMATOR_PERIOD_MS;
+    publish_acceptable_vision(0);
+    process_and_answer_pending();
+    assert(balance_app_get_status()->target_position_m == 0.0f);
 }
 
 static void test_waits_for_consecutive_acceptable_vision(void)

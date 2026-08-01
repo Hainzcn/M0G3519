@@ -87,6 +87,15 @@ static void balance_app_set_sequence_state(
     balance_sequence_settle_active = 0u;
 }
 
+static void balance_app_begin_negative_sequence_leg(uint32 now_ms)
+{
+    ball_motion_profile_set_target(
+        &balance_profile, BALANCE_SEQUENCE_NEGATIVE_TARGET_M);
+    balance_sequence_start_ms = now_ms;
+    balance_status.sequence_elapsed_ms = 0u;
+    balance_app_set_sequence_state(BALANCE_SEQUENCE_TO_NEGATIVE);
+}
+
 static void balance_app_abort_sequence(
     balance_app_sequence_state_enum state)
 {
@@ -447,6 +456,8 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
     input.reference_position_m = profile_output->position_m;
     input.reference_velocity_mps = profile_output->velocity_mps;
     input.reference_accel_mps2 = profile_output->accel_mps2;
+    input.reference_holding =
+        (BALL_MOTION_PHASE_HOLD == profile_output->phase) ? 1u : 0u;
     wheel_status = wheel_speed_control_get_status();
     input.car_accel_mps2 = 0.0f;
     if ((NULL != wheel_status) && (0u != wheel_status->kinematics_valid))
@@ -486,6 +497,7 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
     balance_status.reference_accel_mps2 = profile_output->accel_mps2;
     balance_status.motion_phase = profile_output->phase;
     balance_status.position_error_m = output->position_error_m;
+    balance_status.velocity_command_mps = output->velocity_command_mps;
     balance_status.desired_ball_accel_mps2 =
         output->desired_ball_accel_mps2;
     balance_status.lever_angle_deg = balance_trajectory_angle_deg;
@@ -550,8 +562,19 @@ static void balance_app_update_sequence(uint32 now_ms)
     balance_status.sequence_elapsed_ms = now_ms - balance_sequence_start_ms;
     if (balance_status.sequence_elapsed_ms >= BALANCE_SEQUENCE_TIMEOUT_MS)
     {
-        balance_app_abort_sequence(BALANCE_SEQUENCE_TIMEOUT);
-        heartbeat_hw_uart_send_string("[balance] sequence timeout\r\n");
+        if (BALANCE_SEQUENCE_TO_POSITIVE ==
+            balance_status.sequence_state)
+        {
+            balance_app_begin_negative_sequence_leg(now_ms);
+            heartbeat_hw_uart_send_string(
+                "[balance] positive leg timeout; continuing\r\n");
+        }
+        else
+        {
+            balance_app_abort_sequence(BALANCE_SEQUENCE_TIMEOUT);
+            heartbeat_hw_uart_send_string(
+                "[balance] negative leg timeout\r\n");
+        }
         return;
     }
 
@@ -580,9 +603,7 @@ static void balance_app_update_sequence(uint32 now_ms)
 
     if (BALANCE_SEQUENCE_TO_POSITIVE == balance_status.sequence_state)
     {
-        ball_motion_profile_set_target(
-            &balance_profile, BALANCE_SEQUENCE_NEGATIVE_TARGET_M);
-        balance_app_set_sequence_state(BALANCE_SEQUENCE_TO_NEGATIVE);
+        balance_app_begin_negative_sequence_leg(now_ms);
         heartbeat_hw_uart_send_string("[balance] sequence return\r\n");
     }
     else
@@ -799,11 +820,16 @@ void balance_app_init(void)
     ball_motion_profile_config_t profile_config;
     uint32 now_ms = heartbeat_get_ms();
 
-    config.kp = BALANCE_KP;
-    config.kd = BALANCE_KD;
+    config.position_gain_s_inv = BALANCE_POSITION_LOOP_GAIN_S_INV;
+    config.velocity_gain_s_inv = BALANCE_VELOCITY_LOOP_GAIN_S_INV;
+    config.max_ball_velocity_mps = BALANCE_MAX_BALL_VELOCITY_MPS;
     config.position_correction_gain = BALANCE_ESTIMATOR_POSITION_GAIN;
     config.velocity_correction_gain = BALANCE_ESTIMATOR_VELOCITY_GAIN;
     config.reference_accel_gain = BALANCE_PROFILE_ACCEL_FF_GAIN;
+    config.low_speed_friction_accel_mps2 =
+        BALANCE_LOW_SPEED_FRICTION_ACCEL_MPS2;
+    config.center_capture_position_m = BALANCE_CENTER_CAPTURE_POSITION_M;
+    config.low_speed_threshold_mps = BALANCE_LOW_SPEED_THRESHOLD_MPS;
     config.max_ball_accel_mps2 = BALANCE_MAX_BALL_ACCEL_MPS2;
     config.edge_recovery_accel_mps2 =
         BALANCE_EDGE_RECOVERY_ACCEL_MPS2;
@@ -846,6 +872,7 @@ void balance_app_init(void)
     balance_status.reference_velocity_mps = 0.0f;
     balance_status.reference_accel_mps2 = 0.0f;
     balance_status.position_error_m = 0.0f;
+    balance_status.velocity_command_mps = 0.0f;
     balance_status.desired_ball_accel_mps2 = 0.0f;
     balance_status.lever_angle_deg = 0.0f;
     balance_status.actual_lever_angle_deg = 0.0f;

@@ -50,6 +50,7 @@ void balance_control_reset(balance_control_t *control)
     control->output.estimated_position_m = 0.0f;
     control->output.estimated_velocity_mps = 0.0f;
     control->output.position_error_m = 0.0f;
+    control->output.velocity_command_mps = 0.0f;
     control->output.desired_ball_accel_mps2 = 0.0f;
     control->output.lever_angle_deg = 0.0f;
 }
@@ -60,6 +61,7 @@ void balance_control_step(balance_control_t *control,
     balance_control_output_t *output;
     float model_accel;
     float residual;
+    float velocity_command = 0.0f;
     float desired_accel = 0.0f;
     float dynamics_limit;
     float radius;
@@ -141,11 +143,32 @@ void balance_control_step(balance_control_t *control,
     if ((0u != output->has_state) &&
         (input->measurement_age_ms <= control->config.valid_measurement_ms))
     {
+        velocity_command = input->reference_velocity_mps +
+            control->config.position_gain_s_inv *
+                output->position_error_m;
+        if (balance_control_abs(velocity_command) >
+            control->config.max_ball_velocity_mps)
+        {
+            velocity_command = balance_control_clamp(
+                velocity_command,
+                -control->config.max_ball_velocity_mps,
+                control->config.max_ball_velocity_mps);
+            flags |= BALANCE_CONTROL_FLAG_VELOCITY_SATURATED;
+        }
         desired_accel = control->config.reference_accel_gain *
             input->reference_accel_mps2 +
-            control->config.kp * output->position_error_m +
-            control->config.kd * (input->reference_velocity_mps -
-                                  output->estimated_velocity_mps);
+            control->config.velocity_gain_s_inv *
+                (velocity_command - output->estimated_velocity_mps);
+        if ((0u != input->reference_holding) &&
+            (balance_control_abs(output->position_error_m) >
+             control->config.center_capture_position_m) &&
+            (balance_control_abs(output->estimated_velocity_mps) <
+             control->config.low_speed_threshold_mps))
+        {
+            desired_accel += (velocity_command < 0.0f) ?
+                -control->config.low_speed_friction_accel_mps2 :
+                control->config.low_speed_friction_accel_mps2;
+        }
         if (balance_control_abs(output->estimated_position_m) >=
             control->config.edge_position_m)
         {
@@ -201,6 +224,7 @@ void balance_control_step(balance_control_t *control,
         flags |= BALANCE_CONTROL_FLAG_ANGLE_SATURATED;
     }
 
+    output->velocity_command_mps = velocity_command;
     output->desired_ball_accel_mps2 = desired_accel;
     output->lever_angle_deg = lever_deg;
     output->flags = flags;

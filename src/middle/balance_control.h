@@ -10,14 +10,19 @@
 #define BALANCE_CONTROL_FLAG_ANGLE_SATURATED    (0x10u)
 #define BALANCE_CONTROL_FLAG_SLEW_SATURATED     (0x20u)
 #define BALANCE_CONTROL_FLAG_HARD_EDGE          (0x40u)
+#define BALANCE_CONTROL_FLAG_VELOCITY_SATURATED (0x80u)
 
 typedef struct
 {
-    float kp;
-    float kd;
+    float position_gain_s_inv;
+    float velocity_gain_s_inv;
+    float max_ball_velocity_mps;
     float position_correction_gain;
     float velocity_correction_gain;
     float reference_accel_gain;
+    float low_speed_friction_accel_mps2;
+    float center_capture_position_m;
+    float low_speed_threshold_mps;
     float max_ball_accel_mps2;
     float edge_recovery_accel_mps2;
     float max_lever_angle_deg;
@@ -39,6 +44,7 @@ typedef struct
     float reference_position_m;
     float reference_velocity_mps;
     float reference_accel_mps2;
+    uint8 reference_holding;
     float car_accel_mps2;
     uint8 actual_lever_valid;
     uint8 update_control_output;
@@ -53,6 +59,7 @@ typedef struct
     float estimated_position_m;
     float estimated_velocity_mps;
     float position_error_m;
+    float velocity_command_mps;
     float desired_ball_accel_mps2;
     float lever_angle_deg;
 } balance_control_output_t;

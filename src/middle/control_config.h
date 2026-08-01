@@ -53,8 +53,13 @@
 #define BALANCE_RECOVERY_VALID_FRAMES          (5u)
 #define BALANCE_MIN_VISION_CONFIDENCE          (50u)
 
-#define BALANCE_KP                             (3.0f)
-#define BALANCE_KD                             (1.5f)
+/* Cascaded ball controller: position error -> velocity -> acceleration. */
+#define BALANCE_POSITION_LOOP_GAIN_S_INV       (2.0f)
+#define BALANCE_VELOCITY_LOOP_GAIN_S_INV       (2.0f)
+#define BALANCE_MAX_BALL_VELOCITY_MPS          (0.060f)
+#define BALANCE_LOW_SPEED_FRICTION_ACCEL_MPS2  (0.045f)
+#define BALANCE_CENTER_CAPTURE_POSITION_M      (0.004f)
+#define BALANCE_LOW_SPEED_THRESHOLD_MPS        (0.010f)
 #define BALANCE_ESTIMATOR_POSITION_GAIN        (0.65f)
 #define BALANCE_ESTIMATOR_VELOCITY_GAIN        (0.50f)
 #define BALANCE_MAX_BALL_ACCEL_MPS2            (0.45f)

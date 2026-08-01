@@ -70,6 +70,7 @@ typedef struct
     float reference_velocity_mps;
     float reference_accel_mps2;
     float position_error_m;
+    float velocity_command_mps;
     float desired_ball_accel_mps2;
     float lever_angle_deg;
     float actual_lever_angle_deg;
