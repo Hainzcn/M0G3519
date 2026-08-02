@@ -11,20 +11,6 @@
 #define BALANCE_LINKAGE_PI             (3.14159265358979323846f)
 #define BALANCE_LINKAGE_DEG_TO_RAD     (BALANCE_LINKAGE_PI / 180.0f)
 #define BALANCE_LINKAGE_RAD_TO_DEG     (180.0f / BALANCE_LINKAGE_PI)
-#define BALANCE_LINKAGE_FIT_QUADRATIC  (0.095f)
-#define BALANCE_LINKAGE_FIT_LINEAR     (4.0f)
-#define BALANCE_LINKAGE_FIT_OFFSET     (-51.0f)
-#define BALANCE_LINKAGE_FIT_MIN_DEG    (-10.0f)
-#define BALANCE_LINKAGE_FIT_MAX_DEG    (10.0f)
-
-static float balance_linkage_fitted_motor_deg(float lever_angle_deg)
-{
-    return BALANCE_LINKAGE_FIT_QUADRATIC * lever_angle_deg *
-               lever_angle_deg +
-           BALANCE_LINKAGE_FIT_LINEAR * lever_angle_deg +
-           BALANCE_LINKAGE_FIT_OFFSET;
-}
-
 uint8 balance_linkage_inverse_deg(float lever_angle_deg,
                                   float *motor_angle_deg)
 {
@@ -88,45 +74,5 @@ uint8 balance_linkage_relative_motor_deg(float reference_lever_angle_deg,
         return 0u;
     }
     *relative_motor_deg = target_motor_deg - reference_motor_deg;
-    return 1u;
-}
-
-uint8 balance_linkage_lever_from_relative_motor_deg(
-    float reference_lever_angle_deg,
-    float relative_motor_deg,
-    float *lever_angle_deg)
-{
-    float motor_angle_deg;
-    float discriminant;
-    float lever_deg;
-
-    if ((NULL == lever_angle_deg) ||
-        (reference_lever_angle_deg < BALANCE_LINKAGE_FIT_MIN_DEG) ||
-        (reference_lever_angle_deg > BALANCE_LINKAGE_FIT_MAX_DEG))
-    {
-        return 0u;
-    }
-
-    motor_angle_deg =
-        balance_linkage_fitted_motor_deg(reference_lever_angle_deg) +
-        relative_motor_deg;
-    discriminant = BALANCE_LINKAGE_FIT_LINEAR *
-                       BALANCE_LINKAGE_FIT_LINEAR -
-                   4.0f * BALANCE_LINKAGE_FIT_QUADRATIC *
-                       (BALANCE_LINKAGE_FIT_OFFSET - motor_angle_deg);
-    if (discriminant < 0.0f)
-    {
-        return 0u;
-    }
-
-    /* Select the quadratic root that is continuous around the level point. */
-    lever_deg = (-BALANCE_LINKAGE_FIT_LINEAR + sqrtf(discriminant)) /
-                (2.0f * BALANCE_LINKAGE_FIT_QUADRATIC);
-    if ((lever_deg < BALANCE_LINKAGE_FIT_MIN_DEG) ||
-        (lever_deg > BALANCE_LINKAGE_FIT_MAX_DEG))
-    {
-        return 0u;
-    }
-    *lever_angle_deg = lever_deg;
     return 1u;
 }

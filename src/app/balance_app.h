@@ -2,22 +2,16 @@
 #define BALANCE_APP_H_
 
 #include "zf_common_typedef.h"
-#include "ball_motion_profile.h"
 
 typedef enum
 {
-    BALANCE_APP_UNCONFIGURED = 0,
-    BALANCE_APP_POWER_WAIT,
-    BALANCE_APP_SET_REFERENCE,
-    BALANCE_APP_ENABLE,
-    BALANCE_APP_MOVE_LEVEL,
-    BALANCE_APP_ACTIVE,
-    BALANCE_APP_RECOVERY,
-    BALANCE_APP_FAULT,
-    BALANCE_APP_DISABLE,
-    BALANCE_APP_WAIT_LOWER_STOP,
-    BALANCE_APP_WAIT_VISION,
-} balance_app_state_enum;
+    BALANCE_MODE_STARTUP = 0,
+    BALANCE_MODE_V1,
+    BALANCE_MODE_SW1,
+    BALANCE_MODE_EDGE_RECOVERY,
+    BALANCE_MODE_COMPLETE,
+    BALANCE_MODE_FAULT,
+} balance_mode_enum;
 
 typedef enum
 {
@@ -25,69 +19,64 @@ typedef enum
     BALANCE_FAULT_LINKAGE_UNREACHABLE,
     BALANCE_FAULT_COMMAND_TIMEOUT,
     BALANCE_FAULT_COMMAND_REJECTED,
-    BALANCE_FAULT_MOVE_LEVEL_TIMEOUT,
+    BALANCE_FAULT_LEVEL_TIMEOUT,
     BALANCE_FAULT_MOTOR_FOLLOW_ERROR,
-    BALANCE_FAULT_BALL_HARD_EDGE,
+    BALANCE_FAULT_EDGE_NO_PROGRESS,
+    BALANCE_FAULT_SW1_DEADLINE_MISSED,
+    BALANCE_FAULT_SW1_TIMEOUT,
+    BALANCE_FAULT_V1_CAPTURE_TIMEOUT,
 } balance_app_fault_enum;
 
 typedef enum
 {
-    BALANCE_SEQUENCE_IDLE = 0,
-    BALANCE_SEQUENCE_TO_POSITIVE,
-    BALANCE_SEQUENCE_TO_NEGATIVE,
-    BALANCE_SEQUENCE_COMPLETE,
-    BALANCE_SEQUENCE_CANCELED,
-    BALANCE_SEQUENCE_TIMEOUT,
-} balance_app_sequence_state_enum;
+    BALANCE_REQUEST_ACCEPTED = 0,
+    BALANCE_REQUEST_NOT_READY,
+    BALANCE_REQUEST_BUSY,
+    BALANCE_REQUEST_FAULT,
+} balance_request_result_t;
 
-#define BALANCE_APP_FLAG_ACTIVE                 (0x01u)
-#define BALANCE_APP_FLAG_MOTOR_FEEDBACK_VALID   (0x02u)
-#define BALANCE_APP_FLAG_LINK_ONLINE            (0x04u)
-#define BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED   (0x08u)
-#define BALANCE_APP_FLAG_COMMAND_PENDING        (0x10u)
-#define BALANCE_APP_FLAG_FAULT_LATCHED          (0x20u)
-#define BALANCE_APP_FLAG_LEVER_FEEDBACK_VALID   (0x40u)
-#define BALANCE_APP_FLAG_SEQUENCE_ACTIVE        (0x80u)
+#define BALANCE_APP_FLAG_ACTUATOR_READY       (0x01u)
+#define BALANCE_APP_FLAG_MOTOR_FEEDBACK_VALID (0x02u)
+#define BALANCE_APP_FLAG_VISION_ONLINE        (0x04u)
+#define BALANCE_APP_FLAG_MEASUREMENT_FRESH    (0x08u)
+#define BALANCE_APP_FLAG_COMMAND_PENDING      (0x10u)
+#define BALANCE_APP_FLAG_FAULT_LATCHED        (0x20u)
+#define BALANCE_APP_FLAG_SOFT_EDGE            (0x40u)
+#define BALANCE_APP_FLAG_SW1_ACTIVE           (0x80u)
 
 typedef struct
 {
-    balance_app_state_enum state;
+    uint8 valid;
+    float longitudinal_accel_mps2;
+    uint32 sample_ms;
+} balance_platform_motion_t;
+
+typedef struct
+{
+    balance_mode_enum mode;
+    uint8 phase;
     balance_app_fault_enum fault;
     uint8 flags;
-    uint8 control_flags;
-    uint8 vision_confidence;
-    uint8 vision_raw_flags;
-    uint8 vision_raw_confidence;
     uint16 vision_sequence;
-    uint16 vision_raw_sequence;
     uint32 vision_age_ms;
-    int16 vision_raw_position_dmm;
-    int16 vision_raw_velocity_mm_s;
-    float estimated_position_m;
-    float estimated_velocity_mps;
-    float target_position_m;
-    float reference_position_m;
-    float reference_velocity_mps;
-    float reference_accel_mps2;
-    float position_error_m;
-    float velocity_command_mps;
-    float desired_ball_accel_mps2;
-    float lever_angle_deg;
-    float actual_lever_angle_deg;
+    uint8 vision_confidence;
+    float position_m;
+    float velocity_mps;
+    float remaining_m;
+    float brake_distance_m;
+    float lever_target_deg;
     float motor_target_deg;
     float motor_feedback_deg;
+    uint32 sw1_elapsed_ms;
     uint16 command_error_count;
     uint16 emm42_rx_overflow_count;
-    uint32 sequence_elapsed_ms;
-    ball_motion_phase_enum motion_phase;
-    balance_app_sequence_state_enum sequence_state;
 } balance_app_status_t;
 
 void balance_app_init(void);
 void balance_app_process(void);
-uint8 balance_app_set_target_position_m(float target_position_m);
-uint8 balance_app_start_sequence(void);
-void balance_app_cancel_motion(void);
+balance_request_result_t balance_app_start_sw1(void);
+void balance_app_cancel(void);
 const balance_app_status_t *balance_app_get_status(void);
+void balance_app_set_platform_motion(const balance_platform_motion_t *motion);
 
 #endif

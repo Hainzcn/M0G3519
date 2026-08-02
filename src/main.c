@@ -1,9 +1,6 @@
 #include "button_app.h"
 #include "balance_app.h"
 #include "control_config.h"
-#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
-#include "emm42_demo_app.h"
-#endif
 #include "uart3_maix_app.h"
 #include "grayscale_app.h"
 #include "heartbeat_app.h"
@@ -31,11 +28,6 @@ int main(void)
     heartbeat_hw_uart_flush_blocking();
     heartbeat_hw_uart_send_string(
         "[boot-mode] " __DATE__ " " __TIME__);
-#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
-    heartbeat_hw_uart_send_string(" demo=1");
-#else
-    heartbeat_hw_uart_send_string(" demo=0");
-#endif
 #if (BALANCE_CONTROL_ENABLE != 0u)
     heartbeat_hw_uart_send_string(" balance=1");
 #else
@@ -51,10 +43,6 @@ int main(void)
     heartbeat_hw_uart_flush_blocking();
 #if (BALANCE_CONTROL_ENABLE != 0u)
     balance_app_init();
-#endif
-#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
-    emm42_demo_app_init();
-    heartbeat_hw_uart_flush_blocking();
 #endif
 
     while (1)
@@ -72,8 +60,5 @@ int main(void)
         heartbeat_app_process();
         button_app_process();
         oled_app_process();
-#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
-        emm42_demo_app_process();
-#endif
     }
 }

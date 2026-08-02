@@ -17,10 +17,7 @@
 #define UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG   (2u)
 #define UART3_MAIX_MODE                            (UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
 
-/* V1 static center stability closed-loop; demo is mutually exclusive. */
-#ifndef EMM42_BALANCE_DEMO_ENABLE
-#define EMM42_BALANCE_DEMO_ENABLE              (0u)
-#endif
+/* Balance subsystem build switch and mechanical startup reference. */
 #ifndef BALANCE_CONTROL_ENABLE
 #define BALANCE_CONTROL_ENABLE                 (1u)
 #endif
@@ -37,77 +34,6 @@
 #define BALANCE_STARTUP_LEVER_ANGLE_DEG        (-5.0f)
 #endif
 
-#define BALANCE_ESTIMATOR_PERIOD_MS            (5u)
-#define BALANCE_OUTER_CONTROL_PERIOD_MS        (20u)
-/* Compatibility name for the 200 Hz estimator/application tick. */
-#define BALANCE_CONTROL_PERIOD_MS              BALANCE_ESTIMATOR_PERIOD_MS
-#define BALANCE_COMMAND_PERIOD_MS              (20u)
-#define BALANCE_POSITION_QUERY_PERIOD_MS       (100u)
-#define BALANCE_POWER_WAIT_MS                  (3000u)
-#define BALANCE_LOWER_STOP_SETTLE_MS            (1500u)
-#define BALANCE_COMMAND_TIMEOUT_MS             (25u)
-#define BALANCE_MOVE_LEVEL_TIMEOUT_MS          (2500u)
-#define BALANCE_LEVEL_SETTLE_MS                (200u)
-#define BALANCE_HARD_EDGE_TIMEOUT_MS           (200u)
-#define BALANCE_MAX_CONSECUTIVE_COMMAND_ERRORS (3u)
-#define BALANCE_RECOVERY_VALID_FRAMES          (5u)
-#define BALANCE_MIN_VISION_CONFIDENCE          (50u)
-
-/* Cascaded ball controller: position error -> velocity -> acceleration. */
-#define BALANCE_POSITION_LOOP_GAIN_S_INV       (2.0f)
-#define BALANCE_VELOCITY_LOOP_GAIN_S_INV       (2.0f)
-#define BALANCE_MAX_BALL_VELOCITY_MPS          (0.060f)
-#define BALANCE_LOW_SPEED_FRICTION_ACCEL_MPS2  (0.045f)
-#define BALANCE_CENTER_CAPTURE_POSITION_M      (0.004f)
-#define BALANCE_LOW_SPEED_THRESHOLD_MPS        (0.010f)
-#define BALANCE_ESTIMATOR_POSITION_GAIN        (0.65f)
-#define BALANCE_ESTIMATOR_VELOCITY_GAIN        (0.50f)
-#define BALANCE_MAX_BALL_ACCEL_MPS2            (0.45f)
-#define BALANCE_MAX_LEVER_ANGLE_DEG            (4.0f)
-#define BALANCE_DEGRADED_LEVER_ANGLE_DEG       (2.0f)
-#define BALANCE_MAX_LEVER_RATE_DEG_S           (30.0f)
-#define BALANCE_MAX_LEVER_ACCEL_DEG_S2         (600.0f)
-#define BALANCE_LEVER_COMMAND_DEADBAND_DEG      (0.1f)
-#define BALANCE_EDGE_POSITION_M                (0.100f)
-#define BALANCE_HARD_EDGE_POSITION_M           (0.125f)
-#define BALANCE_EDGE_RECOVERY_ACCEL_MPS2       (0.22f)
-#define BALANCE_FRESH_MEASUREMENT_MS           (30u)
-#define BALANCE_VALID_MEASUREMENT_MS           (80u)
-#define BALANCE_VISION_TRANSPORT_LATENCY_MS     (3u)
-#define BALANCE_VISION_MAX_COMPENSATION_MS      (30u)
-#define BALANCE_CAR_ACCEL_FEEDFORWARD_GAIN      (1.0f)
-#define BALANCE_CAR_ACCEL_FEEDFORWARD_SIGN      (1.0f)
-#define BALANCE_CAR_ACCEL_LIMIT_MPS2            (2.0f)
-
-/* Ball reference profile; leave feedback headroom below the 0.45m/s2 limit. */
-#define BALANCE_PROFILE_DRIVE_ACCEL_MPS2       (0.12f)
-#define BALANCE_PROFILE_BRAKE_ACCEL_MPS2       (0.16f)
-#define BALANCE_PROFILE_MAX_VELOCITY_MPS       (0.060f)
-/* Lead the reference trajectory to compensate vision and actuator delay. */
-#define BALANCE_PROFILE_BRAKE_LOOKAHEAD_S       (0.12f)
-#define BALANCE_PROFILE_ACCEL_FF_GAIN           (1.00f)
-#define BALANCE_PROFILE_POSITION_TOLERANCE_M   (0.0005f)
-#define BALANCE_PROFILE_VELOCITY_TOLERANCE_MPS (0.002f)
-#define BALANCE_TARGET_POSITION_LIMIT_M        (0.090f)
-#define BALANCE_SEQUENCE_POSITIVE_TARGET_M     (0.050f)
-#define BALANCE_SEQUENCE_NEGATIVE_TARGET_M     (-0.050f)
-#define BALANCE_SEQUENCE_POSITION_TOLERANCE_M  (0.006f)
-#define BALANCE_SEQUENCE_VELOCITY_TOLERANCE_MPS (0.030f)
-#define BALANCE_SEQUENCE_SETTLE_MS             (100u)
-#define BALANCE_SEQUENCE_TIMEOUT_MS            (4800u)
-
-#define BALANCE_EMM42_MOVE_RPM                 (30u)
-#define BALANCE_EMM42_ACCELERATION             (20u)
-/* This installation raises the lever when the Emm42 shaft angle is negative. */
-#define BALANCE_EMM42_DIRECTION_SIGN           (-1)
-/* Logical positive lever angle is opposite to the linkage model alpha axis. */
-#define BALANCE_LINKAGE_TARGET_SIGN            (-1)
-/* Closed-loop correction direction; calibrated from actual ball response. */
-#define BALANCE_CONTROL_OUTPUT_SIGN             (-1)
-#define BALANCE_LEVEL_MOTOR_TOLERANCE_DEG      (1.0f)
-#define BALANCE_MOTOR_FOLLOW_ERROR_DEG         (5.0f)
-#define BALANCE_MOTOR_FOLLOW_ERROR_TIMEOUT_MS  (1000u)
-
 #if ((MOTOR_APP_AUTO_START_LINE_FOLLOW != 0u) && \
      (MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO != 0u))
 #error "Only one motor app auto-start mode may be enabled"
@@ -117,10 +43,6 @@
      (UART3_MAIX_MODE != UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG))
 #error "UART3_MAIX_MODE is invalid"
 #endif
-#if ((EMM42_BALANCE_DEMO_ENABLE != 0u) && \
-     (EMM42_BALANCE_DEMO_ENABLE != 1u))
-#error "EMM42_BALANCE_DEMO_ENABLE must be 0 or 1"
-#endif
 #if ((BALANCE_CONTROL_ENABLE != 0u) && (BALANCE_CONTROL_ENABLE != 1u))
 #error "BALANCE_CONTROL_ENABLE must be 0 or 1"
 #endif
@@ -128,24 +50,9 @@
      (BALANCE_STARTUP_CALIBRATED != 1u))
 #error "BALANCE_STARTUP_CALIBRATED must be 0 or 1"
 #endif
-#if ((BALANCE_EMM42_DIRECTION_SIGN != 1) && \
-     (BALANCE_EMM42_DIRECTION_SIGN != -1))
-#error "BALANCE_EMM42_DIRECTION_SIGN must be 1 or -1"
-#endif
-#if ((BALANCE_LINKAGE_TARGET_SIGN != 1) && \
-     (BALANCE_LINKAGE_TARGET_SIGN != -1))
-#error "BALANCE_LINKAGE_TARGET_SIGN must be 1 or -1"
-#endif
-#if ((BALANCE_CONTROL_OUTPUT_SIGN != 1) && \
-     (BALANCE_CONTROL_OUTPUT_SIGN != -1))
-#error "BALANCE_CONTROL_OUTPUT_SIGN must be 1 or -1"
-#endif
-#if ((BALANCE_CONTROL_ENABLE != 0u) && (EMM42_BALANCE_DEMO_ENABLE != 0u))
-#error "Balance controller and EMM42 demo are mutually exclusive"
-#endif
 #if ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
-     (BALANCE_CONTROL_ENABLE == 0u) && (EMM42_BALANCE_DEMO_ENABLE == 0u))
-#error "Balance telemetry mode requires balance control or EMM42 demo"
+     (BALANCE_CONTROL_ENABLE == 0u))
+#error "Balance telemetry mode requires balance control"
 #endif
 
 /* 实测车体几何参数，以及顺时针 1 m 直径圆的中心轨迹。 */

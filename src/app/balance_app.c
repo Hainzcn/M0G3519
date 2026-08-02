@@ -1,335 +1,39 @@
 #include "balance_app.h"
 
-#include <math.h>
+#include <stddef.h>
 
-#include "balance_control.h"
-#include "balance_linkage.h"
-#include "ball_motion_profile.h"
-#include "control_config.h"
-#include "emm42.h"
+#include "balance_config.h"
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
+#include "lever_actuator.h"
+#include "sw1_open_loop.h"
+#include "v1_center_controller.h"
 #include "vision_link.h"
-#include "wheel_speed_control.h"
 
-#define BALANCE_APP_EMM42_ADDRESS        (EMM42_DEFAULT_ADDRESS)
-#define BALANCE_APP_ACK_SUCCESS          (0x02u)
-#define BALANCE_APP_COMMAND_SET_ZERO      (0x0Au)
-#define BALANCE_APP_COMMAND_ENABLE        (0xF3u)
-#define BALANCE_APP_COMMAND_MOVE          (0xFDu)
-#define BALANCE_APP_COMMAND_POSITION      (0x36u)
-#define BALANCE_APP_AGE_INVALID           (0xFFFFFFFFu)
+#define BALANCE_AGE_INVALID                (0xFFFFFFFFu)
 
-static balance_control_t balance_controller;
-static ball_motion_profile_t balance_profile;
+static lever_actuator_t balance_actuator;
+static v1_center_controller_t balance_v1;
+static sw1_open_loop_t balance_sw1;
 static balance_app_status_t balance_status;
-static emm42_frame_t balance_rx_frame;
-static uint32 balance_state_start_ms;
-static uint32 balance_last_control_ms;
-static uint32 balance_last_outer_control_ms;
-static uint32 balance_last_command_ms;
-static uint32 balance_last_query_ms;
-static uint32 balance_last_accepted_measurement_ms;
+static balance_platform_motion_t balance_platform_motion;
+static uint8 balance_has_measurement;
+static uint8 balance_latest_measurement_acceptable;
+static uint8 balance_has_seen_snapshot;
+static uint16 balance_last_snapshot_sequence;
+static uint16 balance_last_snapshot_boot_id;
+static uint32 balance_last_measurement_received_ms;
 static uint32 balance_last_measurement_latency_ms;
-static uint32 balance_hard_edge_start_ms;
-static uint32 balance_level_tolerance_start_ms;
-static float balance_level_motor_deg;
-static uint8 balance_pending_command;
-static uint32 balance_pending_since_ms;
-static uint8 balance_consecutive_command_errors;
-static uint8 balance_recovery_valid_frames;
-static uint8 balance_has_accepted_measurement;
-static uint8 balance_level_move_acked;
-static uint8 balance_hard_edge_active;
-static uint8 balance_level_tolerance_active;
-static uint8 balance_motor_feedback_new;
-static uint8 balance_follow_error_active;
-static uint32 balance_follow_error_start_ms;
-static uint8 balance_has_seen_vision_snapshot;
-static uint16 balance_last_seen_vision_sequence;
-static uint16 balance_last_seen_vision_boot_id;
-static float balance_trajectory_angle_deg;
-static float balance_trajectory_rate_deg_s;
-static float balance_last_sent_lever_deg;
-static uint8 balance_has_sent_lever_target;
-static uint8 balance_trajectory_saturated;
-static uint32 balance_sequence_start_ms;
-static uint32 balance_sequence_settle_start_ms;
-static uint8 balance_sequence_settle_active;
-static uint8 balance_sequence_start_pending;
+static uint8 balance_edge_active;
+static uint32 balance_edge_start_ms;
+static float balance_edge_start_abs_m;
 
-static void balance_app_begin_sequence(uint32 now_ms);
-
-static float balance_app_abs(float value)
+static float balance_abs(float value)
 {
     return (value < 0.0f) ? -value : value;
 }
 
-static uint16 balance_app_u32_to_u16(uint32 value)
-{
-    return (uint16)((value > 65535u) ? 65535u : value);
-}
-
-static void balance_app_set_sequence_state(
-    balance_app_sequence_state_enum state)
-{
-    balance_status.sequence_state = state;
-    if ((BALANCE_SEQUENCE_TO_POSITIVE == state) ||
-        (BALANCE_SEQUENCE_TO_NEGATIVE == state))
-    {
-        balance_status.flags |= BALANCE_APP_FLAG_SEQUENCE_ACTIVE;
-    }
-    else
-    {
-        balance_status.flags &=
-            (uint8)(~BALANCE_APP_FLAG_SEQUENCE_ACTIVE);
-    }
-    balance_sequence_settle_active = 0u;
-}
-
-static void balance_app_begin_negative_sequence_leg(uint32 now_ms)
-{
-    ball_motion_profile_set_target(
-        &balance_profile, BALANCE_SEQUENCE_NEGATIVE_TARGET_M);
-    balance_sequence_start_ms = now_ms;
-    balance_status.sequence_elapsed_ms = 0u;
-    balance_app_set_sequence_state(BALANCE_SEQUENCE_TO_NEGATIVE);
-}
-
-static void balance_app_abort_sequence(
-    balance_app_sequence_state_enum state)
-{
-    balance_sequence_start_pending = 0u;
-    ball_motion_profile_set_target(&balance_profile, 0.0f);
-    balance_app_set_sequence_state(state);
-}
-
-static float balance_app_clamp(float value, float low, float high)
-{
-    if (value > high)
-    {
-        return high;
-    }
-    if (value < low)
-    {
-        return low;
-    }
-    return value;
-}
-
-static void balance_app_update_trajectory(float target_angle_deg)
-{
-    const float dt_s = (float)BALANCE_OUTER_CONTROL_PERIOD_MS * 0.001f;
-    float error = target_angle_deg - balance_trajectory_angle_deg;
-    float stopping_rate = sqrtf(2.0f * BALANCE_MAX_LEVER_ACCEL_DEG_S2 *
-                                balance_app_abs(error));
-    float desired_rate = (error < 0.0f) ? -stopping_rate : stopping_rate;
-    float rate_delta;
-    float next_angle;
-
-    desired_rate = balance_app_clamp(desired_rate,
-        -BALANCE_MAX_LEVER_RATE_DEG_S, BALANCE_MAX_LEVER_RATE_DEG_S);
-    rate_delta = desired_rate - balance_trajectory_rate_deg_s;
-    rate_delta = balance_app_clamp(rate_delta,
-        -BALANCE_MAX_LEVER_ACCEL_DEG_S2 * dt_s,
-        BALANCE_MAX_LEVER_ACCEL_DEG_S2 * dt_s);
-    balance_trajectory_saturated =
-        (balance_app_abs(desired_rate - balance_trajectory_rate_deg_s) >
-         balance_app_abs(rate_delta) + 0.0001f) ? 1u : 0u;
-    balance_trajectory_rate_deg_s += rate_delta;
-    next_angle = balance_trajectory_angle_deg +
-                 balance_trajectory_rate_deg_s * dt_s;
-    if (((error >= 0.0f) && (next_angle >= target_angle_deg)) ||
-        ((error < 0.0f) && (next_angle <= target_angle_deg)))
-    {
-        next_angle = target_angle_deg;
-        balance_trajectory_rate_deg_s = 0.0f;
-    }
-    balance_trajectory_angle_deg = next_angle;
-}
-
-static void balance_app_set_state(balance_app_state_enum state, uint32 now_ms)
-{
-    balance_status.state = state;
-    balance_state_start_ms = now_ms;
-}
-
-static void balance_app_enter_fault(balance_app_fault_enum fault,
-                                    uint32 now_ms)
-{
-    if (BALANCE_APP_FAULT == balance_status.state)
-    {
-        return;
-    }
-    balance_status.fault = fault;
-    balance_status.flags |= BALANCE_APP_FLAG_FAULT_LATCHED;
-    balance_pending_command = 0u;
-    balance_status.flags &= (uint8)(~(BALANCE_APP_FLAG_ACTIVE |
-                                      BALANCE_APP_FLAG_COMMAND_PENDING));
-    balance_app_abort_sequence(BALANCE_SEQUENCE_CANCELED);
-    balance_app_set_state(BALANCE_APP_FAULT, now_ms);
-    (void)emm42_stop(BALANCE_APP_EMM42_ADDRESS, 0u);
-    heartbeat_hw_uart_send_string("[balance] latched fault\r\n");
-}
-
-static void balance_app_record_command_error(balance_app_fault_enum fault,
-                                             uint32 now_ms)
-{
-    balance_status.command_error_count++;
-    if (balance_consecutive_command_errors < 255u)
-    {
-        balance_consecutive_command_errors++;
-    }
-    balance_pending_command = 0u;
-    balance_status.flags &= (uint8)(~BALANCE_APP_FLAG_COMMAND_PENDING);
-    if (balance_consecutive_command_errors >=
-        BALANCE_MAX_CONSECUTIVE_COMMAND_ERRORS)
-    {
-        balance_app_enter_fault(fault, now_ms);
-    }
-}
-
-static uint8 balance_app_begin_command(uint8 command, uint8 sent,
-                                       uint32 now_ms)
-{
-    if (0u == sent)
-    {
-        balance_app_record_command_error(BALANCE_FAULT_COMMAND_REJECTED,
-                                         now_ms);
-        return 0u;
-    }
-    balance_pending_command = command;
-    balance_pending_since_ms = now_ms;
-    balance_status.flags |= BALANCE_APP_FLAG_COMMAND_PENDING;
-    return 1u;
-}
-
-static void balance_app_accept_command(void)
-{
-    balance_pending_command = 0u;
-    balance_status.flags &= (uint8)(~BALANCE_APP_FLAG_COMMAND_PENDING);
-    balance_consecutive_command_errors = 0u;
-}
-
-static void balance_app_handle_ack(uint8 command, uint8 ack_status,
-                                   uint32 now_ms)
-{
-    if ((command != balance_pending_command) ||
-        (BALANCE_APP_ACK_SUCCESS != ack_status))
-    {
-        if (command == balance_pending_command)
-        {
-            balance_app_record_command_error(BALANCE_FAULT_COMMAND_REJECTED,
-                                             now_ms);
-        }
-        return;
-    }
-
-    balance_app_accept_command();
-    if ((BALANCE_APP_DISABLE == balance_status.state) &&
-        (BALANCE_APP_COMMAND_ENABLE == command))
-    {
-        balance_app_set_state(BALANCE_APP_WAIT_LOWER_STOP, now_ms);
-        heartbeat_hw_uart_send_string(
-            "[balance] disabled; wait for lower stop\r\n");
-    }
-    else if ((BALANCE_APP_SET_REFERENCE == balance_status.state) &&
-        (BALANCE_APP_COMMAND_SET_ZERO == command))
-    {
-        balance_app_set_state(BALANCE_APP_ENABLE, now_ms);
-    }
-    else if ((BALANCE_APP_ENABLE == balance_status.state) &&
-             (BALANCE_APP_COMMAND_ENABLE == command))
-    {
-        balance_app_set_state(BALANCE_APP_MOVE_LEVEL, now_ms);
-    }
-    else if ((BALANCE_APP_MOVE_LEVEL == balance_status.state) &&
-             (BALANCE_APP_COMMAND_MOVE == command))
-    {
-        balance_level_move_acked = 1u;
-        balance_last_query_ms = now_ms - BALANCE_POSITION_QUERY_PERIOD_MS;
-    }
-}
-
-static void balance_app_drain_emm42(uint32 now_ms)
-{
-    uint8 ack_status;
-    float position_deg;
-
-    while (0u != emm42_read_frame(&balance_rx_frame))
-    {
-        if ((0u != balance_pending_command) &&
-            (0u != emm42_decode_ack(&balance_rx_frame,
-                                    BALANCE_APP_EMM42_ADDRESS,
-                                    balance_pending_command, &ack_status)))
-        {
-            balance_app_handle_ack(balance_pending_command, ack_status,
-                                   now_ms);
-        }
-        else if (0u != emm42_decode_position_deg(
-                     &balance_rx_frame, BALANCE_APP_EMM42_ADDRESS,
-                     &position_deg))
-        {
-            balance_status.motor_feedback_deg = position_deg;
-            balance_status.flags |= BALANCE_APP_FLAG_MOTOR_FEEDBACK_VALID;
-            if (0u != balance_linkage_lever_from_relative_motor_deg(
-                    BALANCE_STARTUP_LEVER_ANGLE_DEG,
-                    position_deg / (float)BALANCE_EMM42_DIRECTION_SIGN,
-                    &balance_status.actual_lever_angle_deg))
-            {
-                balance_status.actual_lever_angle_deg *=
-                    (float)(BALANCE_LINKAGE_TARGET_SIGN *
-                            BALANCE_CONTROL_OUTPUT_SIGN);
-                balance_status.flags |=
-                    BALANCE_APP_FLAG_LEVER_FEEDBACK_VALID;
-            }
-            else
-            {
-                balance_status.flags &=
-                    (uint8)(~BALANCE_APP_FLAG_LEVER_FEEDBACK_VALID);
-            }
-            balance_motor_feedback_new = 1u;
-            if (BALANCE_APP_COMMAND_POSITION == balance_pending_command)
-            {
-                balance_app_accept_command();
-            }
-        }
-    }
-}
-
-static uint8 balance_app_send_motor_target(float lever_angle_deg,
-                                           uint32 now_ms)
-{
-    float motor_deg;
-
-    if (0u == balance_linkage_relative_motor_deg(
-            BALANCE_STARTUP_LEVER_ANGLE_DEG,
-            (float)(BALANCE_LINKAGE_TARGET_SIGN *
-                    BALANCE_CONTROL_OUTPUT_SIGN) * lever_angle_deg,
-            &motor_deg))
-    {
-        balance_app_enter_fault(BALANCE_FAULT_LINKAGE_UNREACHABLE, now_ms);
-        return 0u;
-    }
-    motor_deg *= (float)BALANCE_EMM42_DIRECTION_SIGN;
-    balance_status.motor_target_deg = motor_deg;
-    balance_last_command_ms = now_ms;
-    if (0u == balance_app_begin_command(
-        BALANCE_APP_COMMAND_MOVE,
-        emm42_move_angle(BALANCE_APP_EMM42_ADDRESS, motor_deg,
-                         BALANCE_EMM42_MOVE_RPM,
-                         BALANCE_EMM42_ACCELERATION,
-                         EMM42_POSITION_ABSOLUTE, 0u),
-        now_ms))
-    {
-        return 0u;
-    }
-    balance_last_sent_lever_deg = lever_angle_deg;
-    balance_has_sent_lever_target = 1u;
-    return 1u;
-}
-
-static uint8 balance_app_measurement_acceptable(
+static uint8 balance_measurement_acceptable(
     const vision_link_snapshot_t *measurement)
 {
     uint8 required = VISION_LINK_FLAG_MEASURED_VALID |
@@ -337,690 +41,420 @@ static uint8 balance_app_measurement_acceptable(
                      VISION_LINK_FLAG_CALIBRATION_VALID;
 
     return (((measurement->flags & required) == required) &&
-            (measurement->confidence >= BALANCE_MIN_VISION_CONFIDENCE)) ?
-        1u : 0u;
+            (measurement->confidence >=
+             balance_safety_config.min_vision_confidence)) ? 1u : 0u;
 }
 
-static void balance_app_control_step(uint32 now_ms, uint8 update_output)
+static void balance_enter_fault(balance_app_fault_enum fault)
 {
-    balance_control_input_t input;
-    const balance_control_output_t *output;
+    if (BALANCE_MODE_FAULT == balance_status.mode)
+    {
+        return;
+    }
+    balance_status.mode = BALANCE_MODE_FAULT;
+    balance_status.fault = fault;
+    sw1_open_loop_cancel(&balance_sw1);
+    (void)lever_actuator_command_neutral(&balance_actuator,
+                                         heartbeat_get_ms());
+    heartbeat_hw_uart_send_string("[balance] fault latched\r\n");
+}
+
+static balance_app_fault_enum balance_map_actuator_fault(
+    lever_actuator_fault_enum fault)
+{
+    switch (fault)
+    {
+        case LEVER_ACTUATOR_FAULT_LINKAGE:
+            return BALANCE_FAULT_LINKAGE_UNREACHABLE;
+        case LEVER_ACTUATOR_FAULT_COMMAND_TIMEOUT:
+            return BALANCE_FAULT_COMMAND_TIMEOUT;
+        case LEVER_ACTUATOR_FAULT_COMMAND_REJECTED:
+            return BALANCE_FAULT_COMMAND_REJECTED;
+        case LEVER_ACTUATOR_FAULT_LEVEL_TIMEOUT:
+            return BALANCE_FAULT_LEVEL_TIMEOUT;
+        case LEVER_ACTUATOR_FAULT_FOLLOW_ERROR:
+            return BALANCE_FAULT_MOTOR_FOLLOW_ERROR;
+        default:
+            return BALANCE_FAULT_NONE;
+    }
+}
+
+static void balance_update_vision(uint32 now_ms,
+                                  v1_center_observation_t *observation)
+{
     vision_link_snapshot_t measurement;
-    vision_link_status_t vision_status;
-    uint8 new_measurement = 0u;
+    vision_link_status_t link_status;
     uint8 new_snapshot = 0u;
-    uint32 measurement_age = BALANCE_APP_AGE_INVALID;
-    uint32 measurement_latency_ms;
-    const ball_motion_profile_output_t *profile_output;
-    const wheel_speed_control_status_t *wheel_status;
+    uint32 age = BALANCE_AGE_INVALID;
+    uint32 latency;
 
-    vision_link_get_status(&vision_status);
-    if (0u != vision_status.link_online)
-    {
-        balance_status.flags |= BALANCE_APP_FLAG_LINK_ONLINE;
-    }
-    else
-    {
-        balance_status.flags &= (uint8)(~BALANCE_APP_FLAG_LINK_ONLINE);
-    }
-
+    vision_link_get_status(&link_status);
     if (0u != vision_link_get_latest_snapshot(&measurement))
     {
-        new_snapshot = ((0u == balance_has_seen_vision_snapshot) ||
-                        (measurement.boot_id !=
-                         balance_last_seen_vision_boot_id) ||
-                        (measurement.sequence !=
-                         balance_last_seen_vision_sequence)) ? 1u : 0u;
+        new_snapshot = ((0u == balance_has_seen_snapshot) ||
+            (measurement.boot_id != balance_last_snapshot_boot_id) ||
+            (measurement.sequence != balance_last_snapshot_sequence)) ? 1u : 0u;
         if (0u != new_snapshot)
         {
-            balance_has_seen_vision_snapshot = 1u;
-            balance_last_seen_vision_boot_id = measurement.boot_id;
-            balance_last_seen_vision_sequence = measurement.sequence;
-            balance_status.vision_raw_flags = measurement.flags;
-            balance_status.vision_raw_confidence = measurement.confidence;
-            balance_status.vision_raw_sequence = measurement.sequence;
-            balance_status.vision_raw_position_dmm =
-                measurement.position_dmm;
-            balance_status.vision_raw_velocity_mm_s =
-                measurement.velocity_mm_s;
-
-            if (0u != balance_app_measurement_acceptable(&measurement))
+            balance_has_seen_snapshot = 1u;
+            balance_last_snapshot_boot_id = measurement.boot_id;
+            balance_last_snapshot_sequence = measurement.sequence;
+            balance_latest_measurement_acceptable =
+                balance_measurement_acceptable(&measurement);
+            if (0u != balance_latest_measurement_acceptable)
             {
-                new_measurement = 1u;
-                balance_has_accepted_measurement = 1u;
-                balance_last_accepted_measurement_ms =
-                    measurement.received_ms;
-                measurement_latency_ms =
-                    (uint32)measurement.processing_ms +
-                    BALANCE_VISION_TRANSPORT_LATENCY_MS;
-                if (measurement_latency_ms >
-                    BALANCE_VISION_MAX_COMPENSATION_MS)
+                latency = (uint32)measurement.processing_ms +
+                    balance_safety_config.vision_transport_latency_ms;
+                if (latency > balance_safety_config.vision_max_compensation_ms)
                 {
-                    measurement_latency_ms =
-                        BALANCE_VISION_MAX_COMPENSATION_MS;
+                    latency = balance_safety_config.vision_max_compensation_ms;
                 }
-                balance_last_measurement_latency_ms =
-                    measurement_latency_ms;
+                balance_has_measurement = 1u;
+                balance_last_measurement_received_ms = measurement.received_ms;
+                balance_last_measurement_latency_ms = latency;
                 balance_status.vision_sequence = measurement.sequence;
                 balance_status.vision_confidence = measurement.confidence;
-                balance_status.flags |=
-                    BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED;
-                if (balance_recovery_valid_frames < 255u)
-                {
-                    balance_recovery_valid_frames++;
-                }
-            }
-            else
-            {
-                balance_recovery_valid_frames = 0u;
-                balance_status.flags &=
-                    (uint8)(~BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED);
+                balance_status.position_m =
+                    (float)measurement.position_dmm * 0.0001f +
+                    (float)measurement.velocity_mm_s * 0.001f *
+                    (float)latency * 0.001f;
+                balance_status.velocity_mps =
+                    (float)measurement.velocity_mm_s * 0.001f;
             }
         }
     }
-
-    if (0u != balance_has_accepted_measurement)
+    if (0u != balance_has_measurement)
     {
-        measurement_age = now_ms - balance_last_accepted_measurement_ms;
-        if (measurement_age <=
-            (BALANCE_APP_AGE_INVALID -
-             balance_last_measurement_latency_ms))
+        age = now_ms - balance_last_measurement_received_ms;
+        if (age <= BALANCE_AGE_INVALID - balance_last_measurement_latency_ms)
         {
-            measurement_age += balance_last_measurement_latency_ms;
+            age += balance_last_measurement_latency_ms;
         }
         else
         {
-            measurement_age = BALANCE_APP_AGE_INVALID;
+            age = BALANCE_AGE_INVALID;
         }
     }
-    balance_status.vision_age_ms = measurement_age;
+    balance_status.vision_age_ms = age;
+    observation->valid = ((0u != link_status.link_online) &&
+        (0u != balance_has_measurement) &&
+        (0u != balance_latest_measurement_acceptable) &&
+        (age <= balance_v1_config.max_measurement_age_ms)) ? 1u : 0u;
+    observation->new_measurement =
+        ((0u != new_snapshot) && (0u != observation->valid)) ? 1u : 0u;
+    observation->position_m = balance_status.position_m;
+    observation->velocity_mps = balance_status.velocity_mps;
+    observation->age_ms = age;
 
-    input.new_measurement = new_measurement;
-    input.measurement_valid =
-        ((0u != balance_has_accepted_measurement) &&
-         (measurement_age <= BALANCE_VALID_MEASUREMENT_MS)) ? 1u : 0u;
-    input.measured_position_m = (0u != new_measurement) ?
-        (float)measurement.position_dmm * 0.0001f +
-        (float)measurement.velocity_mm_s * 0.001f *
-            (float)balance_last_measurement_latency_ms * 0.001f : 0.0f;
-    input.measured_velocity_mps = (0u != new_measurement) ?
-        (float)measurement.velocity_mm_s * 0.001f : 0.0f;
-    input.measurement_age_ms = measurement_age;
-    if (BALANCE_APP_ACTIVE == balance_status.state)
+    if (0u != link_status.link_online)
     {
-        ball_motion_profile_step(
-            &balance_profile,
-            (float)BALANCE_ESTIMATOR_PERIOD_MS * 0.001f);
-    }
-    profile_output = ball_motion_profile_get_output(&balance_profile);
-    input.reference_position_m = profile_output->position_m;
-    input.reference_velocity_mps = profile_output->velocity_mps;
-    input.reference_accel_mps2 = profile_output->accel_mps2;
-    input.reference_holding =
-        (BALL_MOTION_PHASE_HOLD == profile_output->phase) ? 1u : 0u;
-    wheel_status = wheel_speed_control_get_status();
-    input.car_accel_mps2 = 0.0f;
-    if ((NULL != wheel_status) && (0u != wheel_status->kinematics_valid))
-    {
-        input.car_accel_mps2 = balance_app_clamp(
-            wheel_status->planned_accel_mps2 *
-                BALANCE_CAR_ACCEL_FEEDFORWARD_GAIN *
-                BALANCE_CAR_ACCEL_FEEDFORWARD_SIGN,
-            -BALANCE_CAR_ACCEL_LIMIT_MPS2,
-            BALANCE_CAR_ACCEL_LIMIT_MPS2);
-    }
-    input.actual_lever_valid =
-        (0u != (balance_status.flags &
-                BALANCE_APP_FLAG_LEVER_FEEDBACK_VALID)) ? 1u : 0u;
-    input.actual_lever_angle_deg = balance_status.actual_lever_angle_deg;
-    input.update_control_output = update_output;
-    input.dt_s = (float)BALANCE_ESTIMATOR_PERIOD_MS * 0.001f;
-    balance_control_step(&balance_controller, &input);
-    output = balance_control_get_output(&balance_controller);
-
-    if (0u != update_output)
-    {
-        balance_app_update_trajectory(
-            (BALANCE_APP_WAIT_VISION == balance_status.state) ?
-                0.0f : output->lever_angle_deg);
-    }
-    balance_status.control_flags = output->flags;
-    if (0u != balance_trajectory_saturated)
-    {
-        balance_status.control_flags |= BALANCE_CONTROL_FLAG_SLEW_SATURATED;
-    }
-    balance_status.estimated_position_m = output->estimated_position_m;
-    balance_status.estimated_velocity_mps = output->estimated_velocity_mps;
-    balance_status.target_position_m = profile_output->target_position_m;
-    balance_status.reference_position_m = profile_output->position_m;
-    balance_status.reference_velocity_mps = profile_output->velocity_mps;
-    balance_status.reference_accel_mps2 = profile_output->accel_mps2;
-    balance_status.motion_phase = profile_output->phase;
-    balance_status.position_error_m = output->position_error_m;
-    balance_status.velocity_command_mps = output->velocity_command_mps;
-    balance_status.desired_ball_accel_mps2 =
-        output->desired_ball_accel_mps2;
-    balance_status.lever_angle_deg = balance_trajectory_angle_deg;
-
-    if (0u != (output->flags & BALANCE_CONTROL_FLAG_HARD_EDGE))
-    {
-        if (0u == balance_hard_edge_active)
-        {
-            balance_hard_edge_active = 1u;
-            balance_hard_edge_start_ms = now_ms;
-        }
-        else if ((now_ms - balance_hard_edge_start_ms) >=
-                 BALANCE_HARD_EDGE_TIMEOUT_MS)
-        {
-            balance_app_enter_fault(BALANCE_FAULT_BALL_HARD_EDGE, now_ms);
-        }
+        balance_status.flags |= BALANCE_APP_FLAG_VISION_ONLINE;
     }
     else
     {
-        balance_hard_edge_active = 0u;
-    }
-
-    if ((0u != balance_has_accepted_measurement) &&
-        ((measurement_age > BALANCE_VALID_MEASUREMENT_MS) ||
-         (0u == vision_status.link_online)))
-    {
-        balance_status.flags &=
-            (uint8)(~BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED);
-        if (BALANCE_APP_ACTIVE == balance_status.state)
-        {
-            balance_recovery_valid_frames = 0u;
-            balance_status.flags &= (uint8)(~BALANCE_APP_FLAG_ACTIVE);
-            balance_app_abort_sequence(BALANCE_SEQUENCE_CANCELED);
-            balance_app_set_state(BALANCE_APP_RECOVERY, now_ms);
-        }
-    }
-    else if (((BALANCE_APP_RECOVERY == balance_status.state) ||
-              (BALANCE_APP_WAIT_VISION == balance_status.state)) &&
-             (balance_recovery_valid_frames >=
-              BALANCE_RECOVERY_VALID_FRAMES))
-    {
-        balance_status.flags |= BALANCE_APP_FLAG_ACTIVE;
-        ball_motion_profile_reset(
-            &balance_profile,
-            output->estimated_position_m,
-            output->estimated_velocity_mps);
-        ball_motion_profile_set_target(&balance_profile, 0.0f);
-        balance_app_set_state(BALANCE_APP_ACTIVE, now_ms);
-        heartbeat_hw_uart_send_string("[balance] active\r\n");
+        balance_status.flags &= (uint8)(~BALANCE_APP_FLAG_VISION_ONLINE);
     }
 }
 
-static void balance_app_update_sequence(uint32 now_ms)
+static uint8 balance_apply_angle(float angle_deg, uint32 now_ms)
 {
-    uint8 arrived;
+    lever_command_result_enum result = lever_actuator_command_angle(
+        &balance_actuator, angle_deg, now_ms);
 
-    if ((BALANCE_SEQUENCE_TO_POSITIVE != balance_status.sequence_state) &&
-        (BALANCE_SEQUENCE_TO_NEGATIVE != balance_status.sequence_state))
+    if ((LEVER_COMMAND_STARTED == result) ||
+        (LEVER_COMMAND_UNCHANGED == result))
     {
-        return;
+        return 1u;
     }
-    balance_status.sequence_elapsed_ms = now_ms - balance_sequence_start_ms;
-    if (balance_status.sequence_elapsed_ms >= BALANCE_SEQUENCE_TIMEOUT_MS)
+    if ((LEVER_COMMAND_BUSY == result) ||
+        (LEVER_COMMAND_NOT_READY == result))
     {
-        if (BALANCE_SEQUENCE_TO_POSITIVE ==
-            balance_status.sequence_state)
-        {
-            balance_app_begin_negative_sequence_leg(now_ms);
-            heartbeat_hw_uart_send_string(
-                "[balance] positive leg timeout; continuing\r\n");
-        }
-        else
-        {
-            balance_app_abort_sequence(BALANCE_SEQUENCE_TIMEOUT);
-            heartbeat_hw_uart_send_string(
-                "[balance] negative leg timeout\r\n");
-        }
-        return;
+        return 0u;
     }
+    balance_enter_fault((LEVER_COMMAND_OUT_OF_RANGE == result) ?
+        BALANCE_FAULT_LINKAGE_UNREACHABLE : BALANCE_FAULT_COMMAND_REJECTED);
+    return 0u;
+}
 
-    arrived = ((BALL_MOTION_PHASE_HOLD == balance_status.motion_phase) &&
-        (balance_app_abs(balance_status.target_position_m -
-                         balance_status.estimated_position_m) <=
-         BALANCE_SEQUENCE_POSITION_TOLERANCE_M) &&
-        (balance_app_abs(balance_status.estimated_velocity_mps) <=
-         BALANCE_SEQUENCE_VELOCITY_TOLERANCE_MPS)) ? 1u : 0u;
-    if (0u == arrived)
-    {
-        balance_sequence_settle_active = 0u;
-        return;
-    }
-    if (0u == balance_sequence_settle_active)
-    {
-        balance_sequence_settle_active = 1u;
-        balance_sequence_settle_start_ms = now_ms;
-        return;
-    }
-    if ((now_ms - balance_sequence_settle_start_ms) <
-        BALANCE_SEQUENCE_SETTLE_MS)
-    {
-        return;
-    }
+static void balance_process_edge(const v1_center_observation_t *observation,
+                                 uint32 now_ms)
+{
+    float position_abs;
 
-    if (BALANCE_SEQUENCE_TO_POSITIVE == balance_status.sequence_state)
+    if (0u == observation->valid)
     {
-        balance_app_begin_negative_sequence_leg(now_ms);
-        heartbeat_hw_uart_send_string("[balance] sequence return\r\n");
+        return;
+    }
+    position_abs = balance_abs(observation->position_m);
+    if (position_abs >= balance_safety_config.soft_edge_position_m)
+    {
+        balance_status.flags |= BALANCE_APP_FLAG_SOFT_EDGE;
     }
     else
     {
-        balance_app_set_sequence_state(BALANCE_SEQUENCE_COMPLETE);
-        heartbeat_hw_uart_send_string("[balance] sequence complete\r\n");
+        balance_status.flags &= (uint8)(~BALANCE_APP_FLAG_SOFT_EDGE);
     }
-}
-
-static void balance_app_process_startup(uint32 now_ms)
-{
-    float motor_error;
-
-    if ((BALANCE_APP_POWER_WAIT == balance_status.state) &&
-        ((now_ms - balance_state_start_ms) >= BALANCE_POWER_WAIT_MS) &&
-        (0u == balance_pending_command))
+    if (position_abs >= balance_safety_config.hard_edge_position_m)
     {
-        if (0u != balance_app_begin_command(
-                BALANCE_APP_COMMAND_ENABLE,
-                emm42_set_enabled(BALANCE_APP_EMM42_ADDRESS, 0u, 0u),
-                now_ms))
+        if (0u == balance_edge_active)
         {
-            balance_app_set_state(BALANCE_APP_DISABLE, now_ms);
+            balance_edge_active = 1u;
+            balance_edge_start_ms = now_ms;
+            balance_edge_start_abs_m = position_abs;
+            sw1_open_loop_cancel(&balance_sw1);
+            balance_status.mode = BALANCE_MODE_EDGE_RECOVERY;
+            v1_center_controller_begin(&balance_v1,
+                observation->position_m, observation->velocity_mps, now_ms);
+        }
+        else if (((now_ms - balance_edge_start_ms) >=
+                  balance_safety_config.edge_progress_timeout_ms) &&
+                 ((balance_edge_start_abs_m - position_abs) <
+                  balance_safety_config.edge_progress_m))
+        {
+            balance_enter_fault(BALANCE_FAULT_EDGE_NO_PROGRESS);
         }
     }
-    else if ((BALANCE_APP_DISABLE == balance_status.state) &&
-             (0u == balance_pending_command))
+    else if ((0u != balance_edge_active) &&
+             (position_abs < balance_safety_config.soft_edge_position_m))
     {
-        (void)balance_app_begin_command(
-            BALANCE_APP_COMMAND_ENABLE,
-            emm42_set_enabled(BALANCE_APP_EMM42_ADDRESS, 0u, 0u), now_ms);
-    }
-    else if ((BALANCE_APP_WAIT_LOWER_STOP == balance_status.state) &&
-             ((now_ms - balance_state_start_ms) >=
-              BALANCE_LOWER_STOP_SETTLE_MS) &&
-             (0u == balance_pending_command))
-    {
-        if (0u != balance_app_begin_command(
-                BALANCE_APP_COMMAND_SET_ZERO,
-                emm42_set_current_position_zero(BALANCE_APP_EMM42_ADDRESS),
-                now_ms))
+        balance_edge_active = 0u;
+        if (BALANCE_MODE_EDGE_RECOVERY == balance_status.mode)
         {
-            balance_app_set_state(BALANCE_APP_SET_REFERENCE, now_ms);
-        }
-    }
-    else if ((BALANCE_APP_SET_REFERENCE == balance_status.state) &&
-             (0u == balance_pending_command))
-    {
-        (void)balance_app_begin_command(
-            BALANCE_APP_COMMAND_SET_ZERO,
-            emm42_set_current_position_zero(BALANCE_APP_EMM42_ADDRESS),
-            now_ms);
-    }
-    else if ((BALANCE_APP_ENABLE == balance_status.state) &&
-             (0u == balance_pending_command))
-    {
-        (void)balance_app_begin_command(
-            BALANCE_APP_COMMAND_ENABLE,
-            emm42_set_enabled(BALANCE_APP_EMM42_ADDRESS, 1u, 0u), now_ms);
-    }
-    else if ((BALANCE_APP_MOVE_LEVEL == balance_status.state) &&
-             (0u == balance_level_move_acked) &&
-             (0u == balance_pending_command))
-    {
-        (void)balance_app_send_motor_target(0.0f, now_ms);
-    }
-    if (BALANCE_APP_MOVE_LEVEL == balance_status.state)
-    {
-        if ((now_ms - balance_state_start_ms) >
-            BALANCE_MOVE_LEVEL_TIMEOUT_MS)
-        {
-            balance_app_enter_fault(BALANCE_FAULT_MOVE_LEVEL_TIMEOUT, now_ms);
-            return;
-        }
-        if (0u != (balance_status.flags &
-                   BALANCE_APP_FLAG_MOTOR_FEEDBACK_VALID))
-        {
-            motor_error = balance_app_abs(balance_status.motor_feedback_deg -
-                                          balance_level_motor_deg);
-            if (motor_error <= BALANCE_LEVEL_MOTOR_TOLERANCE_DEG)
-            {
-                if (0u == balance_level_tolerance_active)
-                {
-                    balance_level_tolerance_active = 1u;
-                    balance_level_tolerance_start_ms = now_ms;
-                }
-                else if ((now_ms - balance_level_tolerance_start_ms) >=
-                         BALANCE_LEVEL_SETTLE_MS)
-                {
-                    balance_recovery_valid_frames = 0u;
-                    balance_status.flags &=
-                        (uint8)(~BALANCE_APP_FLAG_ACTIVE);
-                    balance_app_set_state(BALANCE_APP_WAIT_VISION, now_ms);
-                    balance_last_control_ms = now_ms;
-                    balance_last_outer_control_ms = now_ms;
-                    balance_last_command_ms = now_ms;
-                    balance_last_query_ms = now_ms;
-                }
-            }
-            else
-            {
-                balance_level_tolerance_active = 0u;
-            }
+            balance_status.mode = BALANCE_MODE_V1;
         }
     }
 }
 
-static void balance_app_process_active(uint32 now_ms)
+static void balance_process_v1(const v1_center_observation_t *observation,
+                               uint32 now_ms)
 {
-    float follow_error;
-    float command_angle;
-    uint8 update_output = 0u;
+    const v1_center_output_t *output;
 
-    if ((now_ms - balance_last_control_ms) >= BALANCE_ESTIMATOR_PERIOD_MS)
+    v1_center_controller_step(&balance_v1, observation, now_ms);
+    output = v1_center_controller_get_output(&balance_v1);
+    balance_status.phase = (uint8)output->phase;
+    balance_status.remaining_m = output->remaining_m;
+    balance_status.brake_distance_m = output->brake_distance_m;
+    (void)balance_apply_angle(output->target_angle_deg, now_ms);
+    if (V1_CENTER_FAULT_CAPTURE_TIMEOUT == output->fault)
     {
-        balance_last_control_ms += BALANCE_ESTIMATOR_PERIOD_MS;
-        if ((now_ms - balance_last_control_ms) >= BALANCE_ESTIMATOR_PERIOD_MS)
-        {
-            balance_last_control_ms = now_ms;
-        }
-        if ((now_ms - balance_last_outer_control_ms) >=
-            BALANCE_OUTER_CONTROL_PERIOD_MS)
-        {
-            balance_last_outer_control_ms +=
-                BALANCE_OUTER_CONTROL_PERIOD_MS;
-            if ((now_ms - balance_last_outer_control_ms) >=
-                BALANCE_OUTER_CONTROL_PERIOD_MS)
-            {
-                balance_last_outer_control_ms = now_ms;
-            }
-            update_output = 1u;
-        }
-        balance_app_control_step(now_ms, update_output);
-        if ((BALANCE_APP_ACTIVE == balance_status.state) &&
-            (0u != balance_sequence_start_pending))
-        {
-            balance_sequence_start_pending = 0u;
-            balance_app_begin_sequence(now_ms);
-        }
-        balance_app_update_sequence(now_ms);
+        balance_enter_fault(BALANCE_FAULT_V1_CAPTURE_TIMEOUT);
     }
+}
 
-    if ((BALANCE_APP_FAULT == balance_status.state) ||
-        (0u != balance_pending_command))
+static void balance_process_sw1(uint32 now_ms)
+{
+    const sw1_open_loop_output_t *output;
+
+    sw1_open_loop_step(&balance_sw1, now_ms);
+    output = sw1_open_loop_get_output(&balance_sw1);
+    balance_status.phase = (uint8)output->phase;
+    balance_status.sw1_elapsed_ms = output->elapsed_ms;
+    if (SW1_OPEN_LOOP_FAULT_DEADLINE_MISSED == output->fault)
     {
+        balance_enter_fault(BALANCE_FAULT_SW1_DEADLINE_MISSED);
         return;
     }
-    if ((now_ms - balance_last_command_ms) >= BALANCE_COMMAND_PERIOD_MS)
+    if (SW1_OPEN_LOOP_FAULT_TOTAL_TIMEOUT == output->fault)
     {
-        command_angle = (BALANCE_APP_WAIT_VISION == balance_status.state) ?
-            0.0f : balance_status.lever_angle_deg;
-        if ((0u == balance_has_sent_lever_target) ||
-            (balance_app_abs(command_angle - balance_last_sent_lever_deg) >=
-             BALANCE_LEVER_COMMAND_DEADBAND_DEG))
+        balance_enter_fault(BALANCE_FAULT_SW1_TIMEOUT);
+        return;
+    }
+    if (0u != output->command_due)
+    {
+        if (0u != balance_apply_angle(output->target_angle_deg, now_ms))
         {
-            (void)balance_app_send_motor_target(command_angle, now_ms);
+            sw1_open_loop_mark_command_applied(&balance_sw1);
         }
     }
-
-    if (0u != balance_motor_feedback_new)
+    if (SW1_OPEN_LOOP_COMPLETE == output->phase)
     {
-        balance_motor_feedback_new = 0u;
-        follow_error = balance_app_abs(balance_status.motor_feedback_deg -
-                                       balance_status.motor_target_deg);
-        if (follow_error > BALANCE_MOTOR_FOLLOW_ERROR_DEG)
-        {
-            if (0u == balance_follow_error_active)
-            {
-                balance_follow_error_active = 1u;
-                balance_follow_error_start_ms = now_ms;
-            }
-            else if ((now_ms - balance_follow_error_start_ms) >=
-                     BALANCE_MOTOR_FOLLOW_ERROR_TIMEOUT_MS)
-            {
-                balance_status.command_error_count++;
-                balance_app_enter_fault(
-                    BALANCE_FAULT_MOTOR_FOLLOW_ERROR, now_ms);
-            }
-        }
-        else
-        {
-            balance_follow_error_active = 0u;
-        }
+        balance_status.mode = BALANCE_MODE_COMPLETE;
     }
 }
 
-static void balance_app_query_position_if_due(uint32 now_ms)
+static void balance_refresh_status(void)
 {
-    uint8 query_enabled =
-        ((BALANCE_APP_UNCONFIGURED == balance_status.state) ||
-         ((BALANCE_APP_MOVE_LEVEL == balance_status.state) &&
-          (0u != balance_level_move_acked)) ||
-         (BALANCE_APP_ACTIVE == balance_status.state) ||
-         (BALANCE_APP_RECOVERY == balance_status.state) ||
-         (BALANCE_APP_WAIT_VISION == balance_status.state)) ? 1u : 0u;
+    const lever_actuator_status_t *actuator =
+        lever_actuator_get_status(&balance_actuator);
+    const sw1_open_loop_output_t *sw1 = sw1_open_loop_get_output(&balance_sw1);
 
-    if ((0u == query_enabled) ||
-        (0u != balance_pending_command) ||
-        ((now_ms - balance_last_query_ms) <
-         BALANCE_POSITION_QUERY_PERIOD_MS))
+    balance_status.lever_target_deg = actuator->target_angle_deg;
+    balance_status.motor_target_deg = actuator->motor_target_deg;
+    balance_status.motor_feedback_deg = actuator->motor_feedback_deg;
+    balance_status.command_error_count = actuator->command_error_count;
+    balance_status.emm42_rx_overflow_count = actuator->rx_overflow_count;
+    balance_status.flags &= (BALANCE_APP_FLAG_VISION_ONLINE |
+                             BALANCE_APP_FLAG_MEASUREMENT_FRESH |
+                             BALANCE_APP_FLAG_SOFT_EDGE);
+    if (0u != lever_actuator_is_ready(&balance_actuator))
     {
-        return;
+        balance_status.flags |= BALANCE_APP_FLAG_ACTUATOR_READY;
     }
-
-    balance_last_query_ms = now_ms;
-    (void)balance_app_begin_command(
-        BALANCE_APP_COMMAND_POSITION,
-        emm42_query_position(BALANCE_APP_EMM42_ADDRESS), now_ms);
+    if (0u != actuator->motor_feedback_valid)
+    {
+        balance_status.flags |= BALANCE_APP_FLAG_MOTOR_FEEDBACK_VALID;
+    }
+    if (0u != actuator->command_pending)
+    {
+        balance_status.flags |= BALANCE_APP_FLAG_COMMAND_PENDING;
+    }
+    if (BALANCE_MODE_FAULT == balance_status.mode)
+    {
+        balance_status.flags |= BALANCE_APP_FLAG_FAULT_LATCHED;
+    }
+    if (0u != sw1->active)
+    {
+        balance_status.flags |= BALANCE_APP_FLAG_SW1_ACTIVE;
+    }
 }
 
 void balance_app_init(void)
 {
-    balance_control_config_t config;
-    ball_motion_profile_config_t profile_config;
     uint32 now_ms = heartbeat_get_ms();
 
-    config.position_gain_s_inv = BALANCE_POSITION_LOOP_GAIN_S_INV;
-    config.velocity_gain_s_inv = BALANCE_VELOCITY_LOOP_GAIN_S_INV;
-    config.max_ball_velocity_mps = BALANCE_MAX_BALL_VELOCITY_MPS;
-    config.position_correction_gain = BALANCE_ESTIMATOR_POSITION_GAIN;
-    config.velocity_correction_gain = BALANCE_ESTIMATOR_VELOCITY_GAIN;
-    config.reference_accel_gain = BALANCE_PROFILE_ACCEL_FF_GAIN;
-    config.low_speed_friction_accel_mps2 =
-        BALANCE_LOW_SPEED_FRICTION_ACCEL_MPS2;
-    config.center_capture_position_m = BALANCE_CENTER_CAPTURE_POSITION_M;
-    config.low_speed_threshold_mps = BALANCE_LOW_SPEED_THRESHOLD_MPS;
-    config.max_ball_accel_mps2 = BALANCE_MAX_BALL_ACCEL_MPS2;
-    config.edge_recovery_accel_mps2 =
-        BALANCE_EDGE_RECOVERY_ACCEL_MPS2;
-    config.max_lever_angle_deg = BALANCE_MAX_LEVER_ANGLE_DEG;
-    config.degraded_lever_angle_deg = BALANCE_DEGRADED_LEVER_ANGLE_DEG;
-    config.max_lever_rate_deg_s = BALANCE_MAX_LEVER_RATE_DEG_S;
-    config.edge_position_m = BALANCE_EDGE_POSITION_M;
-    config.hard_edge_position_m = BALANCE_HARD_EDGE_POSITION_M;
-    config.fresh_measurement_ms = BALANCE_FRESH_MEASUREMENT_MS;
-    config.valid_measurement_ms = BALANCE_VALID_MEASUREMENT_MS;
-    balance_control_init(&balance_controller, &config);
-
-    profile_config.drive_accel_mps2 = BALANCE_PROFILE_DRIVE_ACCEL_MPS2;
-    profile_config.brake_accel_mps2 = BALANCE_PROFILE_BRAKE_ACCEL_MPS2;
-    profile_config.max_velocity_mps = BALANCE_PROFILE_MAX_VELOCITY_MPS;
-    profile_config.brake_lookahead_s =
-        BALANCE_PROFILE_BRAKE_LOOKAHEAD_S;
-    profile_config.position_tolerance_m =
-        BALANCE_PROFILE_POSITION_TOLERANCE_M;
-    profile_config.velocity_tolerance_mps =
-        BALANCE_PROFILE_VELOCITY_TOLERANCE_MPS;
-    ball_motion_profile_init(&balance_profile, &profile_config);
-
-    balance_status.state = BALANCE_APP_UNCONFIGURED;
+    lever_actuator_init(&balance_actuator, &balance_lever_config, now_ms);
+    v1_center_controller_init(&balance_v1, &balance_v1_config);
+    sw1_open_loop_init(&balance_sw1, &balance_sw1_config);
+    balance_status.mode = BALANCE_MODE_STARTUP;
+    balance_status.phase = 0u;
     balance_status.fault = BALANCE_FAULT_NONE;
     balance_status.flags = 0u;
-    balance_status.control_flags = 0u;
-    balance_status.vision_confidence = 0u;
-    balance_status.vision_raw_flags = 0u;
-    balance_status.vision_raw_confidence = 0u;
     balance_status.vision_sequence = 0u;
-    balance_status.vision_raw_sequence = 0u;
-    balance_status.vision_age_ms = BALANCE_APP_AGE_INVALID;
-    balance_status.vision_raw_position_dmm = 0;
-    balance_status.vision_raw_velocity_mm_s = 0;
-    balance_status.estimated_position_m = 0.0f;
-    balance_status.estimated_velocity_mps = 0.0f;
-    balance_status.target_position_m = 0.0f;
-    balance_status.reference_position_m = 0.0f;
-    balance_status.reference_velocity_mps = 0.0f;
-    balance_status.reference_accel_mps2 = 0.0f;
-    balance_status.position_error_m = 0.0f;
-    balance_status.velocity_command_mps = 0.0f;
-    balance_status.desired_ball_accel_mps2 = 0.0f;
-    balance_status.lever_angle_deg = 0.0f;
-    balance_status.actual_lever_angle_deg = 0.0f;
-    balance_status.motor_target_deg = 0.0f;
-    balance_status.motor_feedback_deg = 0.0f;
-    balance_status.command_error_count = 0u;
-    balance_status.emm42_rx_overflow_count = 0u;
-    balance_status.sequence_elapsed_ms = 0u;
-    balance_status.motion_phase = BALL_MOTION_PHASE_HOLD;
-    balance_status.sequence_state = BALANCE_SEQUENCE_IDLE;
-    balance_rx_frame.length = 0u;
-    balance_pending_command = 0u;
-    balance_consecutive_command_errors = 0u;
-    balance_recovery_valid_frames = 0u;
-    balance_has_accepted_measurement = 0u;
-    balance_level_move_acked = 0u;
-    balance_hard_edge_active = 0u;
-    balance_level_tolerance_active = 0u;
-    balance_motor_feedback_new = 0u;
-    balance_follow_error_active = 0u;
-    balance_follow_error_start_ms = 0u;
-    balance_has_seen_vision_snapshot = 0u;
-    balance_last_seen_vision_sequence = 0u;
-    balance_last_seen_vision_boot_id = 0u;
-    balance_trajectory_angle_deg = 0.0f;
-    balance_trajectory_rate_deg_s = 0.0f;
-    balance_last_sent_lever_deg = 0.0f;
-    balance_has_sent_lever_target = 0u;
-    balance_trajectory_saturated = 0u;
-    balance_sequence_start_ms = 0u;
-    balance_sequence_settle_start_ms = 0u;
-    balance_sequence_settle_active = 0u;
-    balance_sequence_start_pending = 0u;
-    balance_state_start_ms = now_ms;
-    balance_last_control_ms = now_ms;
-    balance_last_outer_control_ms = now_ms;
-    balance_last_command_ms = now_ms;
-    balance_last_query_ms = now_ms;
-    balance_last_accepted_measurement_ms = 0u;
-    balance_last_measurement_latency_ms = 0u;
-    balance_hard_edge_start_ms = 0u;
-    balance_level_tolerance_start_ms = 0u;
-
-    emm42_init();
-#if (BALANCE_STARTUP_CALIBRATED != 0u)
-    if (0u == balance_linkage_relative_motor_deg(
-            BALANCE_STARTUP_LEVER_ANGLE_DEG, 0.0f,
-            &balance_level_motor_deg))
-    {
-        balance_app_enter_fault(BALANCE_FAULT_LINKAGE_UNREACHABLE, now_ms);
-    }
-    else
-    {
-        balance_level_motor_deg *= (float)BALANCE_EMM42_DIRECTION_SIGN;
-        balance_app_set_state(BALANCE_APP_POWER_WAIT, now_ms);
-        heartbeat_hw_uart_send_string(
-            "[balance] calibrated startup armed\r\n");
-    }
-#else
-    balance_level_motor_deg = 0.0f;
-    heartbeat_hw_uart_send_string(
-        "[balance] UNCONFIGURED: startup angle not calibrated\r\n");
-#endif
-}
-
-uint8 balance_app_set_target_position_m(float target_position_m)
-{
-    if ((BALANCE_APP_ACTIVE != balance_status.state) ||
-        (balance_app_abs(target_position_m) > BALANCE_TARGET_POSITION_LIMIT_M))
-    {
-        return 0u;
-    }
-    ball_motion_profile_set_target(&balance_profile, target_position_m);
-    balance_status.sequence_elapsed_ms = 0u;
-    balance_app_set_sequence_state(BALANCE_SEQUENCE_IDLE);
-    return 0u;
-}
-
-static void balance_app_begin_sequence(uint32 now_ms)
-{
-    ball_motion_profile_reset(
-        &balance_profile,
-        balance_status.estimated_position_m,
-        balance_status.estimated_velocity_mps);
-    ball_motion_profile_set_target(
-        &balance_profile, BALANCE_SEQUENCE_POSITIVE_TARGET_M);
-    balance_sequence_start_ms = now_ms;
-    balance_status.sequence_elapsed_ms = 0u;
-    balance_app_set_sequence_state(BALANCE_SEQUENCE_TO_POSITIVE);
-    heartbeat_hw_uart_send_string("[balance] sequence start\r\n");
-}
-
-uint8 balance_app_start_sequence(void)
-{
-    if (BALANCE_APP_ACTIVE == balance_status.state)
-    {
-        balance_app_begin_sequence(heartbeat_get_ms());
-        return 1u;
-    }
-    if ((BALANCE_APP_WAIT_VISION == balance_status.state) ||
-        (BALANCE_APP_RECOVERY == balance_status.state))
-    {
-        balance_sequence_start_pending = 1u;
-        heartbeat_hw_uart_send_string("[balance] sequence queued\r\n");
-        return 1u;
-    }
-    return 1u;
-}
-
-void balance_app_cancel_motion(void)
-{
-    balance_app_abort_sequence(BALANCE_SEQUENCE_IDLE);
-    balance_status.sequence_elapsed_ms = 0u;
+    balance_status.vision_age_ms = BALANCE_AGE_INVALID;
+    balance_status.vision_confidence = 0u;
+    balance_status.position_m = 0.0f;
+    balance_status.velocity_mps = 0.0f;
+    balance_status.remaining_m = 0.0f;
+    balance_status.brake_distance_m = 0.0f;
+    balance_status.sw1_elapsed_ms = BALANCE_AGE_INVALID;
+    balance_has_measurement = 0u;
+    balance_latest_measurement_acceptable = 0u;
+    balance_has_seen_snapshot = 0u;
+    balance_edge_active = 0u;
+    balance_platform_motion.valid = 0u;
 }
 
 void balance_app_process(void)
 {
     uint32 now_ms = heartbeat_get_ms();
+    v1_center_observation_t observation;
+    const lever_actuator_status_t *actuator;
 
-    balance_app_drain_emm42(now_ms);
-    balance_status.emm42_rx_overflow_count =
-        balance_app_u32_to_u16(emm42_get_rx_overflow_count());
-    if ((0u != balance_pending_command) &&
-        ((now_ms - balance_pending_since_ms) > BALANCE_COMMAND_TIMEOUT_MS))
+    lever_actuator_process(&balance_actuator, now_ms);
+    actuator = lever_actuator_get_status(&balance_actuator);
+    balance_update_vision(now_ms, &observation);
+    if (0u != observation.valid)
     {
-        balance_app_record_command_error(BALANCE_FAULT_COMMAND_TIMEOUT,
-                                         now_ms);
+        balance_status.flags |= BALANCE_APP_FLAG_MEASUREMENT_FRESH;
+    }
+    else
+    {
+        balance_status.flags &=
+            (uint8)(~BALANCE_APP_FLAG_MEASUREMENT_FRESH);
     }
 
-    if ((BALANCE_APP_POWER_WAIT == balance_status.state) ||
-        (BALANCE_APP_DISABLE == balance_status.state) ||
-        (BALANCE_APP_WAIT_LOWER_STOP == balance_status.state) ||
-        (BALANCE_APP_SET_REFERENCE == balance_status.state) ||
-        (BALANCE_APP_ENABLE == balance_status.state) ||
-        (BALANCE_APP_MOVE_LEVEL == balance_status.state))
+    if ((LEVER_ACTUATOR_FAULT == actuator->state) &&
+        (BALANCE_MODE_FAULT != balance_status.mode))
     {
-        balance_app_process_startup(now_ms);
+        balance_enter_fault(balance_map_actuator_fault(actuator->fault));
     }
-    else if ((BALANCE_APP_ACTIVE == balance_status.state) ||
-             (BALANCE_APP_RECOVERY == balance_status.state) ||
-             (BALANCE_APP_WAIT_VISION == balance_status.state))
+    if ((BALANCE_MODE_STARTUP == balance_status.mode) &&
+        (0u != lever_actuator_is_ready(&balance_actuator)))
     {
-        balance_app_process_active(now_ms);
+        balance_status.mode = BALANCE_MODE_V1;
+        v1_center_controller_reset(&balance_v1);
+        heartbeat_hw_uart_send_string("[balance] actuator ready\r\n");
     }
-    balance_app_query_position_if_due(now_ms);
+    balance_process_edge(&observation, now_ms);
+
+    if ((BALANCE_MODE_V1 == balance_status.mode) ||
+        (BALANCE_MODE_EDGE_RECOVERY == balance_status.mode))
+    {
+        balance_process_v1(&observation, now_ms);
+    }
+    else if (BALANCE_MODE_SW1 == balance_status.mode)
+    {
+        balance_process_sw1(now_ms);
+    }
+    else if (BALANCE_MODE_COMPLETE == balance_status.mode)
+    {
+        balance_status.phase = (uint8)SW1_OPEN_LOOP_COMPLETE;
+        (void)lever_actuator_command_neutral(&balance_actuator, now_ms);
+    }
+    else if (BALANCE_MODE_FAULT == balance_status.mode)
+    {
+        (void)lever_actuator_command_neutral(&balance_actuator, now_ms);
+    }
+    else
+    {
+        balance_status.phase = (uint8)actuator->state;
+    }
+    balance_refresh_status();
+}
+
+balance_request_result_t balance_app_start_sw1(void)
+{
+    uint32 now_ms = heartbeat_get_ms();
+    const lever_actuator_status_t *actuator =
+        lever_actuator_get_status(&balance_actuator);
+    lever_command_result_enum result;
+
+    if ((BALANCE_MODE_FAULT == balance_status.mode) ||
+        (LEVER_ACTUATOR_FAULT == actuator->state))
+    {
+        return BALANCE_REQUEST_FAULT;
+    }
+    if (0u == lever_actuator_is_ready(&balance_actuator))
+    {
+        return BALANCE_REQUEST_NOT_READY;
+    }
+    if ((0u != actuator->command_pending) ||
+        (0u != sw1_open_loop_get_output(&balance_sw1)->active))
+    {
+        return BALANCE_REQUEST_BUSY;
+    }
+    result = lever_actuator_command_angle(&balance_actuator,
+        sw1_open_loop_get_start_angle(&balance_sw1), now_ms);
+    if ((LEVER_COMMAND_STARTED != result) &&
+        (LEVER_COMMAND_UNCHANGED != result))
+    {
+        return (LEVER_COMMAND_BUSY == result) ?
+            BALANCE_REQUEST_BUSY : BALANCE_REQUEST_FAULT;
+    }
+    v1_center_controller_reset(&balance_v1);
+    sw1_open_loop_start(&balance_sw1, now_ms);
+    balance_status.mode = BALANCE_MODE_SW1;
+    balance_status.sw1_elapsed_ms = 0u;
+    balance_status.remaining_m = 0.0f;
+    balance_status.brake_distance_m = 0.0f;
+    heartbeat_hw_uart_send_string("[balance] SW1 start\r\n");
+    return BALANCE_REQUEST_ACCEPTED;
+}
+
+void balance_app_cancel(void)
+{
+    if (BALANCE_MODE_FAULT == balance_status.mode)
+    {
+        return;
+    }
+    sw1_open_loop_cancel(&balance_sw1);
+    v1_center_controller_reset(&balance_v1);
+    balance_status.mode = BALANCE_MODE_V1;
+    balance_status.sw1_elapsed_ms = BALANCE_AGE_INVALID;
+    (void)lever_actuator_command_neutral(&balance_actuator,
+                                         heartbeat_get_ms());
 }
 
 const balance_app_status_t *balance_app_get_status(void)
 {
     return &balance_status;
+}
+
+void balance_app_set_platform_motion(const balance_platform_motion_t *motion)
+{
+    if (NULL != motion)
+    {
+        balance_platform_motion = *motion;
+    }
 }

@@ -49,7 +49,7 @@ void button_app_process(void)
 #if (BALANCE_CONTROL_ENABLE != 0u)
     if ((BUTTON_ID_SW1 == active) && (BUTTON_ID_SW1 != button_app_previous))
     {
-        if (0u == balance_app_start_sequence())
+        if (BALANCE_REQUEST_ACCEPTED != balance_app_start_sw1())
         {
             heartbeat_hw_uart_send_string(
                 "[balance] sequence rejected\r\n");
