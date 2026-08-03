@@ -133,6 +133,7 @@ typedef struct
     float overspeed_target_position_m;
     uint8 overspeed_active;
     float capture_integral;
+    uint8 capture_active;
 } balance_control_t;
 
 float balance_control_vehicle_sync_lever_deg(float car_accel_mps2);

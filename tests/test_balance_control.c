@@ -108,11 +108,98 @@ int main(void)
     assert(output->friction_mode == BALANCE_FRICTION_CAPTURE);
     assert(output->flags & BALANCE_CONTROL_FLAG_CAPTURE_ACTIVE);
     assert(output->desired_ball_accel_mps2 > 0.0f);
+    assert(control.capture_active != 0u);
 
+    /* Capture entry requires both the estimated and delay-predicted speeds. */
+    balance_control_reset(&control);
+    input = make_input(-0.003f);
+    input.measured_velocity_mps = 0.008f;
+    input.actuator_command_angle_deg = -4.0f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(fabsf(output->estimated_velocity_mps) <
+           config.capture_velocity_mps);
+    assert(fabsf(output->predicted_velocity_mps) >
+           config.capture_velocity_mps);
+    assert(output->friction_mode != BALANCE_FRICTION_CAPTURE);
+
+    balance_control_reset(&control);
+    input = make_input(-0.003f);
+    input.measured_velocity_mps = 0.012f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(fabsf(output->estimated_velocity_mps) >
+           config.capture_velocity_mps);
+    assert(output->friction_mode != BALANCE_FRICTION_CAPTURE);
+
+    /* Once captured, the higher release threshold prevents boundary chatter. */
+    balance_control_reset(&control);
+    input = make_input(-0.003f);
+    balance_control_step(&control, &input);
+    assert(control.capture_active != 0u);
+    input.new_measurement = 0u;
+    input.actuator_command_updated = 0u;
+    control.output.estimated_velocity_mps = 0.012f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(output->friction_mode == BALANCE_FRICTION_CAPTURE);
+    assert(control.capture_active != 0u);
+    control.output.estimated_velocity_mps = 0.025f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(output->friction_mode != BALANCE_FRICTION_CAPTURE);
+    assert(control.capture_active == 0u);
+    assert(control.capture_integral == 0.0f);
+
+    /* A moving ball must never qualify for a breakaway pulse. */
     balance_control_reset(&control);
     input = make_input(-0.020f);
     input.measured_velocity_mps = 0.020f;
-    for (uint8 step = 0u; step < 5u; step++)
+    for (uint8 step = 0u; step < 8u; step++)
+    {
+        balance_control_step(&control, &input);
+    }
+    output = balance_control_get_output(&control);
+    assert(output->friction_mode != BALANCE_FRICTION_BREAKAWAY);
+    assert(0u == (output->flags & BALANCE_CONTROL_FLAG_BREAKAWAY_ACTIVE));
+    assert(control.stuck_elapsed_ms == 0u);
+
+    balance_control_reset(&control);
+    input = make_input(-0.020f);
+    input.reference_holding = 0u;
+    for (uint8 step = 0u; step < 8u; step++)
+    {
+        balance_control_step(&control, &input);
+    }
+    assert(control.stuck_elapsed_ms == 0u);
+    assert(control.breakaway_remaining_ms == 0u);
+
+    balance_control_reset(&control);
+    input = make_input(-0.020f);
+    input.measurement_age_ms = config.fresh_measurement_ms + 1u;
+    for (uint8 step = 0u; step < 8u; step++)
+    {
+        balance_control_step(&control, &input);
+    }
+    assert(control.stuck_elapsed_ms == 0u);
+    assert(control.breakaway_remaining_ms == 0u);
+
+    /* Reusing one cached sample cannot accumulate stationary qualification. */
+    balance_control_reset(&control);
+    input = make_input(-0.020f);
+    balance_control_step(&control, &input);
+    input.new_measurement = 0u;
+    for (uint8 step = 0u; step < 8u; step++)
+    {
+        balance_control_step(&control, &input);
+    }
+    assert(control.stuck_elapsed_ms == 0u);
+    assert(control.breakaway_remaining_ms == 0u);
+
+    /* Consecutive fresh, low-speed, stationary samples do qualify. */
+    balance_control_reset(&control);
+    input = make_input(-0.020f);
+    for (uint8 step = 0u; step < 6u; step++)
     {
         balance_control_step(&control, &input);
     }
@@ -123,13 +210,45 @@ int main(void)
 
     balance_control_reset(&control);
     input = make_input(-0.020f);
-    for (uint8 step = 0u; step < 5u; step++)
+    for (uint8 step = 0u; step < 8u; step++)
     {
         input.measured_position_m += 0.0002f;
         balance_control_step(&control, &input);
     }
     output = balance_control_get_output(&control);
     assert(output->friction_mode != BALANCE_FRICTION_BREAKAWAY);
+
+    control.command_history_head = 7u;
+    control.command_history_count = 8u;
+    control.command_history[7] = 3.0f;
+    control.stuck_elapsed_ms = 80u;
+    control.breakaway_remaining_ms = 20u;
+    control.stuck_anchor_position_m = 0.01f;
+    control.stuck_anchor_valid = 1u;
+    control.overspeed_hold_remaining_ms = 40u;
+    control.overspeed_accel_sign = -1.0f;
+    control.overspeed_target_position_m = 0.05f;
+    control.overspeed_active = 1u;
+    control.capture_integral = 0.02f;
+    control.capture_active = 1u;
+    balance_control_reset(&control);
+    assert(control.command_history_head == 0u);
+    assert(control.command_history_count == 0u);
+    for (uint8 index = 0u;
+         index < BALANCE_CONTROL_COMMAND_HISTORY_COUNT; index++)
+    {
+        assert(control.command_history[index] == 0.0f);
+    }
+    assert(control.stuck_elapsed_ms == 0u);
+    assert(control.breakaway_remaining_ms == 0u);
+    assert(control.stuck_anchor_position_m == 0.0f);
+    assert(control.stuck_anchor_valid == 0u);
+    assert(control.overspeed_hold_remaining_ms == 0u);
+    assert(control.overspeed_accel_sign == 0.0f);
+    assert(control.overspeed_target_position_m == 0.0f);
+    assert(control.overspeed_active == 0u);
+    assert(control.capture_integral == 0.0f);
+    assert(control.capture_active == 0u);
 
     balance_control_reset(&control);
     input = make_input(0.020f);

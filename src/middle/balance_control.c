@@ -50,6 +50,12 @@ static void control_clear_stiction(balance_control_t *control)
     control->stuck_anchor_valid = 0u;
 }
 
+static void control_clear_capture(balance_control_t *control)
+{
+    control->capture_integral = 0.0f;
+    control->capture_active = 0u;
+}
+
 static float control_model_accel(const balance_control_t *control,
                                  float lever_deg, float position_m,
                                  float velocity_mps,
@@ -191,7 +197,7 @@ void balance_control_reset(balance_control_t *control)
         control->command_history[index] = 0.0f;
     control_clear_stiction(control);
     control_clear_overspeed(control);
-    control->capture_integral = 0.0f;
+    control_clear_capture(control);
 }
 
 void balance_control_step(balance_control_t *control,
@@ -217,6 +223,9 @@ void balance_control_step(balance_control_t *control,
     float shape_angle_deg;
     float angle_limit;
     float velocity_toward_target;
+    float estimated_speed;
+    float predicted_speed;
+    float capture_release_velocity;
     uint32 outer_ms;
 
     if ((NULL == control) || (NULL == input) || (input->dt_s <= 0.0f)) return;
@@ -285,7 +294,7 @@ void balance_control_step(balance_control_t *control,
     if ((0u == output->has_state) ||
         (input->measurement_age_ms > control->config.valid_measurement_ms))
     {
-        control->capture_integral = 0.0f;
+        control_clear_capture(control);
         control_clear_stiction(control);
         control_clear_overspeed(control);
         output->friction_mode = BALANCE_FRICTION_STOPPED;
@@ -307,19 +316,36 @@ void balance_control_step(balance_control_t *control,
     if (velocity_limit > control->config.max_ball_velocity_mps)
         velocity_limit = control->config.max_ball_velocity_mps;
 
-    if ((control_abs(target_error) <= control->config.center_dead_position_m) &&
-        (control_abs(output->predicted_velocity_mps) <=
-         control->config.stick_velocity_mps))
+    estimated_speed = control_abs(output->estimated_velocity_mps);
+    predicted_speed = control_abs(output->predicted_velocity_mps);
+    capture_release_velocity = control->config.capture_velocity_mps +
+                               control->config.stick_velocity_mps;
+    if ((0u != control->capture_active) &&
+        ((control_abs(target_error) > control->config.capture_position_m) ||
+         (estimated_speed > capture_release_velocity) ||
+         (predicted_speed > capture_release_velocity)))
     {
-        control->capture_integral = 0.0f;
+        control_clear_capture(control);
+    }
+    if ((0u == control->capture_active) &&
+        (control_abs(target_error) <= control->config.capture_position_m) &&
+        (estimated_speed <= control->config.capture_velocity_mps) &&
+        (predicted_speed <= control->config.capture_velocity_mps))
+    {
+        control->capture_active = 1u;
+    }
+
+    if ((control_abs(target_error) <= control->config.center_dead_position_m) &&
+        (estimated_speed <= control->config.stick_velocity_mps) &&
+        (predicted_speed <= control->config.stick_velocity_mps))
+    {
+        control_clear_capture(control);
         control_clear_stiction(control);
         control_clear_overspeed(control);
         output->friction_mode = BALANCE_FRICTION_STOPPED;
         output->phase = BALANCE_CONTROL_PHASE_HOLD;
     }
-    else if ((control_abs(target_error) <= control->config.capture_position_m) &&
-             (control_abs(output->predicted_velocity_mps) <=
-              control->config.capture_velocity_mps))
+    else if (0u != control->capture_active)
     {
         control->capture_integral += target_error * control->config.command_period_s;
         feedback_accel = control_clamp(
@@ -336,38 +362,60 @@ void balance_control_step(balance_control_t *control,
     else
     {
         uint32 measurement_ms;
-        control->capture_integral = 0.0f;
+        uint8 breakaway_measurement_eligible;
+        control_clear_capture(control);
         outer_ms = (uint32)(control->config.command_period_s * 1000.0f + 0.5f);
-        if ((0u != input->new_measurement) &&
-            (0u != input->measurement_valid))
+        if (0u == outer_ms) outer_ms = 1u;
+        breakaway_measurement_eligible =
+            ((0u != input->reference_holding) &&
+             (0u != input->measurement_valid) &&
+             (input->measurement_age_ms <=
+              control->config.fresh_measurement_ms) &&
+             (estimated_speed <= control->config.stick_velocity_mps) &&
+             (predicted_speed <= control->config.stick_velocity_mps)) ? 1u : 0u;
+        if (0u == breakaway_measurement_eligible)
         {
-            measurement_ms = (uint32)(input->measurement_interval_s *
-                                      1000.0f + 0.5f);
-            if (0u == measurement_ms) measurement_ms = outer_ms;
-            if (0u == control->stuck_anchor_valid)
+            control_clear_stiction(control);
+        }
+        else if (0u != input->new_measurement)
+        {
+            if (control_abs(input->measured_velocity_mps) >
+                control->config.stick_velocity_mps)
             {
-                control->stuck_anchor_position_m = input->measured_position_m;
-                control->stuck_anchor_valid = 1u;
-                control->stuck_elapsed_ms = (measurement_ms >=
-                    control->config.breakaway_qualify_ms) ?
-                    control->config.breakaway_qualify_ms : measurement_ms;
-            }
-            else if (control_abs(input->measured_position_m -
-                                 control->stuck_anchor_position_m) <=
-                     control->config.breakaway_movement_m)
-            {
-                if (measurement_ms >= control->config.breakaway_qualify_ms -
-                    control->stuck_elapsed_ms)
-                    control->stuck_elapsed_ms =
-                        control->config.breakaway_qualify_ms;
-                else
-                    control->stuck_elapsed_ms += measurement_ms;
+                control_clear_stiction(control);
             }
             else
             {
-                control->stuck_elapsed_ms = 0u;
-                control->breakaway_remaining_ms = 0u;
-                control->stuck_anchor_position_m = input->measured_position_m;
+                measurement_ms = (uint32)(input->measurement_interval_s *
+                                          1000.0f + 0.5f);
+                if ((0u == measurement_ms) || (measurement_ms > outer_ms))
+                    measurement_ms = outer_ms;
+                if (0u == control->stuck_anchor_valid)
+                {
+                    control->stuck_anchor_position_m =
+                        input->measured_position_m;
+                    control->stuck_anchor_valid = 1u;
+                    control->stuck_elapsed_ms = 0u;
+                }
+                else if (control_abs(input->measured_position_m -
+                                     control->stuck_anchor_position_m) <=
+                         control->config.breakaway_movement_m)
+                {
+                    if (measurement_ms >=
+                        control->config.breakaway_qualify_ms -
+                        control->stuck_elapsed_ms)
+                        control->stuck_elapsed_ms =
+                            control->config.breakaway_qualify_ms;
+                    else
+                        control->stuck_elapsed_ms += measurement_ms;
+                }
+                else
+                {
+                    control->stuck_elapsed_ms = 0u;
+                    control->breakaway_remaining_ms = 0u;
+                    control->stuck_anchor_position_m =
+                        input->measured_position_m;
+                }
             }
         }
         if ((0u == control->breakaway_remaining_ms) &&

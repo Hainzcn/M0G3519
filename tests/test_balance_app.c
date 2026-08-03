@@ -7,6 +7,7 @@
 #include "control_config.h"
 #include "emm42.h"
 #include "imu.h"
+#include "motor_app.h"
 #include "vision_link.h"
 #include "wheel_speed_control.h"
 
@@ -26,6 +27,12 @@ static uint8 mock_vision_has_snapshot;
 static vision_link_snapshot_t mock_vision_snapshot;
 static wheel_speed_control_status_t mock_wheel_status;
 static imu_snapshot_t mock_imu_snapshot;
+static motor_app_mode_enum mock_motor_mode;
+
+motor_app_mode_enum motor_app_get_mode(void)
+{
+    return mock_motor_mode;
+}
 
 const wheel_speed_control_status_t *wheel_speed_control_get_status(void)
 {
@@ -210,6 +217,7 @@ static void reset_mocks(void)
     mock_last_command = 0u;
     mock_vision_online = 0u;
     mock_vision_has_snapshot = 0u;
+    mock_motor_mode = MOTOR_APP_MODE_DISABLED;
     mock_wheel_status.kinematics_valid = 0u;
     mock_wheel_status.planned_accel_mps2 = 0.0f;
     mock_wheel_status.measured_speed_mps = 0.0f;
@@ -334,15 +342,16 @@ static void test_successful_startup(void)
     mock_imu_snapshot.flags = IMU_FLAG_ACCEL;
     mock_imu_snapshot.accel.ax = 0.8f;
     mock_imu_snapshot.accel_time_ms = mock_now_ms;
+    mock_motor_mode = MOTOR_APP_MODE_LINE_FOLLOW;
     publish_acceptable_vision(
         (int16)(BALANCE_SEQUENCE_POSITIVE_TARGET_M * 10000.0f));
     process_and_answer_pending();
     assert(fabsf(status->car_encoder_speed_mps - 0.25f) < 0.0001f);
     assert(fabsf(status->car_encoder_accel_mps2 - 0.8f) < 0.0001f);
     assert(fabsf(status->car_imu_accel_mps2 - 0.8f) < 0.0001f);
-    assert(fabsf(status->car_feedforward_accel_mps2 - 0.8f) < 0.0001f);
+    assert(fabsf(status->car_feedforward_accel_mps2 - 0.6f) < 0.0001f);
     assert(fabsf(status->car_sync_lever_angle_deg -
-                 balance_control_vehicle_sync_lever_deg(0.8f)) < 0.0001f);
+                 balance_control_vehicle_sync_lever_deg(0.6f)) < 0.0001f);
     assert(status->car_imu_accel_valid != 0u);
     assert(status->car_imu_accel_age_ms == 0u);
     assert(0u != balance_linkage_motor_from_physical_lever_deg(
@@ -589,6 +598,9 @@ static void test_linkage_symmetric_safety_range(void)
     float lever_deg;
     float motor_deg;
 
+    assert(0u != balance_linkage_motor_from_physical_lever_deg(
+        0.0f, &motor_deg));
+    assert(fabsf(motor_deg + 20.667624420f) < 0.0001f);
     assert(0u != balance_linkage_motor_from_physical_lever_deg(
         -7.0f, &motor_deg));
     assert(0u != balance_linkage_physical_lever_from_motor_deg(
