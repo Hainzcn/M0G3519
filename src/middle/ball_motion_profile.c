@@ -1,52 +1,54 @@
 #include "ball_motion_profile.h"
 
-static float ball_motion_abs(float value)
+#include <math.h>
+
+static float profile_abs(float value)
 {
     return (value < 0.0f) ? -value : value;
 }
 
-static float ball_motion_clamp(float value, float low, float high)
+static float profile_clamp(float value, float low, float high)
 {
-    if (value > high)
-    {
-        return high;
-    }
-    if (value < low)
-    {
-        return low;
-    }
+    if (value > high) return high;
+    if (value < low) return low;
     return value;
 }
 
-static void ball_motion_reset_output(ball_motion_profile_output_t *output,
-                                     float position_m,
-                                     float velocity_mps)
+static float profile_move_toward(float value, float target, float delta)
+{
+    if (value < target) return (value + delta > target) ? target : value + delta;
+    return (value - delta < target) ? target : value - delta;
+}
+
+static void profile_reset_output(ball_motion_profile_output_t *output,
+                                 float position_m, float velocity_mps)
 {
     output->target_position_m = position_m;
     output->position_m = position_m;
     output->velocity_mps = velocity_mps;
     output->accel_mps2 = 0.0f;
+    output->feedforward_accel_mps2 = 0.0f;
     output->phase = BALL_MOTION_PHASE_HOLD;
 }
 
-static void ball_motion_step_output(
-    const ball_motion_profile_config_t *config,
-    ball_motion_profile_output_t *output,
-    float dt_s)
+static void profile_step_output(const ball_motion_profile_config_t *config,
+                                ball_motion_profile_output_t *output,
+                                float dt_s)
 {
-    float error;
-    float direction;
-    float distance;
-    float velocity_toward;
-    float stop_distance;
+    float error = output->target_position_m - output->position_m;
+    float distance = profile_abs(error);
+    float direction = (error >= 0.0f) ? 1.0f : -1.0f;
+    float velocity_toward = direction * output->velocity_mps;
+    float available = distance - config->capture_position_m;
+    float brake_velocity;
+    float velocity_excess;
+    float brake_distance;
+    float desired_accel;
+    float old_accel;
     float old_velocity;
 
-    error = output->target_position_m - output->position_m;
-    distance = ball_motion_abs(error);
-
     if ((distance <= config->position_tolerance_m) &&
-        (ball_motion_abs(output->velocity_mps) <=
-         config->velocity_tolerance_mps))
+        (profile_abs(output->velocity_mps) <= config->velocity_tolerance_mps))
     {
         output->position_m = output->target_position_m;
         output->velocity_mps = 0.0f;
@@ -55,53 +57,72 @@ static void ball_motion_step_output(
         return;
     }
 
-    direction = (error >= 0.0f) ? 1.0f : -1.0f;
-    velocity_toward = direction * output->velocity_mps;
-    stop_distance = (velocity_toward > 0.0f) ?
-        (velocity_toward * velocity_toward) /
-            (2.0f * config->brake_accel_mps2) : 0.0f;
-
-    if (velocity_toward < -config->velocity_tolerance_mps)
+    available = (available > 0.0f) ? available : 0.0f;
+    brake_velocity = config->capture_velocity_mps +
+        sqrtf(2.0f * config->brake_accel_mps2 * available);
+    velocity_excess = velocity_toward - config->capture_velocity_mps;
+    if (velocity_excess < 0.0f) velocity_excess = 0.0f;
+    brake_distance = velocity_excess * velocity_excess /
+        (2.0f * config->brake_accel_mps2);
+    if (velocity_toward > 0.0f)
     {
-        output->accel_mps2 = direction * config->brake_accel_mps2;
+        brake_distance += velocity_toward *
+            (profile_abs(output->accel_mps2) + config->brake_accel_mps2) /
+            config->max_jerk_mps3;
+    }
+    if ((distance <= config->capture_position_m) &&
+        (velocity_toward >= 0.0f) &&
+        (velocity_toward <= config->capture_velocity_mps +
+                            config->velocity_tolerance_mps))
+    {
+        desired_accel = 0.0f;
         output->phase = BALL_MOTION_PHASE_BRAKE;
     }
-    else if ((velocity_toward > config->velocity_tolerance_mps) &&
-             ((BALL_MOTION_PHASE_BRAKE == output->phase) ||
-              (distance <= stop_distance)))
+    else if (velocity_toward < -config->velocity_tolerance_mps)
     {
-        output->accel_mps2 = -direction * config->brake_accel_mps2;
+        desired_accel = direction * config->brake_accel_mps2;
+        output->phase = BALL_MOTION_PHASE_BRAKE;
+    }
+    else if ((velocity_toward >= brake_velocity) ||
+             (brake_distance >= available))
+    {
+        desired_accel = -direction * config->brake_accel_mps2;
         output->phase = BALL_MOTION_PHASE_BRAKE;
     }
     else if (velocity_toward >= config->max_velocity_mps)
     {
-        output->accel_mps2 = 0.0f;
+        desired_accel = 0.0f;
         output->phase = BALL_MOTION_PHASE_CRUISE;
     }
     else
     {
-        output->accel_mps2 = direction * config->drive_accel_mps2;
+        desired_accel = direction * config->drive_accel_mps2;
         output->phase = BALL_MOTION_PHASE_ACCEL;
     }
 
+    old_accel = output->accel_mps2;
+    output->accel_mps2 = profile_move_toward(
+        old_accel, desired_accel, config->max_jerk_mps3 * dt_s);
     old_velocity = output->velocity_mps;
-    output->velocity_mps += output->accel_mps2 * dt_s;
-    output->velocity_mps = ball_motion_clamp(
-        output->velocity_mps,
-        -config->max_velocity_mps,
-        config->max_velocity_mps);
-    if ((BALL_MOTION_PHASE_BRAKE == output->phase) &&
-        (old_velocity * output->velocity_mps < 0.0f))
-    {
-        output->velocity_mps = 0.0f;
-    }
+    output->velocity_mps +=
+        0.5f * (old_accel + output->accel_mps2) * dt_s;
+    output->velocity_mps = profile_clamp(output->velocity_mps,
+        -config->max_velocity_mps, config->max_velocity_mps);
     output->position_m +=
         0.5f * (old_velocity + output->velocity_mps) * dt_s;
 
-    if (((error > 0.0f) &&
-         (output->position_m >= output->target_position_m)) ||
-        ((error < 0.0f) &&
-         (output->position_m <= output->target_position_m)))
+    if ((distance <= config->capture_position_m) &&
+        (direction * output->velocity_mps >= 0.0f) &&
+        (direction * output->velocity_mps <=
+         config->capture_velocity_mps + config->velocity_tolerance_mps) &&
+        (profile_abs(output->accel_mps2) < 0.000001f))
+    {
+        output->phase = BALL_MOTION_PHASE_CAPTURE;
+        return;
+    }
+
+    if (((error > 0.0f) && (output->position_m >= output->target_position_m)) ||
+        ((error < 0.0f) && (output->position_m <= output->target_position_m)))
     {
         output->position_m = output->target_position_m;
         output->velocity_mps = 0.0f;
@@ -110,67 +131,51 @@ static void ball_motion_step_output(
     }
 }
 
-void ball_motion_profile_init(
-    ball_motion_profile_t *profile,
-    const ball_motion_profile_config_t *config)
+void ball_motion_profile_init(ball_motion_profile_t *profile,
+                              const ball_motion_profile_config_t *config)
 {
-    if ((NULL == profile) || (NULL == config))
-    {
-        return;
-    }
+    if ((NULL == profile) || (NULL == config)) return;
     profile->config = *config;
     ball_motion_profile_reset(profile, 0.0f, 0.0f);
 }
 
-void ball_motion_profile_reset(
-    ball_motion_profile_t *profile,
-    float position_m,
-    float velocity_mps)
+void ball_motion_profile_reset(ball_motion_profile_t *profile,
+                               float position_m, float velocity_mps)
 {
-    if (NULL == profile)
-    {
-        return;
-    }
-    ball_motion_reset_output(&profile->nominal_output, position_m,
-                             velocity_mps);
+    if (NULL == profile) return;
+    profile_reset_output(&profile->nominal_output, position_m, velocity_mps);
     profile->output = profile->nominal_output;
 }
 
-void ball_motion_profile_set_target(
-    ball_motion_profile_t *profile,
-    float target_position_m)
+void ball_motion_profile_set_target(ball_motion_profile_t *profile,
+                                    float target_position_m)
 {
-    if (NULL != profile)
-    {
-        /* Start a changed trajectory from the state currently commanded. */
-        profile->nominal_output = profile->output;
-        profile->nominal_output.target_position_m = target_position_m;
-        profile->output.target_position_m = target_position_m;
-    }
+    if (NULL == profile) return;
+    profile->nominal_output = profile->output;
+    profile->nominal_output.target_position_m = target_position_m;
+    profile->output.target_position_m = target_position_m;
 }
 
 void ball_motion_profile_step(ball_motion_profile_t *profile, float dt_s)
 {
-    float lookahead_s;
-    float prediction_step_s;
+    ball_motion_profile_output_t lead;
+    float remaining;
+    float step_s;
 
-    if ((NULL == profile) || (dt_s <= 0.0f))
-    {
-        return;
-    }
-    ball_motion_step_output(&profile->config, &profile->nominal_output,
-                            dt_s);
+    if ((NULL == profile) || (dt_s <= 0.0f)) return;
+    profile_step_output(&profile->config, &profile->nominal_output, dt_s);
     profile->output = profile->nominal_output;
-
-    lookahead_s = profile->config.brake_lookahead_s;
-    while ((lookahead_s > 0.0f) &&
-           (BALL_MOTION_PHASE_HOLD != profile->output.phase))
+    lead = profile->nominal_output;
+    remaining = profile->config.feedforward_lead_s;
+    while ((remaining > 0.0f) &&
+           (BALL_MOTION_PHASE_HOLD != lead.phase) &&
+           (BALL_MOTION_PHASE_CAPTURE != lead.phase))
     {
-        prediction_step_s = (lookahead_s < dt_s) ? lookahead_s : dt_s;
-        ball_motion_step_output(&profile->config, &profile->output,
-                                prediction_step_s);
-        lookahead_s -= prediction_step_s;
+        step_s = (remaining < dt_s) ? remaining : dt_s;
+        profile_step_output(&profile->config, &lead, step_s);
+        remaining -= step_s;
     }
+    profile->output.feedforward_accel_mps2 = lead.accel_mps2;
 }
 
 const ball_motion_profile_output_t *ball_motion_profile_get_output(

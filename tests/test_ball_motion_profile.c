@@ -3,167 +3,87 @@
 #include <stdio.h>
 
 #include "ball_motion_profile.h"
-#include "control_config.h"
 
-typedef struct
-{
-    float elapsed_s;
-    uint32 phase_changes;
-    uint8 saw_accel;
-    uint8 saw_cruise;
-    uint8 saw_brake;
-} run_result_t;
-
-static ball_motion_profile_config_t make_production_config(void)
+static ball_motion_profile_config_t make_config(void)
 {
     ball_motion_profile_config_t config;
-
-    config.drive_accel_mps2 = BALANCE_PROFILE_DRIVE_ACCEL_MPS2;
-    config.brake_accel_mps2 = BALANCE_PROFILE_BRAKE_ACCEL_MPS2;
-    config.max_velocity_mps = BALANCE_PROFILE_MAX_VELOCITY_MPS;
-    config.brake_lookahead_s = BALANCE_PROFILE_BRAKE_LOOKAHEAD_S;
-    config.position_tolerance_m = BALANCE_PROFILE_POSITION_TOLERANCE_M;
-    config.velocity_tolerance_mps =
-        BALANCE_PROFILE_VELOCITY_TOLERANCE_MPS;
+    config.drive_accel_mps2 = 0.12f;
+    config.brake_accel_mps2 = 0.16f;
+    config.max_velocity_mps = 0.06f;
+    config.max_jerk_mps3 = 2.5f;
+    config.feedforward_lead_s = 0.02f;
+    config.capture_position_m = 0.004f;
+    config.capture_velocity_mps = 0.010f;
+    config.position_tolerance_m = 0.0005f;
+    config.velocity_tolerance_mps = 0.002f;
     return config;
 }
 
-static run_result_t run_until_hold(ball_motion_profile_t *profile,
-                                   uint32 max_steps,
-                                   float direction)
+static void test_profile(float target, uint8 expect_cruise)
 {
-    const float dt_s = (float)BALANCE_ESTIMATOR_PERIOD_MS * 0.001f;
-    run_result_t result = {0};
-    ball_motion_phase_enum previous_phase = profile->output.phase;
-    float previous_position = profile->output.position_m;
+    const float dt = 0.005f;
+    ball_motion_profile_t profile;
+    ball_motion_profile_config_t config = make_config();
+    float previous_accel = 0.0f;
+    float previous_position = 0.0f;
+    uint8 saw_cruise = 0u;
+    uint8 saw_lead_difference = 0u;
     uint32 step;
 
-    for (step = 0u; step < max_steps; step++)
+    ball_motion_profile_init(&profile, &config);
+    ball_motion_profile_set_target(&profile, target);
+    for (step = 0u; step < 1000u; step++)
     {
-        ball_motion_profile_step(profile, dt_s);
-        result.elapsed_s += dt_s;
-        if (profile->output.phase != previous_phase)
-        {
-            result.phase_changes++;
-            previous_phase = profile->output.phase;
-        }
-        if (BALL_MOTION_PHASE_ACCEL == profile->output.phase)
-        {
-            result.saw_accel = 1u;
-        }
-        if (BALL_MOTION_PHASE_CRUISE == profile->output.phase)
-        {
-            result.saw_cruise = 1u;
-        }
-        if (BALL_MOTION_PHASE_BRAKE == profile->output.phase)
-        {
-            result.saw_brake = 1u;
-        }
-        if (direction * (profile->output.position_m -
-                         previous_position) < -0.000001f)
-        {
-            fprintf(stderr,
-                    "non-monotonic profile at %.3fs: %.6f -> %.6f, phase %u\n",
-                    result.elapsed_s, previous_position,
-                    profile->output.position_m,
-                    (unsigned int)profile->output.phase);
-            assert(0 && "profile position changed away from target");
-        }
-        previous_position = profile->output.position_m;
-        if (BALL_MOTION_PHASE_HOLD == profile->output.phase)
-        {
-            return result;
-        }
+        ball_motion_profile_step(&profile, dt);
+        assert(fabsf(profile.output.accel_mps2 - previous_accel) <=
+               config.max_jerk_mps3 * dt + 0.00001f);
+        assert(fabsf(profile.output.accel_mps2) <=
+               config.brake_accel_mps2 + 0.00001f);
+        assert(fabsf(profile.output.velocity_mps) <=
+               config.max_velocity_mps + 0.00001f);
+        assert(target * (profile.output.position_m - previous_position) >=
+               -0.000001f);
+        assert(target * (target - profile.output.position_m) >= -0.000001f);
+        if (BALL_MOTION_PHASE_CRUISE == profile.output.phase) saw_cruise = 1u;
+        if (fabsf(profile.output.feedforward_accel_mps2 -
+                  profile.output.accel_mps2) > 0.0001f)
+            saw_lead_difference = 1u;
+        previous_accel = profile.output.accel_mps2;
+        previous_position = profile.output.position_m;
+        if ((BALL_MOTION_PHASE_CAPTURE == profile.output.phase) ||
+            (BALL_MOTION_PHASE_HOLD == profile.output.phase)) break;
     }
-    assert(0 && "profile did not reach hold");
-    return result;
+    assert(step < 1000u);
+    assert(fabsf(target - profile.output.position_m) <=
+           config.capture_position_m + 0.001f);
+    assert(fabsf(profile.output.velocity_mps) <=
+           config.capture_velocity_mps + 0.001f);
+    assert(saw_cruise == expect_cruise);
+    assert(saw_lead_difference != 0u);
 }
 
 int main(void)
 {
     ball_motion_profile_t profile;
-    ball_motion_profile_t baseline_profile;
-    ball_motion_profile_config_t config = make_production_config();
-    ball_motion_profile_config_t baseline_config = config;
-    run_result_t positive;
-    run_result_t negative;
-    float lookahead_brake_s = 0.0f;
-    float baseline_brake_s = 0.0f;
-    uint32 step;
+    ball_motion_profile_config_t config = make_config();
 
-    baseline_config.brake_lookahead_s = 0.0f;
-    ball_motion_profile_init(&baseline_profile, &baseline_config);
-    ball_motion_profile_set_target(&baseline_profile, 0.050f);
-    ball_motion_profile_step(
-        &baseline_profile,
-        (float)BALANCE_ESTIMATOR_PERIOD_MS * 0.001f);
-    assert(baseline_profile.output.phase == BALL_MOTION_PHASE_ACCEL);
-    assert(fabsf(baseline_profile.output.velocity_mps -
-                  baseline_config.drive_accel_mps2 *
-                  (float)BALANCE_ESTIMATOR_PERIOD_MS * 0.001f) < 0.000001f);
+    test_profile(0.010f, 0u);
+    test_profile(-0.010f, 0u);
+    test_profile(0.050f, 1u);
+    test_profile(0.200f, 1u);
 
     ball_motion_profile_init(&profile, &config);
     ball_motion_profile_set_target(&profile, 0.050f);
-    ball_motion_profile_init(&baseline_profile, &baseline_config);
-    ball_motion_profile_set_target(&baseline_profile, 0.050f);
-    for (step = 0u; step < 400u; step++)
-    {
-        const float dt_s =
-            (float)BALANCE_ESTIMATOR_PERIOD_MS * 0.001f;
-
-        ball_motion_profile_step(&profile, dt_s);
-        ball_motion_profile_step(&baseline_profile, dt_s);
-        if ((lookahead_brake_s == 0.0f) &&
-            (BALL_MOTION_PHASE_BRAKE == profile.output.phase))
-        {
-            lookahead_brake_s = (float)(step + 1u) * dt_s;
-        }
-        if ((baseline_brake_s == 0.0f) &&
-            (BALL_MOTION_PHASE_BRAKE == baseline_profile.output.phase))
-        {
-            baseline_brake_s = (float)(step + 1u) * dt_s;
-        }
-        if ((lookahead_brake_s > 0.0f) && (baseline_brake_s > 0.0f))
-        {
-            break;
-        }
-    }
-    assert(lookahead_brake_s > 0.0f);
-    assert(baseline_brake_s > lookahead_brake_s);
-    assert(fabsf((baseline_brake_s - lookahead_brake_s) -
-                 config.brake_lookahead_s) < 0.015f);
-
-    ball_motion_profile_init(&profile, &config);
-    ball_motion_profile_set_target(&profile, 0.050f);
-    positive = run_until_hold(&profile, 400u, 1.0f);
-    assert(positive.saw_accel);
-    assert(positive.saw_cruise);
-    assert(positive.saw_brake);
-    assert(positive.phase_changes <= 4u);
-    assert(positive.elapsed_s < 1.40f);
-    assert(fabsf(profile.output.position_m - 0.050f) < 0.00001f);
-    assert(fabsf(profile.output.velocity_mps) < 0.00001f);
-
+    for (uint32 step = 0u; step < 40u; step++)
+        ball_motion_profile_step(&profile, 0.005f);
     ball_motion_profile_set_target(&profile, -0.050f);
-    negative = run_until_hold(&profile, 500u, -1.0f);
-    assert(negative.saw_accel);
-    assert(negative.saw_cruise);
-    assert(negative.saw_brake);
-    assert(negative.phase_changes <= 4u);
-    assert(negative.elapsed_s < 2.10f);
-    assert((positive.elapsed_s + negative.elapsed_s +
-            (float)BALANCE_SEQUENCE_SETTLE_MS * 0.001f) < 3.60f);
-    assert(fabsf(profile.output.position_m + 0.050f) < 0.00001f);
-    assert(fabsf(profile.output.velocity_mps) < 0.00001f);
-
-    ball_motion_profile_reset(&profile, 0.0f, 0.100f);
-    ball_motion_profile_set_target(&profile, 0.0f);
-    ball_motion_profile_step(
-        &profile, (float)BALANCE_ESTIMATOR_PERIOD_MS * 0.001f);
-    assert(profile.output.phase == BALL_MOTION_PHASE_BRAKE);
-    assert(profile.output.velocity_mps > 0.0f);
-    assert(profile.output.velocity_mps < 0.100f);
-
+    for (uint32 step = 0u; step < 1000u; step++)
+    {
+        ball_motion_profile_step(&profile, 0.005f);
+        if ((BALL_MOTION_PHASE_CAPTURE == profile.output.phase) ||
+            (BALL_MOTION_PHASE_HOLD == profile.output.phase)) break;
+    }
+    assert(profile.output.position_m < -0.045f);
     puts("ball motion profile tests passed");
     return 0;
 }

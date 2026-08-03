@@ -34,9 +34,9 @@ static float level_motor_position(void)
 {
     float position_deg;
 
-    assert(0u != balance_linkage_relative_motor_deg(
-        BALANCE_STARTUP_LEVER_ANGLE_DEG, 0.0f, &position_deg));
-    return position_deg * (float)BALANCE_EMM42_DIRECTION_SIGN;
+    assert(0u != balance_linkage_motor_from_physical_lever_deg(
+        0.0f, &position_deg));
+    return position_deg;
 }
 
 static void queue_ack(uint8 command)
@@ -303,7 +303,8 @@ static void test_successful_startup(void)
     for (uint8 index = 0u; index < BALANCE_RECOVERY_VALID_FRAMES; index++)
     {
         mock_now_ms += BALANCE_CONTROL_PERIOD_MS;
-        publish_acceptable_vision(500);
+        publish_acceptable_vision(
+            (int16)(BALANCE_SEQUENCE_POSITIVE_TARGET_M * 10000.0f));
         process_and_answer_pending();
     }
     assert(balance_app_get_status()->state == BALANCE_APP_ACTIVE);
@@ -321,7 +322,8 @@ static void test_successful_startup(void)
          index++)
     {
         mock_now_ms += BALANCE_ESTIMATOR_PERIOD_MS;
-        publish_acceptable_vision(500);
+        publish_acceptable_vision(
+            (int16)(BALANCE_SEQUENCE_POSITIVE_TARGET_M * 10000.0f));
         process_and_answer_pending();
     }
     assert(balance_app_get_status()->sequence_state ==

@@ -17,7 +17,10 @@
 #define UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG   (2u)
 #define UART3_MAIX_MODE                            (UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
 
-/* V1 static center stability closed-loop; demo is mutually exclusive. */
+/* Balance actuator modes are mutually exclusive. */
+#ifndef BALL_RETURN_DEMO_ENABLE
+#define BALL_RETURN_DEMO_ENABLE               (0u)
+#endif
 #ifndef EMM42_BALANCE_DEMO_ENABLE
 #define EMM42_BALANCE_DEMO_ENABLE              (0u)
 #endif
@@ -26,15 +29,21 @@
 #endif
 
 /*
- * Measure the physical negative-angle startup stop before setting this flag.
+ * Open-loop ball-return timeline multiplier. ESTIMATE: tune on the rig.
+ * Values above 1 shorten the run and command braking/leveling earlier;
+ * values below 1 lengthen it. Actuator rate/acceleration limits stay real-time.
+ */
+#ifndef BALL_RETURN_DEMO_SPEED_SCALE
+#define BALL_RETURN_DEMO_SPEED_SCALE           (1.3f)
+#endif
+
+/*
+ * The linkage fit uses the lower mechanical stop as Emm42 absolute zero.
  * Keeping CALIBRATED at zero makes the firmware initialize UART7 but never
  * enable or move the balance actuator.
  */
 #ifndef BALANCE_STARTUP_CALIBRATED
 #define BALANCE_STARTUP_CALIBRATED             (1u)
-#endif
-#ifndef BALANCE_STARTUP_LEVER_ANGLE_DEG
-#define BALANCE_STARTUP_LEVER_ANGLE_DEG        (-5.0f)
 #endif
 
 #define BALANCE_ESTIMATOR_PERIOD_MS            (5u)
@@ -53,15 +62,33 @@
 #define BALANCE_RECOVERY_VALID_FRAMES          (5u)
 #define BALANCE_MIN_VISION_CONFIDENCE          (50u)
 
-/* Cascaded ball controller: position error -> velocity -> acceleration. */
-#define BALANCE_POSITION_LOOP_GAIN_S_INV       (2.0f)
-#define BALANCE_VELOCITY_LOOP_GAIN_S_INV       (2.0f)
-#define BALANCE_MAX_BALL_VELOCITY_MPS          (0.060f)
-#define BALANCE_LOW_SPEED_FRICTION_ACCEL_MPS2  (0.045f)
+/* All values marked ESTIMATE must be replaced after the pending calibration. */
+#define BALANCE_CALIBRATION_PROVISIONAL        (1u)
+#define BALANCE_POSITION_LOOP_GAIN_S_INV       (1.0f)
+#define BALANCE_VELOCITY_LOOP_GAIN_S_INV       (5.0f)
+#define BALANCE_MAX_BALL_VELOCITY_MPS          (0.030f)
+/* Joint fit of six fixed-angle releases, including the measured shallow U. */
+#define BALANCE_ROLLING_FACTOR                  (0.704013961f)
+#define BALANCE_ROLLING_FRICTION_ACCEL_MPS2    (0.081404074f)
+#define BALANCE_RAIL_CURVATURE_M_INV           (0.201072373f)
+/* ESTIMATE: braking capability and residual actuator timing. */
+#define BALANCE_BRAKE_ACCEL_MPS2                (0.35f)
+#define BALANCE_ACTUATOR_DELAY_MS               (120u)
+#define BALANCE_BRAKE_MARGIN_DELAY_MS           (20u)
+/* ESTIMATE: capture and stiction boundaries. */
 #define BALANCE_CENTER_CAPTURE_POSITION_M      (0.004f)
-#define BALANCE_LOW_SPEED_THRESHOLD_MPS        (0.010f)
+#define BALANCE_CENTER_DEAD_POSITION_M         (0.002f)
+#define BALANCE_CAPTURE_VELOCITY_MPS           (0.010f)
+#define BALANCE_STICK_VELOCITY_MPS             (0.005f)
+#define BALANCE_CAPTURE_INTEGRAL_GAIN           (2.0f)
+#define BALANCE_CAPTURE_MAX_ACCEL_MPS2          (0.05f)
+/* ESTIMATE: asin(a_f / (k*g)) is about 0.68 deg. */
+#define BALANCE_STATIC_FRICTION_ANGLE_DEG       (0.68f)
+#define BALANCE_BREAKAWAY_ANGLE_DEG             (1.0f)
+#define BALANCE_BREAKAWAY_QUALIFY_MS            (100u)
+#define BALANCE_BREAKAWAY_PULSE_MS              (40u)
 #define BALANCE_ESTIMATOR_POSITION_GAIN        (0.65f)
-#define BALANCE_ESTIMATOR_VELOCITY_GAIN        (0.50f)
+#define BALANCE_ESTIMATOR_VELOCITY_RESIDUAL_GAIN (0.10f)
 #define BALANCE_MAX_BALL_ACCEL_MPS2            (0.45f)
 #define BALANCE_MAX_LEVER_ANGLE_DEG            (4.0f)
 #define BALANCE_DEGRADED_LEVER_ANGLE_DEG       (2.0f)
@@ -79,31 +106,29 @@
 #define BALANCE_CAR_ACCEL_FEEDFORWARD_SIGN      (1.0f)
 #define BALANCE_CAR_ACCEL_LIMIT_MPS2            (2.0f)
 
-/* Ball reference profile; leave feedback headroom below the 0.45m/s2 limit. */
+/* Jerk-limited nominal profile; values remain provisional. */
 #define BALANCE_PROFILE_DRIVE_ACCEL_MPS2       (0.12f)
 #define BALANCE_PROFILE_BRAKE_ACCEL_MPS2       (0.16f)
-#define BALANCE_PROFILE_MAX_VELOCITY_MPS       (0.060f)
-/* Lead the reference trajectory to compensate vision and actuator delay. */
-#define BALANCE_PROFILE_BRAKE_LOOKAHEAD_S       (0.12f)
-#define BALANCE_PROFILE_ACCEL_FF_GAIN           (1.00f)
+#define BALANCE_PROFILE_MAX_VELOCITY_MPS       (0.030f)
+#define BALANCE_PROFILE_MAX_JERK_MPS3           (2.5f)
+#define BALANCE_PROFILE_FEEDFORWARD_LEAD_S      (0.020f)
+#define BALANCE_PROFILE_CAPTURE_POSITION_M      (0.004f)
+#define BALANCE_PROFILE_CAPTURE_VELOCITY_MPS    (0.010f)
 #define BALANCE_PROFILE_POSITION_TOLERANCE_M   (0.0005f)
 #define BALANCE_PROFILE_VELOCITY_TOLERANCE_MPS (0.002f)
 #define BALANCE_TARGET_POSITION_LIMIT_M        (0.090f)
-#define BALANCE_SEQUENCE_POSITIVE_TARGET_M     (0.050f)
-#define BALANCE_SEQUENCE_NEGATIVE_TARGET_M     (-0.050f)
+/* Conservative first closed-loop commissioning sequence. */
+#define BALANCE_SEQUENCE_POSITIVE_TARGET_M     (0.030f)
+#define BALANCE_SEQUENCE_NEGATIVE_TARGET_M     (-0.030f)
 #define BALANCE_SEQUENCE_POSITION_TOLERANCE_M  (0.006f)
 #define BALANCE_SEQUENCE_VELOCITY_TOLERANCE_MPS (0.030f)
 #define BALANCE_SEQUENCE_SETTLE_MS             (100u)
 #define BALANCE_SEQUENCE_TIMEOUT_MS            (4800u)
 
-#define BALANCE_EMM42_MOVE_RPM                 (30u)
-#define BALANCE_EMM42_ACCELERATION             (20u)
-/* This installation raises the lever when the Emm42 shaft angle is negative. */
-#define BALANCE_EMM42_DIRECTION_SIGN           (-1)
-/* Logical positive lever angle is opposite to the linkage model alpha axis. */
-#define BALANCE_LINKAGE_TARGET_SIGN            (-1)
-/* Closed-loop correction direction; calibrated from actual ball response. */
-#define BALANCE_CONTROL_OUTPUT_SIGN             (-1)
+#define BALANCE_EMM42_MOVE_RPM                 (120u)
+#define BALANCE_EMM42_ACCELERATION             (50u)
+/* Logical and calibrated physical lever angles currently use the same sign. */
+#define BALANCE_LOGICAL_TO_PHYSICAL_LEVER_SIGN (1)
 #define BALANCE_LEVEL_MOTOR_TOLERANCE_DEG      (1.0f)
 #define BALANCE_MOTOR_FOLLOW_ERROR_DEG         (5.0f)
 #define BALANCE_MOTOR_FOLLOW_ERROR_TIMEOUT_MS  (1000u)
@@ -121,6 +146,9 @@
      (EMM42_BALANCE_DEMO_ENABLE != 1u))
 #error "EMM42_BALANCE_DEMO_ENABLE must be 0 or 1"
 #endif
+#if ((BALL_RETURN_DEMO_ENABLE != 0u) && (BALL_RETURN_DEMO_ENABLE != 1u))
+#error "BALL_RETURN_DEMO_ENABLE must be 0 or 1"
+#endif
 #if ((BALANCE_CONTROL_ENABLE != 0u) && (BALANCE_CONTROL_ENABLE != 1u))
 #error "BALANCE_CONTROL_ENABLE must be 0 or 1"
 #endif
@@ -128,24 +156,19 @@
      (BALANCE_STARTUP_CALIBRATED != 1u))
 #error "BALANCE_STARTUP_CALIBRATED must be 0 or 1"
 #endif
-#if ((BALANCE_EMM42_DIRECTION_SIGN != 1) && \
-     (BALANCE_EMM42_DIRECTION_SIGN != -1))
-#error "BALANCE_EMM42_DIRECTION_SIGN must be 1 or -1"
+#if ((BALANCE_LOGICAL_TO_PHYSICAL_LEVER_SIGN != 1) && \
+     (BALANCE_LOGICAL_TO_PHYSICAL_LEVER_SIGN != -1))
+#error "BALANCE_LOGICAL_TO_PHYSICAL_LEVER_SIGN must be 1 or -1"
 #endif
-#if ((BALANCE_LINKAGE_TARGET_SIGN != 1) && \
-     (BALANCE_LINKAGE_TARGET_SIGN != -1))
-#error "BALANCE_LINKAGE_TARGET_SIGN must be 1 or -1"
-#endif
-#if ((BALANCE_CONTROL_OUTPUT_SIGN != 1) && \
-     (BALANCE_CONTROL_OUTPUT_SIGN != -1))
-#error "BALANCE_CONTROL_OUTPUT_SIGN must be 1 or -1"
-#endif
-#if ((BALANCE_CONTROL_ENABLE != 0u) && (EMM42_BALANCE_DEMO_ENABLE != 0u))
-#error "Balance controller and EMM42 demo are mutually exclusive"
+#if ((BALANCE_CONTROL_ENABLE + EMM42_BALANCE_DEMO_ENABLE + \
+      BALL_RETURN_DEMO_ENABLE) > 1u)
+#error "Balance controller and actuator demos are mutually exclusive"
 #endif
 #if ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
      (BALANCE_CONTROL_ENABLE == 0u) && (EMM42_BALANCE_DEMO_ENABLE == 0u))
-#error "Balance telemetry mode requires balance control or EMM42 demo"
+#if (BALL_RETURN_DEMO_ENABLE == 0u)
+#error "Balance telemetry mode requires balance control or an actuator demo"
+#endif
 #endif
 
 /* 实测车体几何参数，以及顺时针 1 m 直径圆的中心轨迹。 */

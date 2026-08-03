@@ -1,6 +1,9 @@
 #include "button_app.h"
 #include "balance_app.h"
 #include "control_config.h"
+#if (BALL_RETURN_DEMO_ENABLE != 0u)
+#include "ball_return_demo_app.h"
+#endif
 #if (EMM42_BALANCE_DEMO_ENABLE != 0u)
 #include "emm42_demo_app.h"
 #endif
@@ -8,7 +11,9 @@
 #include "grayscale_app.h"
 #include "heartbeat_app.h"
 #include "heartbeat_hw.h"
+#if (EMM42_BALANCE_DEMO_ENABLE == 0u)
 #include "imu_app.h"
+#endif
 #include "motor.h"
 #include "motor_app.h"
 #include "oled_app.h"
@@ -22,7 +27,9 @@ int main(void)
     heartbeat_app_init();
     grayscale_app_init();
     motor_app_init();
+#if (EMM42_BALANCE_DEMO_ENABLE == 0u)
     imu_app_init();
+#endif
     oled_app_init();
     button_app_init();
     uart3_maix_app_init();
@@ -36,10 +43,20 @@ int main(void)
 #else
     heartbeat_hw_uart_send_string(" demo=0");
 #endif
+#if (BALL_RETURN_DEMO_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" ball-return=1");
+#else
+    heartbeat_hw_uart_send_string(" ball-return=0");
+#endif
 #if (BALANCE_CONTROL_ENABLE != 0u)
     heartbeat_hw_uart_send_string(" balance=1");
 #else
     heartbeat_hw_uart_send_string(" balance=0");
+#endif
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" imu=0");
+#else
+    heartbeat_hw_uart_send_string(" imu=1");
 #endif
 #if (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
     heartbeat_hw_uart_send_string(" uart3=balance-telemetry\r\n");
@@ -56,12 +73,18 @@ int main(void)
     emm42_demo_app_init();
     heartbeat_hw_uart_flush_blocking();
 #endif
+#if (BALL_RETURN_DEMO_ENABLE != 0u)
+    ball_return_demo_app_init();
+    heartbeat_hw_uart_flush_blocking();
+#endif
 
     while (1)
     {
         motor_watchdog_kick();
         heartbeat_hw_uart_tx_pump();
+#if (EMM42_BALANCE_DEMO_ENABLE == 0u)
         imu_app_process();
+#endif
         grayscale_app_process();
         vision_link_process();
         motor_app_process();
@@ -74,6 +97,9 @@ int main(void)
         oled_app_process();
 #if (EMM42_BALANCE_DEMO_ENABLE != 0u)
         emm42_demo_app_process();
+#endif
+#if (BALL_RETURN_DEMO_ENABLE != 0u)
+        ball_return_demo_app_process();
 #endif
     }
 }

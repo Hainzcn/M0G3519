@@ -9,6 +9,7 @@ typedef enum
     BALL_MOTION_PHASE_ACCEL,
     BALL_MOTION_PHASE_CRUISE,
     BALL_MOTION_PHASE_BRAKE,
+    BALL_MOTION_PHASE_CAPTURE,
 } ball_motion_phase_enum;
 
 typedef struct
@@ -16,7 +17,10 @@ typedef struct
     float drive_accel_mps2;
     float brake_accel_mps2;
     float max_velocity_mps;
-    float brake_lookahead_s;
+    float max_jerk_mps3;
+    float feedforward_lead_s;
+    float capture_position_m;
+    float capture_velocity_mps;
     float position_tolerance_m;
     float velocity_tolerance_mps;
 } ball_motion_profile_config_t;
@@ -27,6 +31,7 @@ typedef struct
     float position_m;
     float velocity_mps;
     float accel_mps2;
+    float feedforward_accel_mps2;
     ball_motion_phase_enum phase;
 } ball_motion_profile_output_t;
 

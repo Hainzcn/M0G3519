@@ -8,7 +8,7 @@
 #include "uart3_maix_hw.h"
 #include "vision_link.h"
 
-#if (UART3_MAIX_MODE != UART3_MAIX_MODE_NORMAL)
+#if (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
 #include "imu.h"
 #endif
 #if (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
@@ -21,6 +21,7 @@
 #endif
 #if ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
      (EMM42_BALANCE_DEMO_ENABLE != 0u))
+#include "balance_linkage.h"
 #include "emm42_demo_app.h"
 #endif
 
@@ -97,7 +98,9 @@ static void balance_send_diagnostic(void)
 }
 #endif
 
-#if (UART3_MAIX_MODE != UART3_MAIX_MODE_NORMAL)
+#if ((UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG) || \
+     ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
+      (BALL_RETURN_DEMO_ENABLE == 0u)))
 static void telemetry_write_u16_le(uint8 *buffer, uint16 value)
 {
     buffer[0] = (uint8)(value & 0xFFu);
@@ -254,35 +257,63 @@ static uint32 balance_telemetry_last_ms;
 static uint16 balance_telemetry_sequence;
 
 #if (EMM42_BALANCE_DEMO_ENABLE != 0u)
-#define BALANCE_DEMO_TELEMETRY_FRAME_SIZE     (22u)
+#define BALANCE_DEMO_TELEMETRY_FRAME_SIZE     (40u)
 #define BALANCE_DEMO_FLAG_ACTIVE              (0x01u)
-#define BALANCE_DEMO_FLAG_IMU_VALID           (0x02u)
+#define BALANCE_DEMO_FLAG_LEVER_VALID         (0x02u)
 #define BALANCE_DEMO_FLAG_MOTOR_VALID         (0x04u)
+#define BALANCE_DEMO_FLAG_VISION_ONLINE       (0x08u)
+#define BALANCE_DEMO_FLAG_VISION_MEASURED     (0x10u)
+#define BALANCE_DEMO_FLAG_RECORDING           (0x20u)
+#define BALANCE_DEMO_FLAG_ERROR               (0x40u)
 
 static void balance_telemetry_send(uint32 now_ms)
 {
     uint8 frame[BALANCE_DEMO_TELEMETRY_FRAME_SIZE];
-    imu_snapshot_t imu;
+    vision_link_snapshot_t vision;
+    vision_link_status_t vision_status;
     uint8 flags = 0u;
+    uint8 has_vision;
+    float lever_feedback_deg = 0.0f;
+    uint16 vision_age;
     uint16 crc;
 
-    imu_get_snapshot(&imu);
+    vision_link_get_status(&vision_status);
+    has_vision = vision_link_get_latest_snapshot(&vision);
     if (0u != emm42_demo_app_is_active())
     {
         flags |= BALANCE_DEMO_FLAG_ACTIVE;
     }
-    if (0u != (imu.flags & IMU_FLAG_ANGLE))
-    {
-        flags |= BALANCE_DEMO_FLAG_IMU_VALID;
-    }
     if (0u != emm42_demo_app_is_motor_feedback_valid())
     {
         flags |= BALANCE_DEMO_FLAG_MOTOR_VALID;
+        if (0u != balance_linkage_physical_lever_from_motor_deg(
+                emm42_demo_app_get_motor_feedback_deg(),
+                &lever_feedback_deg))
+        {
+            flags |= BALANCE_DEMO_FLAG_LEVER_VALID;
+        }
+    }
+    if (0u != vision_status.link_online)
+    {
+        flags |= BALANCE_DEMO_FLAG_VISION_ONLINE;
+    }
+    if ((0u != has_vision) &&
+        (0u != (vision.flags & VISION_LINK_FLAG_MEASURED_VALID)))
+    {
+        flags |= BALANCE_DEMO_FLAG_VISION_MEASURED;
+    }
+    if (0u != emm42_demo_app_is_recording())
+    {
+        flags |= BALANCE_DEMO_FLAG_RECORDING;
+    }
+    if (EMM42_DEMO_ERROR == emm42_demo_app_get_state())
+    {
+        flags |= BALANCE_DEMO_FLAG_ERROR;
     }
 
     frame[0] = 0xA5u;
     frame[1] = 0x5Au;
-    frame[2] = 0x02u;
+    frame[2] = 0x05u;
     frame[3] = 0x82u;
     frame[4] = BALANCE_DEMO_TELEMETRY_FRAME_SIZE;
     frame[5] = flags;
@@ -290,33 +321,66 @@ static void balance_telemetry_send(uint32 now_ms)
     frame[7] = 0u;
     telemetry_write_u16_le(&frame[8], balance_telemetry_sequence);
     telemetry_write_u32_le(&frame[10], now_ms);
-    telemetry_write_scaled_i16(&frame[14],
-        emm42_demo_app_get_target_angle_deg(), 100.0f);
-    if (0u != (flags & BALANCE_DEMO_FLAG_IMU_VALID))
-    {
-        telemetry_write_scaled_i16(&frame[16], imu.angle.pitch, 100.0f);
-    }
-    else
-    {
-        telemetry_write_u16_le(&frame[16], 0x8000u);
-    }
+    telemetry_write_u16_le(&frame[14], emm42_demo_app_get_trial_id());
+    telemetry_write_scaled_i16(&frame[16],
+        emm42_demo_app_get_target_lever_deg(), 100.0f);
+    telemetry_write_scaled_i16(&frame[18],
+        emm42_demo_app_get_target_motor_deg(), 100.0f);
     if (0u != (flags & BALANCE_DEMO_FLAG_MOTOR_VALID))
     {
-        telemetry_write_scaled_i16(&frame[18],
+        telemetry_write_scaled_i16(&frame[20],
             emm42_demo_app_get_motor_feedback_deg(), 100.0f);
     }
     else
     {
-        telemetry_write_u16_le(&frame[18], 0x8000u);
+        telemetry_write_u16_le(&frame[20], 0x8000u);
     }
-    crc = telemetry_crc16_ccitt_false(frame, 20u);
-    telemetry_write_u16_le(&frame[20], crc);
+    if (0u != (flags & BALANCE_DEMO_FLAG_LEVER_VALID))
+    {
+        telemetry_write_scaled_i16(&frame[22], lever_feedback_deg, 100.0f);
+    }
+    else
+    {
+        telemetry_write_u16_le(&frame[22], 0x8000u);
+    }
+    if (0u != has_vision)
+    {
+        telemetry_write_u16_le(&frame[24], vision.sequence);
+        telemetry_write_u32_le(&frame[26], vision.capture_ms);
+        telemetry_write_u16_le(&frame[30], (uint16)vision.position_dmm);
+        telemetry_write_u16_le(&frame[32], (uint16)vision.velocity_mm_s);
+        frame[34] = vision.confidence;
+        frame[35] = vision.flags;
+        vision_age = (0xFFFFFFFFu == vision_status.measurement_age_ms) ?
+            0xFFFFu :
+            (uint16)((vision_status.measurement_age_ms > 65534u) ?
+                     65534u : vision_status.measurement_age_ms);
+        telemetry_write_u16_le(&frame[36], vision_age);
+    }
+    else
+    {
+        telemetry_write_u16_le(&frame[24], 0u);
+        telemetry_write_u32_le(&frame[26], 0u);
+        telemetry_write_u16_le(&frame[30], 0x8000u);
+        telemetry_write_u16_le(&frame[32], 0x8000u);
+        frame[34] = 0u;
+        frame[35] = 0u;
+        telemetry_write_u16_le(&frame[36], 0xFFFFu);
+    }
+    crc = telemetry_crc16_ccitt_false(frame, 38u);
+    telemetry_write_u16_le(&frame[38], crc);
     (void)uart3_maix_hw_write_atomic(
         frame, BALANCE_DEMO_TELEMETRY_FRAME_SIZE);
     balance_telemetry_sequence++;
 }
+#elif (BALL_RETURN_DEMO_ENABLE != 0u)
+static void balance_telemetry_send(uint32 now_ms)
+{
+    /* This open-loop demo has no vision-derived state to report on UART3. */
+    (void)now_ms;
+}
 #else
-#define BALANCE_TELEMETRY_FRAME_SIZE          (40u)
+#define BALANCE_TELEMETRY_FRAME_SIZE          (64u)
 
 static void balance_telemetry_send(uint32 now_ms)
 {
@@ -330,7 +394,7 @@ static void balance_telemetry_send(uint32 now_ms)
                  65534u : status->vision_age_ms);
     frame[0] = 0xA5u;
     frame[1] = 0x5Au;
-    frame[2] = 0x02u;
+    frame[2] = 0x04u;
     frame[3] = 0x82u;
     frame[4] = BALANCE_TELEMETRY_FRAME_SIZE;
     frame[5] = status->flags;
@@ -344,29 +408,59 @@ static void balance_telemetry_send(uint32 now_ms)
     telemetry_write_scaled_i16(&frame[18],
         status->estimated_velocity_mps, 1000.0f);
     telemetry_write_scaled_i16(&frame[20],
-        status->position_error_m, 10000.0f);
+        status->predicted_position_m, 10000.0f);
     telemetry_write_scaled_i16(&frame[22],
-        status->desired_ball_accel_mps2, 1000.0f);
+        status->predicted_velocity_mps, 1000.0f);
     telemetry_write_scaled_i16(&frame[24],
-        status->lever_angle_deg, 100.0f);
+        status->reference_position_m, 10000.0f);
     telemetry_write_scaled_i16(&frame[26],
+        status->reference_velocity_mps, 1000.0f);
+    telemetry_write_scaled_i16(&frame[28],
+        status->target_position_m, 10000.0f);
+    telemetry_write_scaled_i16(&frame[30],
+        status->feedforward_accel_mps2, 1000.0f);
+    telemetry_write_scaled_i16(&frame[32],
+        status->feedback_accel_mps2, 1000.0f);
+    telemetry_write_scaled_i16(&frame[34],
+        status->desired_ball_accel_mps2, 1000.0f);
+    telemetry_write_scaled_i16(&frame[36],
+        status->velocity_limit_mps, 1000.0f);
+    telemetry_write_scaled_i16(&frame[38],
+        status->brake_distance_m, 10000.0f);
+    telemetry_write_scaled_i16(&frame[40],
+        status->raw_lever_angle_deg, 100.0f);
+    telemetry_write_scaled_i16(&frame[42],
+        status->lever_angle_deg, 100.0f);
+    if (0u != (status->flags & BALANCE_APP_FLAG_LEVER_FEEDBACK_VALID))
+    {
+        telemetry_write_scaled_i16(&frame[44],
+            status->actual_lever_angle_deg, 100.0f);
+    }
+    else
+    {
+        telemetry_write_u16_le(&frame[44], 0x8000u);
+    }
+    telemetry_write_scaled_i16(&frame[46],
         status->motor_target_deg, 100.0f);
     if (0u != (status->flags & BALANCE_APP_FLAG_MOTOR_FEEDBACK_VALID))
     {
-        telemetry_write_scaled_i16(&frame[28],
+        telemetry_write_scaled_i16(&frame[48],
             status->motor_feedback_deg, 100.0f);
     }
     else
     {
-        telemetry_write_u16_le(&frame[28], 0x8000u);
+        telemetry_write_u16_le(&frame[48], 0x8000u);
     }
-    telemetry_write_u16_le(&frame[30], vision_age);
-    frame[32] = status->vision_confidence;
-    frame[33] = status->control_flags;
-    telemetry_write_u16_le(&frame[34], status->command_error_count);
-    telemetry_write_u16_le(&frame[36], status->emm42_rx_overflow_count);
-    crc = telemetry_crc16_ccitt_false(frame, 38u);
-    telemetry_write_u16_le(&frame[38], crc);
+    telemetry_write_u16_le(&frame[50], vision_age);
+    telemetry_write_u16_le(&frame[52], status->control_flags);
+    frame[54] = (uint8)status->control_phase;
+    frame[55] = (uint8)status->friction_mode;
+    frame[56] = status->vision_confidence;
+    frame[57] = 0u;
+    telemetry_write_u16_le(&frame[58], status->command_error_count);
+    telemetry_write_u16_le(&frame[60], status->emm42_rx_overflow_count);
+    crc = telemetry_crc16_ccitt_false(frame, 62u);
+    telemetry_write_u16_le(&frame[62], crc);
     (void)uart3_maix_hw_write_atomic(frame, BALANCE_TELEMETRY_FRAME_SIZE);
     balance_telemetry_sequence++;
 }
@@ -391,10 +485,13 @@ void uart3_maix_app_init(void)
     balance_telemetry_sequence = 0u;
 #if (EMM42_BALANCE_DEMO_ENABLE != 0u)
     heartbeat_hw_uart_send_string(
-        "[mode] uart3 balance demo telemetry V2, 0x82/100Hz\r\n");
+        "[mode] uart3 ball dynamics calibration V5, 0x82/100Hz\r\n");
+#elif (BALL_RETURN_DEMO_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(
+        "[mode] uart3 ball return demo, telemetry disabled\r\n");
 #else
     heartbeat_hw_uart_send_string(
-        "[mode] uart3 balance control telemetry V2, 0x82/100Hz\r\n");
+        "[mode] uart3 balance control telemetry V4, 0x82/100Hz\r\n");
 #endif
 #else
     heartbeat_hw_uart_send_string(
