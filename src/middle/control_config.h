@@ -59,6 +59,7 @@
 #define BALANCE_LEVEL_SETTLE_MS                (200u)
 #define BALANCE_HARD_EDGE_TIMEOUT_MS           (200u)
 #define BALANCE_MAX_CONSECUTIVE_COMMAND_ERRORS (3u)
+#define BALANCE_MAX_CONSECUTIVE_POSITION_QUERY_ERRORS (10u)
 #define BALANCE_RECOVERY_VALID_FRAMES          (5u)
 #define BALANCE_MIN_VISION_CONFIDENCE          (50u)
 
@@ -75,6 +76,9 @@
 #define BALANCE_BRAKE_ACCEL_MPS2                (0.35f)
 #define BALANCE_ACTUATOR_DELAY_MS               (120u)
 #define BALANCE_BRAKE_MARGIN_DELAY_MS           (20u)
+/* Latch pullback across noisy velocity/braking boundaries. */
+#define BALANCE_OVERSPEED_RELEASE_RATIO          (0.70f)
+#define BALANCE_OVERSPEED_MIN_HOLD_MS            (40u)
 /* ESTIMATE: capture and stiction boundaries. */
 #define BALANCE_CENTER_CAPTURE_POSITION_M      (0.004f)
 #define BALANCE_CENTER_DEAD_POSITION_M         (0.0015f)
@@ -87,10 +91,11 @@
 #define BALANCE_BREAKAWAY_ANGLE_DEG             (1.0f)
 #define BALANCE_BREAKAWAY_QUALIFY_MS            (100u)
 #define BALANCE_BREAKAWAY_PULSE_MS              (40u)
+#define BALANCE_BREAKAWAY_MOVEMENT_M             (0.0006f)
 #define BALANCE_ESTIMATOR_POSITION_GAIN        (0.65f)
 #define BALANCE_ESTIMATOR_VELOCITY_RESIDUAL_GAIN (0.65f)
 #define BALANCE_MAX_BALL_ACCEL_MPS2            (0.45f)
-#define BALANCE_MAX_LEVER_ANGLE_DEG            (4.0f)
+#define BALANCE_MAX_LEVER_ANGLE_DEG            (7.0f)
 #define BALANCE_DEGRADED_LEVER_ANGLE_DEG       (2.0f)
 #define BALANCE_MAX_LEVER_RATE_DEG_S           (30.0f)
 #define BALANCE_MAX_LEVER_ACCEL_DEG_S2         (600.0f)

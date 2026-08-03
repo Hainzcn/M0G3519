@@ -52,6 +52,8 @@ typedef struct
     float brake_accel_mps2;
     float actuator_delay_s;
     float brake_margin_delay_s;
+    float overspeed_release_ratio;
+    uint32 overspeed_min_hold_ms;
     float command_period_s;
     float capture_position_m;
     float center_dead_position_m;
@@ -62,6 +64,7 @@ typedef struct
     float breakaway_angle_deg;
     uint32 breakaway_qualify_ms;
     uint32 breakaway_pulse_ms;
+    float breakaway_movement_m;
     float max_lever_angle_deg;
     float degraded_lever_angle_deg;
     float edge_recovery_accel_mps2;
@@ -123,6 +126,12 @@ typedef struct
     uint8 command_history_count;
     uint32 stuck_elapsed_ms;
     uint32 breakaway_remaining_ms;
+    float stuck_anchor_position_m;
+    uint8 stuck_anchor_valid;
+    uint32 overspeed_hold_remaining_ms;
+    float overspeed_accel_sign;
+    float overspeed_target_position_m;
+    uint8 overspeed_active;
     float capture_integral;
 } balance_control_t;
 

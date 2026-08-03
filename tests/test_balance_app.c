@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 
 #include "balance_app.h"
@@ -318,7 +319,7 @@ static void test_successful_startup(void)
     assert(0u == balance_app_set_target_position_m(0.100f));
     for (uint8 index = 0u;
          index < (BALANCE_SEQUENCE_SETTLE_MS /
-                  BALANCE_ESTIMATOR_PERIOD_MS) + 2u;
+                  BALANCE_ESTIMATOR_PERIOD_MS) + 8u;
          index++)
     {
         mock_now_ms += BALANCE_ESTIMATOR_PERIOD_MS;
@@ -444,6 +445,7 @@ static void test_command_timeouts_latch(void)
 
 static void test_unchanged_target_is_not_resent_during_feedback_queries(void)
 {
+    uint8 index;
     uint32 query_count;
     uint32 move_count;
 
@@ -495,6 +497,30 @@ static void test_unchanged_target_is_not_resent_during_feedback_queries(void)
     balance_app_process();
     assert(mock_move_count == move_count);
     assert(mock_position_query_count == query_count + 2u);
+
+    for (index = 0u;
+         index < BALANCE_MAX_CONSECUTIVE_POSITION_QUERY_ERRORS - 1u;
+         index++)
+    {
+        mock_now_ms += BALANCE_COMMAND_TIMEOUT_MS + 1u;
+        balance_app_process();
+        assert(balance_app_get_status()->state != BALANCE_APP_FAULT);
+        if (index + 1u <
+            BALANCE_MAX_CONSECUTIVE_POSITION_QUERY_ERRORS - 1u)
+        {
+            mock_now_ms += BALANCE_POSITION_QUERY_PERIOD_MS -
+                BALANCE_COMMAND_TIMEOUT_MS - 1u;
+            balance_app_process();
+        }
+    }
+    assert(balance_app_get_status()->command_error_count ==
+           BALANCE_MAX_CONSECUTIVE_POSITION_QUERY_ERRORS - 1u);
+    mock_now_ms += BALANCE_POSITION_QUERY_PERIOD_MS -
+        BALANCE_COMMAND_TIMEOUT_MS - 1u;
+    balance_app_process();
+    queue_position(level_motor_position());
+    balance_app_process();
+    assert(balance_app_get_status()->state != BALANCE_APP_FAULT);
 }
 #else
 static void test_unconfigured_mode_queries_without_motion(void)
@@ -509,8 +535,30 @@ static void test_unconfigured_mode_queries_without_motion(void)
 }
 #endif
 
+static void test_linkage_symmetric_safety_range(void)
+{
+    float lever_deg;
+    float motor_deg;
+
+    assert(0u != balance_linkage_motor_from_physical_lever_deg(
+        -7.0f, &motor_deg));
+    assert(0u != balance_linkage_physical_lever_from_motor_deg(
+        motor_deg, &lever_deg));
+    assert(fabsf(lever_deg + 7.0f) < 0.001f);
+    assert(0u != balance_linkage_motor_from_physical_lever_deg(
+        7.0f, &motor_deg));
+    assert(0u != balance_linkage_physical_lever_from_motor_deg(
+        motor_deg, &lever_deg));
+    assert(fabsf(lever_deg - 7.0f) < 0.001f);
+    assert(0u == balance_linkage_motor_from_physical_lever_deg(
+        -7.01f, &motor_deg));
+    assert(0u == balance_linkage_motor_from_physical_lever_deg(
+        7.01f, &motor_deg));
+}
+
 int main(void)
 {
+    test_linkage_symmetric_safety_range();
 #if (BALANCE_STARTUP_CALIBRATED != 0u)
     test_successful_startup();
     test_waits_for_consecutive_acceptable_vision();

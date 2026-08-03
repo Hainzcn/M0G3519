@@ -40,6 +40,7 @@ static float balance_level_motor_deg;
 static uint8 balance_pending_command;
 static uint32 balance_pending_since_ms;
 static uint8 balance_consecutive_command_errors;
+static uint8 balance_consecutive_position_query_errors;
 static uint8 balance_recovery_valid_frames;
 static uint8 balance_has_accepted_measurement;
 static uint8 balance_level_move_acked;
@@ -159,13 +160,32 @@ static void balance_app_record_command_error(balance_app_fault_enum fault,
     }
 }
 
+static void balance_app_record_position_query_error(uint32 now_ms)
+{
+    balance_status.command_error_count++;
+    if (balance_consecutive_position_query_errors < 255u)
+    {
+        balance_consecutive_position_query_errors++;
+    }
+    balance_pending_command = 0u;
+    balance_status.flags &= (uint8)(~BALANCE_APP_FLAG_COMMAND_PENDING);
+    if (balance_consecutive_position_query_errors >=
+        BALANCE_MAX_CONSECUTIVE_POSITION_QUERY_ERRORS)
+    {
+        balance_app_enter_fault(BALANCE_FAULT_COMMAND_TIMEOUT, now_ms);
+    }
+}
+
 static uint8 balance_app_begin_command(uint8 command, uint8 sent,
                                        uint32 now_ms)
 {
     if (0u == sent)
     {
-        balance_app_record_command_error(BALANCE_FAULT_COMMAND_REJECTED,
-                                         now_ms);
+        if (BALANCE_APP_COMMAND_POSITION == command)
+            balance_app_record_position_query_error(now_ms);
+        else
+            balance_app_record_command_error(BALANCE_FAULT_COMMAND_REJECTED,
+                                             now_ms);
         return 0u;
     }
     balance_pending_command = command;
@@ -240,6 +260,7 @@ static void balance_app_drain_emm42(uint32 now_ms)
                      &balance_rx_frame, BALANCE_APP_EMM42_ADDRESS,
                      &position_deg))
         {
+            balance_consecutive_position_query_errors = 0u;
             balance_status.motor_feedback_deg = position_deg;
             balance_status.flags |= BALANCE_APP_FLAG_MOTOR_FEEDBACK_VALID;
             if (0u != balance_linkage_physical_lever_from_motor_deg(
@@ -423,8 +444,17 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
         (float)measurement.velocity_mm_s * 0.001f : 0.0f;
     input.measurement_interval_s = measurement_interval_s;
     input.measurement_age_ms = measurement_age;
+    output = balance_control_get_output(&balance_controller);
     if (BALANCE_APP_ACTIVE == balance_status.state)
     {
+        if ((0u != update_output) && (NULL != output) &&
+            (0u != output->has_state))
+        {
+            ball_motion_profile_reanchor(
+                &balance_profile,
+                output->predicted_position_m,
+                output->predicted_velocity_mps);
+        }
         ball_motion_profile_step(
             &balance_profile,
             (float)BALANCE_ESTIMATOR_PERIOD_MS * 0.001f);
@@ -575,10 +605,9 @@ static void balance_app_update_sequence(uint32 now_ms)
         return;
     }
 
-    arrived = ((BALL_MOTION_PHASE_HOLD == balance_status.motion_phase) &&
-        (balance_app_abs(balance_status.target_position_m -
-                         balance_status.estimated_position_m) <=
-         BALANCE_SEQUENCE_POSITION_TOLERANCE_M) &&
+    arrived = ((balance_app_abs(balance_status.target_position_m -
+                                balance_status.estimated_position_m) <=
+                BALANCE_SEQUENCE_POSITION_TOLERANCE_M) &&
         (balance_app_abs(balance_status.estimated_velocity_mps) <=
          BALANCE_SEQUENCE_VELOCITY_TOLERANCE_MPS)) ? 1u : 0u;
     if (0u == arrived)
@@ -833,6 +862,8 @@ void balance_app_init(void)
     config.actuator_delay_s = (float)BALANCE_ACTUATOR_DELAY_MS * 0.001f;
     config.brake_margin_delay_s =
         (float)BALANCE_BRAKE_MARGIN_DELAY_MS * 0.001f;
+    config.overspeed_release_ratio = BALANCE_OVERSPEED_RELEASE_RATIO;
+    config.overspeed_min_hold_ms = BALANCE_OVERSPEED_MIN_HOLD_MS;
     config.command_period_s =
         (float)BALANCE_COMMAND_PERIOD_MS * 0.001f;
     config.capture_position_m = BALANCE_CENTER_CAPTURE_POSITION_M;
@@ -844,6 +875,7 @@ void balance_app_init(void)
     config.breakaway_angle_deg = BALANCE_BREAKAWAY_ANGLE_DEG;
     config.breakaway_qualify_ms = BALANCE_BREAKAWAY_QUALIFY_MS;
     config.breakaway_pulse_ms = BALANCE_BREAKAWAY_PULSE_MS;
+    config.breakaway_movement_m = BALANCE_BREAKAWAY_MOVEMENT_M;
     config.edge_recovery_accel_mps2 =
         BALANCE_EDGE_RECOVERY_ACCEL_MPS2;
     config.max_lever_angle_deg = BALANCE_MAX_LEVER_ANGLE_DEG;
@@ -918,6 +950,7 @@ void balance_app_init(void)
     balance_rx_frame.length = 0u;
     balance_pending_command = 0u;
     balance_consecutive_command_errors = 0u;
+    balance_consecutive_position_query_errors = 0u;
     balance_recovery_valid_frames = 0u;
     balance_has_accepted_measurement = 0u;
     balance_level_move_acked = 0u;
@@ -1028,8 +1061,11 @@ void balance_app_process(void)
     if ((0u != balance_pending_command) &&
         ((now_ms - balance_pending_since_ms) > BALANCE_COMMAND_TIMEOUT_MS))
     {
-        balance_app_record_command_error(BALANCE_FAULT_COMMAND_TIMEOUT,
-                                         now_ms);
+        if (BALANCE_APP_COMMAND_POSITION == balance_pending_command)
+            balance_app_record_position_query_error(now_ms);
+        else
+            balance_app_record_command_error(BALANCE_FAULT_COMMAND_TIMEOUT,
+                                             now_ms);
     }
 
     if ((BALANCE_APP_POWER_WAIT == balance_status.state) ||

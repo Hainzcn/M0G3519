@@ -19,6 +19,31 @@ static float control_clamp(float value, float low, float high)
     return value;
 }
 
+static float control_friction_scale(const balance_control_t *control,
+                                    float velocity_mps)
+{
+    if (control->config.stick_velocity_mps <= 0.000001f) return 1.0f;
+    return control_clamp(
+        (control_abs(velocity_mps) - control->config.stick_velocity_mps) /
+        control->config.stick_velocity_mps, 0.0f, 1.0f);
+}
+
+static void control_clear_overspeed(balance_control_t *control)
+{
+    control->overspeed_active = 0u;
+    control->overspeed_hold_remaining_ms = 0u;
+    control->overspeed_accel_sign = 0.0f;
+    control->overspeed_target_position_m = 0.0f;
+}
+
+static void control_clear_stiction(balance_control_t *control)
+{
+    control->stuck_elapsed_ms = 0u;
+    control->breakaway_remaining_ms = 0u;
+    control->stuck_anchor_position_m = 0.0f;
+    control->stuck_anchor_valid = 0u;
+}
+
 static float control_model_accel(const balance_control_t *control,
                                  float lever_deg, float position_m,
                                  float velocity_mps,
@@ -32,7 +57,8 @@ static float control_model_accel(const balance_control_t *control,
     if (control_abs(velocity_mps) > control->config.stick_velocity_mps)
     {
         accel -= control_sign(velocity_mps) *
-                 control->config.rolling_friction_accel_mps2;
+                 control->config.rolling_friction_accel_mps2 *
+                 control_friction_scale(control, velocity_mps);
     }
     return accel;
 }
@@ -157,8 +183,8 @@ void balance_control_reset(balance_control_t *control)
     control->command_history_count = 0u;
     for (index = 0u; index < BALANCE_CONTROL_COMMAND_HISTORY_COUNT; index++)
         control->command_history[index] = 0.0f;
-    control->stuck_elapsed_ms = 0u;
-    control->breakaway_remaining_ms = 0u;
+    control_clear_stiction(control);
+    control_clear_overspeed(control);
     control->capture_integral = 0.0f;
 }
 
@@ -184,6 +210,7 @@ void balance_control_step(balance_control_t *control,
     float lever_deg = 0.0f;
     float shape_angle_deg;
     float angle_limit;
+    float velocity_toward_target;
     uint32 outer_ms;
 
     if ((NULL == control) || (NULL == input) || (input->dt_s <= 0.0f)) return;
@@ -253,8 +280,8 @@ void balance_control_step(balance_control_t *control,
         (input->measurement_age_ms > control->config.valid_measurement_ms))
     {
         control->capture_integral = 0.0f;
-        control->stuck_elapsed_ms = 0u;
-        control->breakaway_remaining_ms = 0u;
+        control_clear_stiction(control);
+        control_clear_overspeed(control);
         output->friction_mode = BALANCE_FRICTION_STOPPED;
         goto inverse_dynamics;
     }
@@ -262,6 +289,7 @@ void balance_control_step(balance_control_t *control,
     target_error = input->target_position_m - output->predicted_position_m;
     reference_error = input->reference_position_m - output->predicted_position_m;
     direction = control_sign(target_error);
+    velocity_toward_target = output->predicted_velocity_mps * direction;
     output->brake_distance_m =
         output->predicted_velocity_mps * output->predicted_velocity_mps /
         (2.0f * control->config.brake_accel_mps2);
@@ -278,8 +306,8 @@ void balance_control_step(balance_control_t *control,
          control->config.stick_velocity_mps))
     {
         control->capture_integral = 0.0f;
-        control->stuck_elapsed_ms = 0u;
-        control->breakaway_remaining_ms = 0u;
+        control_clear_stiction(control);
+        control_clear_overspeed(control);
         output->friction_mode = BALANCE_FRICTION_STOPPED;
         output->phase = BALANCE_CONTROL_PHASE_HOLD;
     }
@@ -293,6 +321,8 @@ void balance_control_step(balance_control_t *control,
             -control->config.capture_max_accel_mps2,
             control->config.capture_max_accel_mps2);
         desired_accel = feedback_accel;
+        control_clear_stiction(control);
+        control_clear_overspeed(control);
         output->friction_mode = BALANCE_FRICTION_CAPTURE;
         output->phase = BALANCE_CONTROL_PHASE_CAPTURE;
         flags |= BALANCE_CONTROL_FLAG_CAPTURE_ACTIVE;
@@ -308,8 +338,17 @@ void balance_control_step(balance_control_t *control,
             measurement_ms = (uint32)(input->measurement_interval_s *
                                       1000.0f + 0.5f);
             if (0u == measurement_ms) measurement_ms = outer_ms;
-            if (control_abs(input->measured_velocity_mps) <=
-                control->config.stick_velocity_mps)
+            if (0u == control->stuck_anchor_valid)
+            {
+                control->stuck_anchor_position_m = input->measured_position_m;
+                control->stuck_anchor_valid = 1u;
+                control->stuck_elapsed_ms = (measurement_ms >=
+                    control->config.breakaway_qualify_ms) ?
+                    control->config.breakaway_qualify_ms : measurement_ms;
+            }
+            else if (control_abs(input->measured_position_m -
+                                 control->stuck_anchor_position_m) <=
+                     control->config.breakaway_movement_m)
             {
                 if (measurement_ms >= control->config.breakaway_qualify_ms -
                     control->stuck_elapsed_ms)
@@ -322,6 +361,7 @@ void balance_control_step(balance_control_t *control,
             {
                 control->stuck_elapsed_ms = 0u;
                 control->breakaway_remaining_ms = 0u;
+                control->stuck_anchor_position_m = input->measured_position_m;
             }
         }
         if ((0u == control->breakaway_remaining_ms) &&
@@ -329,6 +369,7 @@ void balance_control_step(balance_control_t *control,
         {
             control->breakaway_remaining_ms = control->config.breakaway_pulse_ms;
             control->stuck_elapsed_ms = 0u;
+            control->stuck_anchor_valid = 0u;
         }
         if (control->breakaway_remaining_ms > 0u)
         {
@@ -340,11 +381,13 @@ void balance_control_step(balance_control_t *control,
             output->friction_mode = BALANCE_FRICTION_BREAKAWAY;
             output->phase = BALANCE_CONTROL_PHASE_ACCEL;
             flags |= BALANCE_CONTROL_FLAG_BREAKAWAY_ACTIVE;
+            control_clear_overspeed(control);
             goto finalize;
         }
         if (control_abs(output->predicted_position_m) >=
             control->config.edge_position_m)
         {
+            control_clear_overspeed(control);
             desired_accel = (output->predicted_position_m > 0.0f) ?
                 -control->config.edge_recovery_accel_mps2 :
                 control->config.edge_recovery_accel_mps2;
@@ -352,36 +395,86 @@ void balance_control_step(balance_control_t *control,
             output->phase = BALANCE_CONTROL_PHASE_EDGE_RECOVERY;
             flags |= BALANCE_CONTROL_FLAG_EDGE_RECOVERY;
         }
-        else if ((output->predicted_velocity_mps * direction <
-                  -control->config.stick_velocity_mps) ||
-                 ((output->predicted_velocity_mps * direction > 0.0f) &&
-                  (output->brake_distance_m >= available)))
-        {
-            desired_accel = (output->predicted_velocity_mps * direction < 0.0f) ?
-                direction * control->config.brake_accel_mps2 :
-                -control_sign(output->predicted_velocity_mps) *
-                 control->config.brake_accel_mps2;
-            feedback_accel = desired_accel;
-            output->phase = BALANCE_CONTROL_PHASE_OVERSPEED;
-            flags |= BALANCE_CONTROL_FLAG_OVERSPEED_PULLBACK;
-        }
         else
         {
-            float unclamped_velocity_command;
-            velocity_command = input->reference_velocity_mps +
-                control->config.position_gain_s_inv * reference_error;
-            unclamped_velocity_command = velocity_command;
-            velocity_command = control_clamp(velocity_command,
-                                              -velocity_limit, velocity_limit);
-            if (control_abs(unclamped_velocity_command - velocity_command) >
-                0.000001f)
-                flags |= BALANCE_CONTROL_FLAG_VELOCITY_SATURATED;
-            feedback_accel = control->config.velocity_gain_s_inv *
-                (velocity_command - output->predicted_velocity_mps);
-            desired_accel = input->feedforward_accel_mps2 + feedback_accel;
-            output->phase = (control_abs(input->feedforward_accel_mps2) >
-                0.001f) ? BALANCE_CONTROL_PHASE_ACCEL :
-                          BALANCE_CONTROL_PHASE_TRACK;
+            /* Hold one pullback direction across noisy braking boundaries. */
+            if ((0u != control->overspeed_active) &&
+                (control_abs(input->target_position_m -
+                             control->overspeed_target_position_m) >
+                 control->config.center_dead_position_m))
+            {
+                control_clear_overspeed(control);
+            }
+            if (0u != control->overspeed_active)
+            {
+                if (control->overspeed_hold_remaining_ms > outer_ms)
+                    control->overspeed_hold_remaining_ms -= outer_ms;
+                else
+                    control->overspeed_hold_remaining_ms = 0u;
+
+                if (0u == control->overspeed_hold_remaining_ms)
+                {
+                    uint8 release_overspeed = 0u;
+                    if ((control->overspeed_accel_sign * direction) > 0.0f)
+                    {
+                        if (velocity_toward_target >=
+                            control->config.stick_velocity_mps)
+                            release_overspeed = 1u;
+                    }
+                    else if ((velocity_toward_target <=
+                              control->config.stick_velocity_mps) ||
+                             (output->brake_distance_m <=
+                              control->config.overspeed_release_ratio *
+                              available))
+                    {
+                        release_overspeed = 1u;
+                    }
+                    if (0u != release_overspeed)
+                        control_clear_overspeed(control);
+                }
+            }
+            if ((0u == control->overspeed_active) &&
+                ((velocity_toward_target <
+                  -control->config.stick_velocity_mps) ||
+                 ((velocity_toward_target > 0.0f) &&
+                  (output->brake_distance_m >= available))))
+            {
+                control->overspeed_active = 1u;
+                control->overspeed_hold_remaining_ms =
+                    control->config.overspeed_min_hold_ms;
+                control->overspeed_accel_sign =
+                    (velocity_toward_target < 0.0f) ? direction :
+                    -control_sign(output->predicted_velocity_mps);
+                control->overspeed_target_position_m =
+                    input->target_position_m;
+            }
+            if (0u != control->overspeed_active)
+            {
+                desired_accel = control->overspeed_accel_sign *
+                    control->config.brake_accel_mps2;
+                feedback_accel = desired_accel;
+                output->phase = BALANCE_CONTROL_PHASE_OVERSPEED;
+                flags |= BALANCE_CONTROL_FLAG_OVERSPEED_PULLBACK;
+            }
+            else
+            {
+                float unclamped_velocity_command;
+                velocity_command = input->reference_velocity_mps +
+                    control->config.position_gain_s_inv * reference_error;
+                unclamped_velocity_command = velocity_command;
+                velocity_command = control_clamp(velocity_command,
+                                                  -velocity_limit,
+                                                  velocity_limit);
+                if (control_abs(unclamped_velocity_command - velocity_command) >
+                    0.000001f)
+                    flags |= BALANCE_CONTROL_FLAG_VELOCITY_SATURATED;
+                feedback_accel = control->config.velocity_gain_s_inv *
+                    (velocity_command - output->predicted_velocity_mps);
+                desired_accel = input->feedforward_accel_mps2 + feedback_accel;
+                output->phase = (control_abs(input->feedforward_accel_mps2) >
+                    0.001f) ? BALANCE_CONTROL_PHASE_ACCEL :
+                              BALANCE_CONTROL_PHASE_TRACK;
+            }
         }
     }
 
@@ -398,7 +491,8 @@ inverse_dynamics:
         (control_abs(output->predicted_velocity_mps) >
          control->config.stick_velocity_mps))
         dynamics_accel += control_sign(output->predicted_velocity_mps) *
-            control->config.rolling_friction_accel_mps2;
+            control->config.rolling_friction_accel_mps2 *
+            control_friction_scale(control, output->predicted_velocity_mps);
     radius = sqrtf(CONTROL_GRAVITY_MPS2 * CONTROL_GRAVITY_MPS2 +
                    input->car_accel_mps2 * input->car_accel_mps2);
     dynamics_limit = -dynamics_accel /

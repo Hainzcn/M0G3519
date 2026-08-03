@@ -44,6 +44,8 @@ static void simulation_init(simulation_t *simulation)
     control_config.brake_accel_mps2 = 0.35f;
     control_config.actuator_delay_s = 0.020f;
     control_config.brake_margin_delay_s = 0.020f;
+    control_config.overspeed_release_ratio = 0.70f;
+    control_config.overspeed_min_hold_ms = 40u;
     control_config.command_period_s = 0.020f;
     control_config.capture_position_m = 0.004f;
     control_config.center_dead_position_m = 0.002f;
@@ -54,6 +56,7 @@ static void simulation_init(simulation_t *simulation)
     control_config.breakaway_angle_deg = 1.0f;
     control_config.breakaway_qualify_ms = 100u;
     control_config.breakaway_pulse_ms = 40u;
+    control_config.breakaway_movement_m = 0.0006f;
     control_config.max_lever_angle_deg = 4.0f;
     control_config.degraded_lever_angle_deg = 2.0f;
     control_config.edge_recovery_accel_mps2 = 0.22f;
@@ -131,6 +134,16 @@ static void run_leg(simulation_t *simulation, float target_m)
     {
         uint8 outer = ((step % OUTER_STEPS) == 0u) ? 1u : 0u;
         memset(&input, 0, sizeof(input));
+        if (outer)
+        {
+            ball_motion_profile_reanchor(&simulation->profile,
+                simulation->control.output.has_state ?
+                    simulation->control.output.predicted_position_m :
+                    simulation->position_m,
+                simulation->control.output.has_state ?
+                    simulation->control.output.predicted_velocity_mps :
+                    simulation->velocity_mps);
+        }
         ball_motion_profile_step(&simulation->profile, DT_S);
         input.new_measurement = outer;
         input.measurement_valid = 1u;

@@ -21,6 +21,8 @@ static balance_control_config_t make_config(void)
     config.brake_accel_mps2 = 0.35f;
     config.actuator_delay_s = 0.020f;
     config.brake_margin_delay_s = 0.020f;
+    config.overspeed_release_ratio = 0.70f;
+    config.overspeed_min_hold_ms = 40u;
     config.command_period_s = 0.020f;
     config.capture_position_m = 0.004f;
     config.center_dead_position_m = 0.002f;
@@ -31,6 +33,7 @@ static balance_control_config_t make_config(void)
     config.breakaway_angle_deg = 1.0f;
     config.breakaway_qualify_ms = 100u;
     config.breakaway_pulse_ms = 40u;
+    config.breakaway_movement_m = 0.0006f;
     config.max_lever_angle_deg = 4.0f;
     config.degraded_lever_angle_deg = 2.0f;
     config.edge_recovery_accel_mps2 = 0.22f;
@@ -92,6 +95,7 @@ int main(void)
 
     balance_control_reset(&control);
     input = make_input(-0.020f);
+    input.measured_velocity_mps = 0.020f;
     for (uint8 step = 0u; step < 5u; step++)
     {
         balance_control_step(&control, &input);
@@ -100,6 +104,16 @@ int main(void)
     assert(output->friction_mode == BALANCE_FRICTION_BREAKAWAY);
     assert(output->flags & BALANCE_CONTROL_FLAG_BREAKAWAY_ACTIVE);
     assert(fabsf(output->lever_angle_deg + 1.0f) < 0.001f);
+
+    balance_control_reset(&control);
+    input = make_input(-0.020f);
+    for (uint8 step = 0u; step < 5u; step++)
+    {
+        input.measured_position_m += 0.0002f;
+        balance_control_step(&control, &input);
+    }
+    output = balance_control_get_output(&control);
+    assert(output->friction_mode != BALANCE_FRICTION_BREAKAWAY);
 
     balance_control_reset(&control);
     input = make_input(0.020f);
@@ -128,6 +142,41 @@ int main(void)
     assert(output->flags & BALANCE_CONTROL_FLAG_OVERSPEED_PULLBACK);
     assert(output->desired_ball_accel_mps2 < 0.0f);
 
+    config.actuator_delay_s = 0.0f;
+    balance_control_init(&control, &config);
+    input = make_input(0.050f);
+    input.measured_velocity_mps = -0.185f;
+    balance_control_step(&control, &input);
+    assert(control.overspeed_active != 0u);
+    input.new_measurement = 0u;
+    control.output.estimated_velocity_mps = -0.160f;
+    balance_control_step(&control, &input);
+    control.output.estimated_velocity_mps = -0.160f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(output->phase == BALANCE_CONTROL_PHASE_OVERSPEED);
+    assert(control.overspeed_active != 0u);
+    control.output.estimated_velocity_mps = -0.120f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(output->phase != BALANCE_CONTROL_PHASE_OVERSPEED);
+    assert(control.overspeed_active == 0u);
+
+    balance_control_reset(&control);
+    input = make_input(0.050f);
+    input.measured_velocity_mps = 0.010f;
+    balance_control_step(&control, &input);
+    assert(control.overspeed_active != 0u);
+    input.new_measurement = 0u;
+    control.output.estimated_velocity_mps = 0.0f;
+    balance_control_step(&control, &input);
+    control.output.estimated_velocity_mps = 0.0f;
+    balance_control_step(&control, &input);
+    assert(control.overspeed_active != 0u);
+    control.output.estimated_velocity_mps = -0.006f;
+    balance_control_step(&control, &input);
+    assert(control.overspeed_active == 0u);
+
     balance_control_reset(&control);
     input = make_input(0.105f);
     balance_control_step(&control, &input);
@@ -135,7 +184,8 @@ int main(void)
     assert(output->flags & BALANCE_CONTROL_FLAG_EDGE_RECOVERY);
     assert(output->desired_ball_accel_mps2 < 0.0f);
 
-    balance_control_reset(&control);
+    config.actuator_delay_s = 0.020f;
+    balance_control_init(&control, &config);
     input = make_input(0.0f);
     balance_control_step(&control, &input);
     input.new_measurement = 0u;

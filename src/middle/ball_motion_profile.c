@@ -156,6 +156,18 @@ void ball_motion_profile_set_target(ball_motion_profile_t *profile,
     profile->output.target_position_m = target_position_m;
 }
 
+void ball_motion_profile_reanchor(ball_motion_profile_t *profile,
+                                  float position_m, float velocity_mps)
+{
+    if (NULL == profile) return;
+    profile->nominal_output.position_m = position_m;
+    profile->nominal_output.velocity_mps = profile_clamp(
+        velocity_mps, -profile->config.max_velocity_mps,
+        profile->config.max_velocity_mps);
+    profile->output.position_m = profile->nominal_output.position_m;
+    profile->output.velocity_mps = profile->nominal_output.velocity_mps;
+}
+
 void ball_motion_profile_step(ball_motion_profile_t *profile, float dt_s)
 {
     ball_motion_profile_output_t lead;

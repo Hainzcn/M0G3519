@@ -66,6 +66,7 @@ int main(void)
 {
     ball_motion_profile_t profile;
     ball_motion_profile_config_t config = make_config();
+    float previous_accel;
 
     test_profile(0.010f, 0u);
     test_profile(-0.010f, 0u);
@@ -84,6 +85,23 @@ int main(void)
             (BALL_MOTION_PHASE_HOLD == profile.output.phase)) break;
     }
     assert(profile.output.position_m < -0.045f);
+
+    ball_motion_profile_reset(&profile, 0.075f, 0.0f);
+    ball_motion_profile_set_target(&profile, 0.0f);
+    previous_accel = profile.output.accel_mps2;
+    for (uint32 step = 0u; step < 400u; step++)
+    {
+        if ((step % 4u) == 0u)
+            ball_motion_profile_reanchor(&profile, 0.075f, 0.0f);
+        ball_motion_profile_step(&profile, 0.005f);
+        assert(fabsf(profile.output.accel_mps2 - previous_accel) <=
+               config.max_jerk_mps3 * 0.005f + 0.00001f);
+        previous_accel = profile.output.accel_mps2;
+    }
+    assert(profile.output.position_m > 0.070f);
+    assert(profile.output.feedforward_accel_mps2 < 0.0f);
+    assert(profile.output.phase != BALL_MOTION_PHASE_HOLD);
+
     puts("ball motion profile tests passed");
     return 0;
 }

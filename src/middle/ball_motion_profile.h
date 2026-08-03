@@ -52,6 +52,10 @@ void ball_motion_profile_reset(
 void ball_motion_profile_set_target(
     ball_motion_profile_t *profile,
     float target_position_m);
+void ball_motion_profile_reanchor(
+    ball_motion_profile_t *profile,
+    float position_m,
+    float velocity_mps);
 void ball_motion_profile_step(ball_motion_profile_t *profile, float dt_s);
 const ball_motion_profile_output_t *ball_motion_profile_get_output(
     const ball_motion_profile_t *profile);
