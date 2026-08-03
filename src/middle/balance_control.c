@@ -207,7 +207,7 @@ void balance_control_step(balance_control_t *control,
         if (0u == output->has_state)
         {
             output->estimated_position_m = input->measured_position_m;
-            output->estimated_velocity_mps = 0.0f;
+            output->estimated_velocity_mps = input->measured_velocity_mps;
             output->has_state = 1u;
         }
         else
@@ -215,13 +215,10 @@ void balance_control_step(balance_control_t *control,
             residual = input->measured_position_m - output->estimated_position_m;
             output->estimated_position_m +=
                 control->config.position_correction_gain * residual;
-            if ((input->measurement_interval_s >= 0.005f) &&
-                (input->measurement_interval_s <= 0.100f))
-            {
-                output->estimated_velocity_mps +=
-                    control->config.velocity_residual_gain * residual /
-                    input->measurement_interval_s;
-            }
+            output->estimated_velocity_mps +=
+                control->config.velocity_residual_gain *
+                (input->measured_velocity_mps -
+                 output->estimated_velocity_mps);
         }
     }
 
@@ -302,19 +299,37 @@ void balance_control_step(balance_control_t *control,
     }
     else
     {
+        uint32 measurement_ms;
         control->capture_integral = 0.0f;
         outer_ms = (uint32)(control->config.command_period_s * 1000.0f + 0.5f);
-        if (control_abs(output->predicted_velocity_mps) <=
-            control->config.stick_velocity_mps)
-            control->stuck_elapsed_ms += outer_ms;
-        else
+        if ((0u != input->new_measurement) &&
+            (0u != input->measurement_valid))
         {
-            control->stuck_elapsed_ms = 0u;
-            control->breakaway_remaining_ms = 0u;
+            measurement_ms = (uint32)(input->measurement_interval_s *
+                                      1000.0f + 0.5f);
+            if (0u == measurement_ms) measurement_ms = outer_ms;
+            if (control_abs(input->measured_velocity_mps) <=
+                control->config.stick_velocity_mps)
+            {
+                if (measurement_ms >= control->config.breakaway_qualify_ms -
+                    control->stuck_elapsed_ms)
+                    control->stuck_elapsed_ms =
+                        control->config.breakaway_qualify_ms;
+                else
+                    control->stuck_elapsed_ms += measurement_ms;
+            }
+            else
+            {
+                control->stuck_elapsed_ms = 0u;
+                control->breakaway_remaining_ms = 0u;
+            }
         }
         if ((0u == control->breakaway_remaining_ms) &&
             (control->stuck_elapsed_ms >= control->config.breakaway_qualify_ms))
+        {
             control->breakaway_remaining_ms = control->config.breakaway_pulse_ms;
+            control->stuck_elapsed_ms = 0u;
+        }
         if (control->breakaway_remaining_ms > 0u)
         {
             lever_deg = -direction * control->config.breakaway_angle_deg -

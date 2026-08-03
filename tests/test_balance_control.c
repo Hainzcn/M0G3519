@@ -16,7 +16,7 @@ static balance_control_config_t make_config(void)
     config.rolling_friction_accel_mps2 = 0.100748322f;
     config.rail_curvature_m_inv = 0.0f;
     config.position_correction_gain = 0.65f;
-    config.velocity_residual_gain = 0.10f;
+    config.velocity_residual_gain = 0.65f;
     config.max_ball_accel_mps2 = 0.45f;
     config.brake_accel_mps2 = 0.35f;
     config.actuator_delay_s = 0.020f;
@@ -49,7 +49,7 @@ static balance_control_input_t make_input(float position_m)
     input.new_measurement = 1u;
     input.measurement_valid = 1u;
     input.measured_position_m = position_m;
-    input.measured_velocity_mps = 1.0f;
+    input.measured_velocity_mps = 0.0f;
     input.measurement_interval_s = 0.020f;
     input.measurement_age_ms = 0u;
     input.target_position_m = 0.0f;
@@ -94,13 +94,19 @@ int main(void)
     input = make_input(-0.020f);
     for (uint8 step = 0u; step < 5u; step++)
     {
-        input.new_measurement = (0u == step) ? 1u : 0u;
         balance_control_step(&control, &input);
     }
     output = balance_control_get_output(&control);
     assert(output->friction_mode == BALANCE_FRICTION_BREAKAWAY);
     assert(output->flags & BALANCE_CONTROL_FLAG_BREAKAWAY_ACTIVE);
     assert(fabsf(output->lever_angle_deg + 1.0f) < 0.001f);
+
+    balance_control_reset(&control);
+    input = make_input(0.020f);
+    input.measured_velocity_mps = 0.025f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(fabsf(output->estimated_velocity_mps - 0.025f) < 0.0001f);
 
     balance_control_reset(&control);
     input = make_input(0.010f);

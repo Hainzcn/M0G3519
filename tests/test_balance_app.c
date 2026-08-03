@@ -432,11 +432,11 @@ static void test_command_timeouts_latch(void)
     balance_app_init();
     mock_now_ms = 3000u;
     balance_app_process();
-    mock_now_ms += 26u;
+    mock_now_ms += BALANCE_COMMAND_TIMEOUT_MS + 1u;
     balance_app_process();
-    mock_now_ms += 26u;
+    mock_now_ms += BALANCE_COMMAND_TIMEOUT_MS + 1u;
     balance_app_process();
-    mock_now_ms += 26u;
+    mock_now_ms += BALANCE_COMMAND_TIMEOUT_MS + 1u;
     balance_app_process();
     assert(balance_app_get_status()->state == BALANCE_APP_FAULT);
     assert(balance_app_get_status()->fault == BALANCE_FAULT_COMMAND_TIMEOUT);

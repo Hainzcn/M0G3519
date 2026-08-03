@@ -39,7 +39,7 @@ static void simulation_init(simulation_t *simulation)
     control_config.rolling_friction_accel_mps2 = ROLLING_FRICTION_MPS2;
     control_config.rail_curvature_m_inv = RAIL_CURVATURE_M_INV;
     control_config.position_correction_gain = 0.65f;
-    control_config.velocity_residual_gain = 0.10f;
+    control_config.velocity_residual_gain = 0.65f;
     control_config.max_ball_accel_mps2 = 0.45f;
     control_config.brake_accel_mps2 = 0.35f;
     control_config.actuator_delay_s = 0.020f;
@@ -135,6 +135,7 @@ static void run_leg(simulation_t *simulation, float target_m)
         input.new_measurement = outer;
         input.measurement_valid = 1u;
         input.measured_position_m = simulation->position_m;
+        input.measured_velocity_mps = simulation->velocity_mps;
         input.measurement_interval_s = 0.020f;
         input.measurement_age_ms = 0u;
         input.target_position_m = target_m;
