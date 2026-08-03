@@ -7,6 +7,9 @@
 #if (BALANCE_CONTROL_ENABLE != 0u)
 #include "balance_app.h"
 #endif
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+#include "drive_balance_demo_app.h"
+#endif
 
 #define BUTTON_APP_PAGE                 (4)
 #define BUTTON_APP_LABEL_X              (0)
@@ -47,7 +50,11 @@ void button_app_process(void)
 
     active = button_get_active();
 #if (BALANCE_CONTROL_ENABLE != 0u)
-    if ((BUTTON_ID_SW1 == active) && (BUTTON_ID_SW1 != button_app_previous))
+    if ((BUTTON_ID_SW1 == active) && (BUTTON_ID_SW1 != button_app_previous)
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+        && (0u == drive_balance_demo_app_is_running())
+#endif
+       )
     {
         if (0u == balance_app_start_sequence())
         {

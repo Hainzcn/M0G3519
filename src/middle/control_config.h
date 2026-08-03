@@ -27,6 +27,9 @@
 #ifndef BALANCE_CONTROL_ENABLE
 #define BALANCE_CONTROL_ENABLE                 (1u)
 #endif
+#ifndef BALANCE_DRIVE_DEMO_ENABLE
+#define BALANCE_DRIVE_DEMO_ENABLE              (BALANCE_CONTROL_ENABLE)
+#endif
 
 /*
  * Open-loop ball-return timeline multiplier. ESTIMATE: tune on the rig.
@@ -107,9 +110,19 @@
 #define BALANCE_VALID_MEASUREMENT_MS           (80u)
 #define BALANCE_VISION_TRANSPORT_LATENCY_MS     (3u)
 #define BALANCE_VISION_MAX_COMPENSATION_MS      (30u)
-#define BALANCE_CAR_ACCEL_FEEDFORWARD_GAIN      (1.0f)
-#define BALANCE_CAR_ACCEL_FEEDFORWARD_SIGN      (1.0f)
-#define BALANCE_CAR_ACCEL_LIMIT_MPS2            (2.0f)
+/* IMU X points forward. Keep encoder acceleration as comparison telemetry. */
+#define BALANCE_CAR_IMU_ACCEL_OFFSET_MPS2        (0.0f)
+#define BALANCE_CAR_IMU_ACCEL_GAIN               (1.0f)
+#define BALANCE_CAR_IMU_ACCEL_SIGN               (1.0f)
+#define BALANCE_CAR_IMU_ACCEL_LIMIT_MPS2         (2.0f)
+#define BALANCE_CAR_IMU_MAX_AGE_MS               (25u)
+#define BALANCE_CAR_FEEDFORWARD_DEBUG_PERIOD_MS  (50u)
+
+#define BALANCE_DRIVE_DEMO_LAP_ARM_DISTANCE_M    (4.5f)
+#define BALANCE_DRIVE_DEMO_MARKER_DEBOUNCE_MS    (20u)
+#define BALANCE_DRIVE_DEMO_TIMEOUT_MS             (30000u)
+#define BALANCE_DRIVE_DEMO_LINE_LOSS_TIMEOUT_MS   (500u)
+#define BALANCE_DRIVE_DEMO_IMU_LOSS_TIMEOUT_MS    (100u)
 
 /* Jerk-limited nominal profile; values remain provisional. */
 #define BALANCE_PROFILE_DRIVE_ACCEL_MPS2       (0.12f)
@@ -156,6 +169,14 @@
 #endif
 #if ((BALANCE_CONTROL_ENABLE != 0u) && (BALANCE_CONTROL_ENABLE != 1u))
 #error "BALANCE_CONTROL_ENABLE must be 0 or 1"
+#endif
+#if ((BALANCE_DRIVE_DEMO_ENABLE != 0u) && \
+     (BALANCE_DRIVE_DEMO_ENABLE != 1u))
+#error "BALANCE_DRIVE_DEMO_ENABLE must be 0 or 1"
+#endif
+#if ((BALANCE_DRIVE_DEMO_ENABLE != 0u) && \
+     (BALANCE_CONTROL_ENABLE == 0u))
+#error "Balance drive demo requires balance control"
 #endif
 #if ((BALANCE_STARTUP_CALIBRATED != 0u) && \
      (BALANCE_STARTUP_CALIBRATED != 1u))

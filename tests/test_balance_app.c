@@ -6,6 +6,7 @@
 #include "balance_linkage.h"
 #include "control_config.h"
 #include "emm42.h"
+#include "imu.h"
 #include "vision_link.h"
 #include "wheel_speed_control.h"
 
@@ -24,10 +25,16 @@ static uint8 mock_vision_online;
 static uint8 mock_vision_has_snapshot;
 static vision_link_snapshot_t mock_vision_snapshot;
 static wheel_speed_control_status_t mock_wheel_status;
+static imu_snapshot_t mock_imu_snapshot;
 
 const wheel_speed_control_status_t *wheel_speed_control_get_status(void)
 {
     return &mock_wheel_status;
+}
+
+void imu_get_snapshot(imu_snapshot_t *snapshot)
+{
+    *snapshot = mock_imu_snapshot;
 }
 
 #if (BALANCE_STARTUP_CALIBRATED != 0u)
@@ -205,6 +212,13 @@ static void reset_mocks(void)
     mock_vision_has_snapshot = 0u;
     mock_wheel_status.kinematics_valid = 0u;
     mock_wheel_status.planned_accel_mps2 = 0.0f;
+    mock_wheel_status.measured_speed_mps = 0.0f;
+    mock_wheel_status.measured_accel_mps2 = 0.0f;
+    mock_imu_snapshot.flags = 0u;
+    mock_imu_snapshot.accel.ax = 0.0f;
+    mock_imu_snapshot.accel.ay = 0.0f;
+    mock_imu_snapshot.accel.az = 0.0f;
+    mock_imu_snapshot.accel_time_ms = 0u;
     mock_vision_snapshot.sequence = 0u;
     mock_vision_snapshot.processing_ms = 0u;
 }
@@ -257,11 +271,13 @@ static void process_and_answer_pending(void)
 static void test_successful_startup(void)
 {
     const balance_app_status_t *status;
+    float expected_motor_deg;
 
     reset_mocks();
     balance_app_init();
     status = balance_app_get_status();
     assert(status->state == BALANCE_APP_POWER_WAIT);
+    assert(0u == balance_app_start_sequence());
 
     mock_now_ms = 3000u;
     balance_app_process();
@@ -311,6 +327,39 @@ static void test_successful_startup(void)
     assert(balance_app_get_status()->state == BALANCE_APP_ACTIVE);
     assert(0u != (balance_app_get_status()->flags &
                   BALANCE_APP_FLAG_MEASUREMENT_ACCEPTED));
+    mock_wheel_status.kinematics_valid = 1u;
+    mock_wheel_status.measured_speed_mps = 0.25f;
+    mock_wheel_status.measured_accel_mps2 = 0.8f;
+    mock_now_ms += BALANCE_OUTER_CONTROL_PERIOD_MS;
+    mock_imu_snapshot.flags = IMU_FLAG_ACCEL;
+    mock_imu_snapshot.accel.ax = 0.8f;
+    mock_imu_snapshot.accel_time_ms = mock_now_ms;
+    publish_acceptable_vision(
+        (int16)(BALANCE_SEQUENCE_POSITIVE_TARGET_M * 10000.0f));
+    process_and_answer_pending();
+    assert(fabsf(status->car_encoder_speed_mps - 0.25f) < 0.0001f);
+    assert(fabsf(status->car_encoder_accel_mps2 - 0.8f) < 0.0001f);
+    assert(fabsf(status->car_imu_accel_mps2 - 0.8f) < 0.0001f);
+    assert(fabsf(status->car_feedforward_accel_mps2 - 0.8f) < 0.0001f);
+    assert(fabsf(status->car_sync_lever_angle_deg -
+                 balance_control_vehicle_sync_lever_deg(0.8f)) < 0.0001f);
+    assert(status->car_imu_accel_valid != 0u);
+    assert(status->car_imu_accel_age_ms == 0u);
+    assert(0u != balance_linkage_motor_from_physical_lever_deg(
+        (float)BALANCE_LOGICAL_TO_PHYSICAL_LEVER_SIGN *
+            status->lever_angle_deg,
+        &expected_motor_deg));
+    assert(fabsf(status->motor_target_deg - expected_motor_deg) < 0.0001f);
+    mock_now_ms += BALANCE_OUTER_CONTROL_PERIOD_MS;
+    mock_imu_snapshot.accel_time_ms =
+        mock_now_ms - BALANCE_CAR_IMU_MAX_AGE_MS - 1u;
+    publish_acceptable_vision(
+        (int16)(BALANCE_SEQUENCE_POSITIVE_TARGET_M * 10000.0f));
+    process_and_answer_pending();
+    assert(status->car_imu_accel_valid == 0u);
+    assert(status->car_feedforward_accel_mps2 == 0.0f);
+    mock_wheel_status.measured_accel_mps2 = 0.0f;
+    assert(0u != balance_app_set_target_position_m(0.020f));
     assert(0u != balance_app_start_sequence());
     assert(balance_app_get_status()->sequence_state ==
            BALANCE_SEQUENCE_TO_POSITIVE);

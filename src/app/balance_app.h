@@ -79,6 +79,13 @@ typedef struct
     float feedforward_accel_mps2;
     float feedback_accel_mps2;
     float desired_ball_accel_mps2;
+    float car_encoder_speed_mps;
+    float car_encoder_accel_mps2;
+    float car_imu_accel_mps2;
+    float car_feedforward_accel_mps2;
+    float car_sync_lever_angle_deg;
+    uint32 car_imu_accel_age_ms;
+    uint8 car_imu_accel_valid;
     float raw_lever_angle_deg;
     float lever_angle_deg;
     float actual_lever_angle_deg;

@@ -19,6 +19,12 @@ static float control_clamp(float value, float low, float high)
     return value;
 }
 
+float balance_control_vehicle_sync_lever_deg(float car_accel_mps2)
+{
+    return -atan2f(car_accel_mps2, CONTROL_GRAVITY_MPS2) *
+        CONTROL_RAD_TO_DEG;
+}
+
 static float control_friction_scale(const balance_control_t *control,
                                     float velocity_mps)
 {
@@ -507,9 +513,13 @@ inverse_dynamics:
         dynamics_limit = -1.0f;
         flags |= BALANCE_CONTROL_FLAG_DYNAMICS_SATURATED;
     }
-    lever_deg = (asinf(dynamics_limit) -
-        atan2f(input->car_accel_mps2, CONTROL_GRAVITY_MPS2)) *
-        CONTROL_RAD_TO_DEG - shape_angle_deg;
+    /*
+     * With no ball/rail relative motion, tan(theta) = -a_car/g. The asin
+     * term is only the relative ball-position correction around that angle.
+     */
+    lever_deg = asinf(dynamics_limit) * CONTROL_RAD_TO_DEG +
+        balance_control_vehicle_sync_lever_deg(input->car_accel_mps2) -
+        shape_angle_deg;
 
 finalize:
     angle_limit = (input->measurement_age_ms >

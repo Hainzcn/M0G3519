@@ -16,6 +16,14 @@ typedef enum
 #define IMU_ANGLE_DATA_SIZE          (6u)
 #define IMU_ACCEL_GYRO_DATA_SIZE     (12u)
 #define IMU_PROCESS_MAX_BLOCKS       (IMU_HW_DMA_BLOCK_COUNT)
+#define IMU_COMMAND_HEADER_2          (0xAFu)
+#define IMU_COMMAND_ACC_FSR           (0x04u)
+#define IMU_COMMAND_RETURN_SET        (0x08u)
+#define IMU_COMMAND_RETURN_RATE       (0x0Au)
+#define IMU_COMMAND_ACC_FSR_4G        (0x01u)
+#define IMU_COMMAND_RETURN_ANGLE      (0x01u)
+#define IMU_COMMAND_RETURN_ACCEL_GYRO (0x04u)
+#define IMU_COMMAND_RETURN_RATE_100HZ (0x03u)
 
 static imu_angle_t imu_angle_data;
 static imu_accel_t imu_accel_data;
@@ -33,6 +41,20 @@ static uint8 imu_checksum;
 static uint32 imu_good_frame_count;
 static uint32 imu_bad_frame_count;
 static uint32 imu_ignored_frame_count;
+
+static uint8 imu_write_u8_command(uint8 command, uint8 value)
+{
+    uint8 frame[6];
+
+    frame[0] = IMU_FRAME_HEADER;
+    frame[1] = IMU_COMMAND_HEADER_2;
+    frame[2] = command;
+    frame[3] = 1u;
+    frame[4] = value;
+    frame[5] = (uint8)(frame[0] + frame[1] + frame[2] +
+                       frame[3] + frame[4]);
+    return imu_hw_write_frame(frame, (uint8)sizeof(frame));
+}
 
 static int16 imu_combine_int16(uint8 low, uint8 high)
 {
@@ -253,6 +275,20 @@ void imu_process(void)
     }
 
     imu_check_stale();
+}
+
+uint8 imu_configure_active_stream(void)
+{
+    uint8 ok = 1u;
+
+    ok &= imu_write_u8_command(IMU_COMMAND_ACC_FSR,
+                               IMU_COMMAND_ACC_FSR_4G);
+    ok &= imu_write_u8_command(IMU_COMMAND_RETURN_SET,
+        (uint8)(IMU_COMMAND_RETURN_ANGLE |
+                IMU_COMMAND_RETURN_ACCEL_GYRO));
+    ok &= imu_write_u8_command(IMU_COMMAND_RETURN_RATE,
+                               IMU_COMMAND_RETURN_RATE_100HZ);
+    return ok;
 }
 
 const imu_angle_t *imu_get_angle(void)

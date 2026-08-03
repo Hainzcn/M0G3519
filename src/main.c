@@ -1,6 +1,9 @@
 #include "button_app.h"
 #include "balance_app.h"
 #include "control_config.h"
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+#include "drive_balance_demo_app.h"
+#endif
 #if (BALL_RETURN_DEMO_ENABLE != 0u)
 #include "ball_return_demo_app.h"
 #endif
@@ -53,6 +56,11 @@ int main(void)
 #else
     heartbeat_hw_uart_send_string(" balance=0");
 #endif
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" drive-balance=1");
+#else
+    heartbeat_hw_uart_send_string(" drive-balance=0");
+#endif
 #if (EMM42_BALANCE_DEMO_ENABLE != 0u)
     heartbeat_hw_uart_send_string(" imu=0");
 #else
@@ -68,6 +76,9 @@ int main(void)
     heartbeat_hw_uart_flush_blocking();
 #if (BALANCE_CONTROL_ENABLE != 0u)
     balance_app_init();
+#endif
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+    drive_balance_demo_app_init();
 #endif
 #if (EMM42_BALANCE_DEMO_ENABLE != 0u)
     emm42_demo_app_init();
@@ -94,6 +105,9 @@ int main(void)
         uart3_maix_app_process();
         heartbeat_app_process();
         button_app_process();
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+        drive_balance_demo_app_process();
+#endif
         oled_app_process();
 #if (EMM42_BALANCE_DEMO_ENABLE != 0u)
         emm42_demo_app_process();

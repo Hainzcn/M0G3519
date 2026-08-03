@@ -81,6 +81,8 @@ virtualFolder:
         - path: ../src/app/ball_return_demo_app.h
         - path: ../src/app/balance_app.c
         - path: ../src/app/balance_app.h
+        - path: ../src/app/drive_balance_demo_app.c
+        - path: ../src/app/drive_balance_demo_app.h
         - path: ../src/app/uart3_maix_app.c
         - path: ../src/app/uart3_maix_app.h
         - path: ../src/app/emm42_demo_app.c

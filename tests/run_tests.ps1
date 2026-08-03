@@ -23,6 +23,9 @@ function Invoke-CTest {
 
 Push-Location $RepoDir
 try {
+    Invoke-CTest "test_wheel_speed_control" @(
+        "tests/test_wheel_speed_control.c", "src/middle/wheel_speed_control.c",
+        "src/middle/control_pid.c")
     Invoke-CTest "test_ball_motion_profile" @(
         "tests/test_ball_motion_profile.c", "src/middle/ball_motion_profile.c")
     Invoke-CTest "test_balance_actuator_trajectory" @(
@@ -39,6 +42,9 @@ try {
         "src/middle/balance_control.c", "src/middle/ball_motion_profile.c",
         "src/middle/balance_actuator_trajectory.c",
         "src/middle/balance_linkage.c")
+    Invoke-CTest "test_drive_balance_demo_app" @(
+        "tests/test_drive_balance_demo_app.c",
+        "src/app/drive_balance_demo_app.c")
     Invoke-CTest "test_emm42_demo_app" @(
         "tests/test_emm42_demo_app.c", "src/app/emm42_demo_app.c",
         "src/middle/balance_linkage.c")
@@ -75,7 +81,8 @@ try {
         }
     )
     foreach ($Mode in $ModeBuilds) {
-        foreach ($Source in @("src/main.c", "src/app/uart3_maix_app.c")) {
+        foreach ($Source in @("src/main.c", "src/app/button_app.c",
+                              "src/app/uart3_maix_app.c")) {
             $SourceName = [System.IO.Path]::GetFileNameWithoutExtension($Source)
             $Object = Join-Path $TestBuildDir "$($SourceName)_$($Mode.Name).o"
             & gcc @CommonFlags @($Mode.Defines) -c $Source -o $Object

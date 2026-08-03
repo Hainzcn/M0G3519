@@ -59,6 +59,7 @@ typedef struct
 
 void imu_init(void);
 void imu_process(void);
+uint8 imu_configure_active_stream(void);
 
 const imu_angle_t *imu_get_angle(void);
 const imu_accel_t *imu_get_accel(void);

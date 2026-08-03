@@ -1,0 +1,82 @@
+samples: 5688
+duration_s: 56.870
+median_sample_period_ms: 10.000
+mcu_period_min_max_ms: 10.0, 10.0
+sequence_gap_sum: 0
+fault_nonzero_samples: 0
+
+state_counts: {5: 4805, 6: 475, 10: 408}
+control_phase_counts: {0: 832, 1: 2242, 2: 878, 4: 1536, 5: 116, 6: 84}
+friction_mode_counts: {0: 4760, 1: 12, 2: 84, 3: 832}
+flags_counts: {66: 423, 70: 403, 71: 6, 78: 57, 79: 4639, 95: 160}
+control_flags_counts: {4097: 1392, 4098: 2142, 4101: 24, 4102: 23, 4114: 3, 4129: 552, 4130: 625, 4133: 5, 4134: 6, 4146: 5, 4225: 41, 4226: 13, 4233: 2, 4242: 1, 4250: 2, 4257: 26, 4258: 9, 4282: 1, 4353: 302, 4354: 131, 4370: 174, 4385: 85, 4386: 1, 4402: 75, 5121: 13, 5122: 15, 5153: 9, 5154: 5, 6145: 2, 6146: 2, 6177: 2}
+
+control_flag_measurement_fresh_fraction: 0.4316
+control_flag_predict_only_fraction: 0.5684
+control_flag_edge_recovery_fraction: 0.0102
+control_flag_dynamics_saturated_fraction: 0.0009
+control_flag_angle_saturated_fraction: 0.0459
+control_flag_slew_saturated_fraction: 0.2472
+control_flag_hard_edge_fraction: 0.0000
+control_flag_velocity_saturated_fraction: 0.0167
+control_flag_overspeed_pullback_fraction: 0.1350
+control_flag_predictor_degraded_fraction: 0.0000
+control_flag_capture_active_fraction: 0.0074
+control_flag_breakaway_active_fraction: 0.0011
+control_flag_calibration_pending_fraction: 1.0000
+
+state_transitions:
+  t=0.000s state=10 pos=0.0mm vel=0.0mm/s confidence=0
+  t=4.080s state=5 pos=118.5mm vel=-3.0mm/s confidence=79
+  t=4.310s state=6 pos=120.8mm vel=1.0mm/s confidence=73
+  t=4.520s state=5 pos=116.0mm vel=-47.0mm/s confidence=72
+  t=35.940s state=6 pos=21.1mm vel=31.0mm/s confidence=83
+  t=36.060s state=5 pos=20.1mm vel=5.0mm/s confidence=82
+  t=43.940s state=6 pos=65.2mm vel=108.0mm/s confidence=65
+  t=48.360s state=5 pos=107.6mm vel=-45.0mm/s confidence=58
+
+large_position_regions_abs_gt_20mm_duration_ge_0.2s:
+  3.930..8.170s duration=4.240s min=20.4mm max=120.8mm
+  9.710..10.420s duration=0.710s min=20.4mm max=35.1mm
+  12.210..13.050s duration=0.840s min=20.0mm max=39.6mm
+  14.530..15.560s duration=1.030s min=20.1mm max=42.3mm
+  17.080..17.470s duration=0.390s min=20.2mm max=26.0mm
+  18.500..18.780s duration=0.280s min=20.2mm max=23.8mm
+  19.650..20.450s duration=0.800s min=20.0mm max=40.6mm
+  22.090..23.800s duration=1.710s min=20.1mm max=44.2mm
+  24.780..25.380s duration=0.600s min=21.2mm max=35.0mm
+  28.490..29.200s duration=0.710s min=20.3mm max=35.9mm
+  32.220..32.880s duration=0.660s min=21.5mm max=35.2mm
+  34.500..35.030s duration=0.530s min=20.0mm max=30.0mm
+  37.070..37.440s duration=0.370s min=20.0mm max=24.2mm
+  38.290..38.820s duration=0.530s min=20.0mm max=29.3mm
+  40.830..41.440s duration=0.610s min=20.2mm max=32.9mm
+  43.460..51.990s duration=8.530s min=-94.3mm max=107.9mm
+  53.330..54.010s duration=0.680s min=20.4mm max=35.4mm
+  54.770..55.120s duration=0.350s min=20.0mm max=22.8mm
+  55.970..56.610s duration=0.640s min=20.6mm max=36.2mm
+
+largest_single_sample_position_changes:
+  t=47.840s delta=-145.7mm pos=-43.3mm vision_age=12ms confidence=67
+  t=3.930s delta=+118.6mm pos=118.6mm vision_age=18ms confidence=80
+  t=48.260s delta=+94.4mm pos=65.2mm vision_age=12ms confidence=60
+  t=47.870s delta=-51.0mm pos=-94.3mm vision_age=19ms confidence=67
+  t=48.290s delta=+31.1mm pos=97.3mm vision_age=30ms confidence=55
+  t=43.870s delta=+15.3mm pos=56.8mm vision_age=16ms confidence=65
+  t=43.760s delta=+14.8mm pos=43.0mm vision_age=14ms confidence=72
+  t=48.320s delta=+9.3mm pos=106.6mm vision_age=22ms confidence=61
+  t=47.920s delta=+5.4mm pos=-88.6mm vision_age=17ms confidence=64
+  t=43.850s delta=-5.2mm pos=41.5mm vision_age=22ms confidence=75
+  t=43.820s delta=-5.1mm pos=46.0mm vision_age=31ms confidence=67
+  t=47.940s delta=+3.8mm pos=-83.4mm vision_age=13ms confidence=74
+  t=21.990s delta=+3.7mm pos=6.4mm vision_age=30ms confidence=88
+  t=43.790s delta=+3.5mm pos=48.8mm vision_age=16ms confidence=72
+  t=32.070s delta=+3.5mm pos=5.0mm vision_age=33ms confidence=85
+  t=12.050s delta=+3.4mm pos=-0.4mm vision_age=29ms confidence=89
+  t=12.200s delta=+3.2mm pos=18.8mm vision_age=35ms confidence=84
+  t=53.220s delta=+3.0mm pos=7.5mm vision_age=32ms confidence=84
+  t=24.780s delta=+3.0mm pos=22.0mm vision_age=27ms confidence=83
+  t=53.300s delta=+2.9mm pos=17.5mm vision_age=33ms confidence=83
+
+full_record_position_dominant_frequency_hz: 0.809
+full_record_position_fft_amplitude_mm: 9.018

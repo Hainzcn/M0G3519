@@ -1,6 +1,7 @@
 #include "balance_app.h"
 
 #include <math.h>
+#include <stdio.h>
 
 #include "balance_control.h"
 #include "balance_actuator_trajectory.h"
@@ -10,6 +11,7 @@
 #include "emm42.h"
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
+#include "imu.h"
 #include "vision_link.h"
 #include "wheel_speed_control.h"
 
@@ -59,6 +61,7 @@ static uint32 balance_sequence_start_ms;
 static uint32 balance_sequence_settle_start_ms;
 static uint8 balance_sequence_settle_active;
 static uint8 balance_sequence_start_pending;
+static uint32 balance_last_car_feedforward_debug_ms;
 
 static void balance_app_begin_sequence(uint32 now_ms);
 
@@ -117,6 +120,59 @@ static float balance_app_clamp(float value, float low, float high)
         return low;
     }
     return value;
+}
+
+static uint8 balance_app_get_car_feedforward_accel(
+    uint32 now_ms, float *imu_accel_mps2, uint32 *imu_age_ms,
+    float *feedforward_accel_mps2)
+{
+    imu_snapshot_t imu;
+
+    imu_get_snapshot(&imu);
+    *imu_accel_mps2 = imu.accel.ax;
+    *imu_age_ms = BALANCE_APP_AGE_INVALID;
+    *feedforward_accel_mps2 = 0.0f;
+    if (0u == (imu.flags & IMU_FLAG_ACCEL))
+    {
+        return 0u;
+    }
+
+    *imu_age_ms = now_ms - imu.accel_time_ms;
+    if (*imu_age_ms > BALANCE_CAR_IMU_MAX_AGE_MS)
+    {
+        return 0u;
+    }
+
+    /* ax is the effective longitudinal acceleration in the car frame. */
+    *feedforward_accel_mps2 = balance_app_clamp(
+        (*imu_accel_mps2 - BALANCE_CAR_IMU_ACCEL_OFFSET_MPS2) *
+            BALANCE_CAR_IMU_ACCEL_GAIN * BALANCE_CAR_IMU_ACCEL_SIGN,
+        -BALANCE_CAR_IMU_ACCEL_LIMIT_MPS2,
+        BALANCE_CAR_IMU_ACCEL_LIMIT_MPS2);
+    return 1u;
+}
+
+static void balance_app_send_car_feedforward_debug(uint32 now_ms)
+{
+    char message[192];
+
+    if ((now_ms - balance_last_car_feedforward_debug_ms) <
+        BALANCE_CAR_FEEDFORWARD_DEBUG_PERIOD_MS)
+    {
+        return;
+    }
+    balance_last_car_feedforward_debug_ms = now_ms;
+    snprintf(message, sizeof(message),
+        "[car-ff] imu=%.3f,age=%lu,enc=%.3f,ff=%.3f,sync=%.2f,raw=%.2f,m=%.2f,ok=%u\r\n",
+        (double)balance_status.car_imu_accel_mps2,
+        (unsigned long)balance_status.car_imu_accel_age_ms,
+        (double)balance_status.car_encoder_accel_mps2,
+        (double)balance_status.car_feedforward_accel_mps2,
+        (double)balance_status.car_sync_lever_angle_deg,
+        (double)balance_status.raw_lever_angle_deg,
+        (double)balance_status.motor_target_deg,
+        (unsigned int)balance_status.car_imu_accel_valid);
+    heartbeat_hw_uart_send_string(message);
 }
 
 static void balance_app_set_state(balance_app_state_enum state, uint32 now_ms)
@@ -468,16 +524,12 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
     input.reference_holding =
         (BALL_MOTION_PHASE_HOLD == profile_output->phase) ? 1u : 0u;
     wheel_status = wheel_speed_control_get_status();
-    input.car_accel_mps2 = 0.0f;
-    if ((NULL != wheel_status) && (0u != wheel_status->kinematics_valid))
-    {
-        input.car_accel_mps2 = balance_app_clamp(
-            wheel_status->planned_accel_mps2 *
-                BALANCE_CAR_ACCEL_FEEDFORWARD_GAIN *
-                BALANCE_CAR_ACCEL_FEEDFORWARD_SIGN,
-            -BALANCE_CAR_ACCEL_LIMIT_MPS2,
-            BALANCE_CAR_ACCEL_LIMIT_MPS2);
-    }
+    balance_status.car_imu_accel_valid =
+        balance_app_get_car_feedforward_accel(
+            now_ms,
+            &balance_status.car_imu_accel_mps2,
+            &balance_status.car_imu_accel_age_ms,
+            &input.car_accel_mps2);
     /* Position polling is 10 Hz; only a newly decoded sample is model-fresh. */
     input.actual_lever_valid = balance_motor_feedback_new;
     input.actual_lever_angle_deg = balance_status.actual_lever_angle_deg;
@@ -524,6 +576,13 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
     balance_status.feedback_accel_mps2 = output->feedback_accel_mps2;
     balance_status.desired_ball_accel_mps2 =
         output->desired_ball_accel_mps2;
+    balance_status.car_encoder_speed_mps = (NULL != wheel_status) ?
+        wheel_status->measured_speed_mps : 0.0f;
+    balance_status.car_encoder_accel_mps2 = (NULL != wheel_status) ?
+        wheel_status->measured_accel_mps2 : 0.0f;
+    balance_status.car_feedforward_accel_mps2 = input.car_accel_mps2;
+    balance_status.car_sync_lever_angle_deg =
+        balance_control_vehicle_sync_lever_deg(input.car_accel_mps2);
     balance_status.raw_lever_angle_deg = output->lever_angle_deg;
     balance_status.lever_angle_deg = actuator_output->angle_deg;
     balance_status.control_phase = output->phase;
@@ -546,6 +605,8 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
     {
         balance_hard_edge_active = 0u;
     }
+
+    balance_app_send_car_feedforward_debug(now_ms);
 
     if ((0u != balance_has_accepted_measurement) &&
         ((measurement_age > BALANCE_VALID_MEASUREMENT_MS) ||
@@ -907,7 +968,6 @@ void balance_app_init(void)
     actuator_config.max_accel_deg_s2 = BALANCE_MAX_LEVER_ACCEL_DEG_S2;
     balance_actuator_trajectory_init(&balance_actuator_trajectory,
                                      &actuator_config);
-
     balance_status.state = BALANCE_APP_UNCONFIGURED;
     balance_status.fault = BALANCE_FAULT_NONE;
     balance_status.flags = 0u;
@@ -935,6 +995,13 @@ void balance_app_init(void)
     balance_status.feedforward_accel_mps2 = 0.0f;
     balance_status.feedback_accel_mps2 = 0.0f;
     balance_status.desired_ball_accel_mps2 = 0.0f;
+    balance_status.car_encoder_speed_mps = 0.0f;
+    balance_status.car_encoder_accel_mps2 = 0.0f;
+    balance_status.car_imu_accel_mps2 = 0.0f;
+    balance_status.car_feedforward_accel_mps2 = 0.0f;
+    balance_status.car_sync_lever_angle_deg = 0.0f;
+    balance_status.car_imu_accel_age_ms = BALANCE_APP_AGE_INVALID;
+    balance_status.car_imu_accel_valid = 0u;
     balance_status.raw_lever_angle_deg = 0.0f;
     balance_status.lever_angle_deg = 0.0f;
     balance_status.actual_lever_angle_deg = 0.0f;
@@ -969,6 +1036,7 @@ void balance_app_init(void)
     balance_sequence_settle_start_ms = 0u;
     balance_sequence_settle_active = 0u;
     balance_sequence_start_pending = 0u;
+    balance_last_car_feedforward_debug_ms = now_ms;
     balance_state_start_ms = now_ms;
     balance_last_control_ms = now_ms;
     balance_last_outer_control_ms = now_ms;
@@ -1011,7 +1079,7 @@ uint8 balance_app_set_target_position_m(float target_position_m)
     ball_motion_profile_set_target(&balance_profile, target_position_m);
     balance_status.sequence_elapsed_ms = 0u;
     balance_app_set_sequence_state(BALANCE_SEQUENCE_IDLE);
-    return 0u;
+    return 1u;
 }
 
 static void balance_app_begin_sequence(uint32 now_ms)
@@ -1042,7 +1110,7 @@ uint8 balance_app_start_sequence(void)
         heartbeat_hw_uart_send_string("[balance] sequence queued\r\n");
         return 1u;
     }
-    return 1u;
+    return 0u;
 }
 
 void balance_app_cancel_motion(void)

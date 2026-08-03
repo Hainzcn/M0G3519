@@ -135,6 +135,7 @@ typedef struct
     float capture_integral;
 } balance_control_t;
 
+float balance_control_vehicle_sync_lever_deg(float car_accel_mps2);
 void balance_control_init(balance_control_t *control,
                           const balance_control_config_t *config);
 void balance_control_reset(balance_control_t *control);

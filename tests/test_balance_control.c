@@ -75,6 +75,15 @@ int main(void)
     balance_control_input_t left_input;
     balance_control_input_t right_input;
     const balance_control_output_t *output;
+    float sync_angle_deg;
+
+    sync_angle_deg = balance_control_vehicle_sync_lever_deg(0.8f);
+    assert(fabsf(sync_angle_deg -
+        (-atan2f(0.8f, 9.80665f) * 180.0f / 3.14159265358979323846f)) <
+        0.0001f);
+    assert(fabsf(balance_control_vehicle_sync_lever_deg(-0.8f) +
+                 sync_angle_deg) < 0.0001f);
+    assert(balance_control_vehicle_sync_lever_deg(0.0f) == 0.0f);
 
     balance_control_init(&control, &config);
     input = make_input(0.0f);
@@ -84,6 +93,13 @@ int main(void)
     assert(fabsf(output->estimated_velocity_mps) < 0.0001f);
     assert(output->flags & BALANCE_CONTROL_FLAG_CALIBRATION_PENDING);
     assert(output->flags & BALANCE_CONTROL_FLAG_PREDICTOR_DEGRADED);
+
+    balance_control_reset(&control);
+    input = make_input(0.0f);
+    input.car_accel_mps2 = 0.8f;
+    balance_control_step(&control, &input);
+    output = balance_control_get_output(&control);
+    assert(output->lever_angle_deg < 0.0f);
 
     balance_control_reset(&control);
     input = make_input(-0.003f);
