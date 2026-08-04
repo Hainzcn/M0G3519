@@ -37,6 +37,8 @@ static uint8 mock_capture_ready;
 static uint32 mock_capture_cancel_count;
 static float mock_line_accel_rpm_s;
 static float mock_line_preview_accel_rpm_s;
+static float mock_line_preview_s;
+static uint32 mock_line_start_count;
 
 uint32 heartbeat_get_ms(void)
 {
@@ -124,6 +126,10 @@ void motor_app_set_line_follow_enabled(uint8 enabled)
 {
     mock_motor_mode = (0u != enabled) ?
         MOTOR_APP_MODE_LINE_FOLLOW : MOTOR_APP_MODE_DISABLED;
+    if (0u != enabled)
+    {
+        mock_line_start_count++;
+    }
 }
 
 void motor_app_set_base_rpm(float rpm)
@@ -149,7 +155,7 @@ float line_control_get_base_accel_rpm_s(void)
 
 float line_control_get_base_accel_preview_rpm_s(float preview_s)
 {
-    assert(preview_s == BALANCE_SIMPLE_CAR_FF_PREVIEW_S);
+    mock_line_preview_s = preview_s;
     return mock_line_preview_accel_rpm_s;
 }
 
@@ -196,7 +202,21 @@ static void reset_mocks(void)
     mock_capture_cancel_count = 0u;
     mock_line_accel_rpm_s = 0.0f;
     mock_line_preview_accel_rpm_s = 0.0f;
+    mock_line_preview_s = 0.0f;
+    mock_line_start_count = 0u;
     drive_balance_demo_app_init();
+}
+
+static void complete_prestart(void)
+{
+    assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
+    mock_now_ms += BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS;
+    mock_imu.accel_time_ms = mock_now_ms;
+    drive_balance_demo_app_process();
+    assert(mock_motor_mode == MOTOR_APP_MODE_LINE_FOLLOW);
+    assert(mock_line_start_count == 1u);
+    assert(fabsf(mock_line_preview_s -
+        BALANCE_SIMPLE_CAR_FF_PREVIEW_S) < 0.0001f);
 }
 
 static void set_distance(float distance_m)
@@ -219,19 +239,21 @@ static void test_center_lap_ignores_start_marker(void)
     assert(mock_target == 0.0f);
     assert(0u == status->finish_armed);
     assert(0u == mock_stop_count);
+    assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
+    complete_prestart();
 
     set_distance(4.6f);
-    mock_now_ms = 10u;
+    mock_now_ms += 10u;
     mock_imu.accel_time_ms = mock_now_ms;
     drive_balance_demo_app_process();
     assert(0u != status->finish_armed);
     assert(fabsf(mock_base_rpm - TRACK_MODE_4_LINE_FOLLOW_RPM) < 0.001f);
     assert(status->state == DRIVE_BALANCE_DEMO_RUNNING_CENTER);
-    mock_now_ms = 29u;
+    mock_now_ms += 19u;
     mock_imu.accel_time_ms = mock_now_ms;
     drive_balance_demo_app_process();
     assert(status->state == DRIVE_BALANCE_DEMO_RUNNING_CENTER);
-    mock_now_ms = 30u;
+    mock_now_ms += 1u;
     mock_imu.accel_time_ms = mock_now_ms;
     drive_balance_demo_app_process();
     assert(status->state == DRIVE_BALANCE_DEMO_BRAKING);
@@ -262,9 +284,16 @@ static void test_planned_acceleration_is_previewed_and_imu_corrects_residual(voi
     assert(0u != drive_balance_demo_app_start_center());
     mock_line_accel_rpm_s = 0.6f / rpm_s_to_mps2;
     mock_line_preview_accel_rpm_s = 0.8f / rpm_s_to_mps2;
-    mock_now_ms += 10u;
+    mock_now_ms += BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS / 2u;
     mock_imu.accel_time_ms = mock_now_ms;
     drive_balance_demo_app_process();
+    assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
+    assert(mock_planned_accel_mps2 == 0.0f);
+    assert(fabsf(mock_line_preview_s -
+        (0.001f *
+         (float)(BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS / 2u))) <
+        0.0001f);
+    complete_prestart();
 
     assert(mock_feedforward_valid != 0u);
     assert(fabsf(mock_planned_accel_mps2 - 0.6f) < 0.0001f);
@@ -288,8 +317,9 @@ static void test_capture_current_and_user_stop(void)
     status = drive_balance_demo_app_get_status();
     assert(status->state == DRIVE_BALANCE_DEMO_RUNNING_CAPTURED);
     assert(fabsf(mock_target - 0.043f) < 0.0001f);
+    complete_prestart();
     mock_balance.estimated_position_m = 0.035f;
-    mock_now_ms = 100u;
+    mock_now_ms += 100u;
     drive_balance_demo_app_process();
     assert(fabsf(status->max_abs_error_m - 0.008f) < 0.0001f);
     drive_balance_demo_app_stop();
@@ -319,7 +349,8 @@ static void test_start_rejection_and_timeout(void)
 
     reset_mocks();
     assert(0u != drive_balance_demo_app_start_center());
-    mock_now_ms = BALANCE_DRIVE_DEMO_TIMEOUT_MS + 1u;
+    complete_prestart();
+    mock_now_ms += BALANCE_DRIVE_DEMO_TIMEOUT_MS + 1u;
     drive_balance_demo_app_process();
     assert(status->state == DRIVE_BALANCE_DEMO_TIMEOUT);
     assert(status->stop_reason == DRIVE_BALANCE_STOP_TIMEOUT);
@@ -338,6 +369,7 @@ static void test_vision_off_only_starts_center_mode_feedforward_only(void)
     assert(status->state == DRIVE_BALANCE_DEMO_RUNNING_CENTER);
     assert(mock_feedforward_only != 0u);
     assert(status->target_position_m == 0.0f);
+    assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
     mock_now_ms += 10u;
     mock_imu.accel_time_ms = mock_now_ms;
     drive_balance_demo_app_process();
@@ -367,11 +399,12 @@ static void test_line_and_balance_failures(void)
 
     reset_mocks();
     assert(0u != drive_balance_demo_app_start_center());
+    complete_prestart();
     status = drive_balance_demo_app_get_status();
     mock_line.line_lost = 1u;
-    mock_now_ms = 1u;
+    mock_now_ms += 1u;
     drive_balance_demo_app_process();
-    mock_now_ms = 1u + BALANCE_DRIVE_DEMO_LINE_LOSS_TIMEOUT_MS;
+    mock_now_ms += BALANCE_DRIVE_DEMO_LINE_LOSS_TIMEOUT_MS;
     drive_balance_demo_app_process();
     assert(status->stop_reason == DRIVE_BALANCE_STOP_LINE);
 
@@ -384,10 +417,11 @@ static void test_line_and_balance_failures(void)
 
     reset_mocks();
     assert(0u != drive_balance_demo_app_start_center());
+    complete_prestart();
     mock_imu.flags = 0u;
-    mock_now_ms = 1u;
+    mock_now_ms += 1u;
     drive_balance_demo_app_process();
-    mock_now_ms = 1u + BALANCE_DRIVE_DEMO_IMU_LOSS_TIMEOUT_MS;
+    mock_now_ms += BALANCE_DRIVE_DEMO_IMU_LOSS_TIMEOUT_MS;
     drive_balance_demo_app_process();
     assert(status->stop_reason == DRIVE_BALANCE_STOP_IMU);
 }
@@ -398,10 +432,11 @@ static void test_approach_speed_and_error_requirement(void)
 
     reset_mocks();
     assert(0u != drive_balance_demo_app_start_center());
+    complete_prestart();
     status = drive_balance_demo_app_get_status();
     set_distance(BALANCE_DRIVE_DEMO_APPROACH_DISTANCE_M + 0.1f);
     mock_balance.estimated_position_m = 0.011f;
-    mock_now_ms = 1000u;
+    mock_now_ms += 1000u;
     mock_imu.accel_time_ms = mock_now_ms;
     drive_balance_demo_app_process();
     assert(status->approach_active != 0u);

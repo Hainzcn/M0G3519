@@ -148,7 +148,8 @@
 #define BALANCE_SIMPLE_CAR_FF_GAIN                     (1.0f)    /* 完整惯性补偿：摆角 = atan(a/g) */
 #define BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG            (4.0f)    /* 覆盖 0.613 m/s^2 启动所需的 3.57 度 */
 #define BALANCE_SIMPLE_CAR_FF_POSITION_CUTOFF_M        (0.010f)  /* 偏差到 1 cm 时前馈完全让权给回中环 */
-#define BALANCE_SIMPLE_CAR_FF_PREVIEW_S                (0.10f)   /* S 曲线规划加速度预瞄时间 */
+#define BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS          (140u)    /* 启动前从零推进同长度的前馈时间轴 */
+#define BALANCE_SIMPLE_CAR_FF_PREVIEW_S                (0.001f * (float)BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS)
 #define BALANCE_SIMPLE_CAR_FF_IMU_CORRECTION_GAIN      (0.50f)   /* IMU 对当前规划加速度残差的修正增益 */
 
 /* 赛题 MODE_5：带球顺时针循迹一圈并通过 A 点 */

@@ -26,15 +26,33 @@ static uint8 ab_line_loss_active;
 static uint8 ab_imu_loss_active;
 static uint8 ab_feedforward_only;
 static uint8 ab_force_straight_active;
+static uint8 ab_prestart_active;
+static uint32 ab_prestart_start_ms;
 
-static void ab_get_planned_accel(float *planned_accel_mps2,
+static void ab_get_planned_accel(uint32 now_ms,
+                                 float *planned_accel_mps2,
                                  float *preview_accel_mps2)
 {
     const float rpm_s_to_mps2 =
         AB_RUN_PI_F * CHASSIS_WHEEL_DIAMETER_M / 60.0f;
+    float preview_s = BALANCE_SIMPLE_CAR_FF_PREVIEW_S;
 
     *planned_accel_mps2 = 0.0f;
     *preview_accel_mps2 = 0.0f;
+    if (0u != ab_prestart_active)
+    {
+        uint32 elapsed_ms = now_ms - ab_prestart_start_ms;
+
+        if (elapsed_ms > BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS)
+        {
+            elapsed_ms = BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS;
+        }
+        preview_s = (float)elapsed_ms * 0.001f;
+        *preview_accel_mps2 =
+            line_control_get_base_accel_preview_rpm_s(preview_s) *
+            rpm_s_to_mps2;
+        return;
+    }
     if (MOTOR_APP_MODE_LINE_FOLLOW != motor_app_get_mode())
     {
         return;
@@ -115,7 +133,8 @@ static uint8 ab_update_feedforward(uint32 now_ms)
     corrected = ab_clamp(corrected,
         -BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2,
         BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2);
-    ab_get_planned_accel(&planned_accel_mps2, &preview_accel_mps2);
+    ab_get_planned_accel(now_ms,
+        &planned_accel_mps2, &preview_accel_mps2);
     feedforward = preview_accel_mps2 +
         BALANCE_SIMPLE_CAR_FF_IMU_CORRECTION_GAIN *
             (corrected - planned_accel_mps2);
@@ -163,6 +182,7 @@ static void ab_finish(ab_run_state_enum state, uint32 now_ms)
     ab_line_loss_active = 0u;
     ab_imu_loss_active = 0u;
     ab_force_straight_active = 0u;
+    ab_prestart_active = 0u;
     ab_log_result();
 }
 
@@ -205,6 +225,8 @@ void ab_run_app_init(void)
     ab_imu_loss_active = 0u;
     ab_feedforward_only = 0u;
     ab_force_straight_active = 0u;
+    ab_prestart_active = 0u;
+    ab_prestart_start_ms = ab_start_ms;
 }
 
 uint8 ab_run_app_start(void)
@@ -257,11 +279,12 @@ uint8 ab_run_app_start(void)
     ab_imu_loss_active = 0u;
     ab_force_straight_active = 0u;
     motor_app_set_base_rpm(TRACK_MODE_3_LINE_FOLLOW_RPM);
-    motor_app_set_line_follow_enabled(1u);
+    ab_prestart_active = 1u;
+    ab_prestart_start_ms = now_ms;
     (void)ab_update_feedforward(now_ms);
     heartbeat_hw_uart_send_string((0u != ab_feedforward_only) ?
-        "[ab-run] start; vision off; feedforward only\r\n" :
-        "[ab-run] start\r\n");
+        "[ab-run] prestart; vision off; feedforward only\r\n" :
+        "[ab-run] prestart\r\n");
     return 1u;
 }
 
@@ -303,6 +326,25 @@ void ab_run_app_process(void)
             AB_RUN_IMU_LOSS_TIMEOUT_MS, now_ms))
     {
         ab_finish(AB_RUN_IMU_LOST, now_ms);
+        return;
+    }
+
+    if (0u != ab_prestart_active)
+    {
+        ab_status.elapsed_ms = 0u;
+        if ((now_ms - ab_prestart_start_ms) <
+            BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS)
+        {
+            return;
+        }
+        motor_app_set_line_follow_enabled(1u);
+        ab_prestart_active = 0u;
+        ab_start_ms = now_ms;
+        ab_previous_left_count = encoder_get_left_total_count();
+        ab_previous_right_count = encoder_get_right_total_count();
+        ab_line_loss_active = 0u;
+        (void)ab_update_feedforward(now_ms);
+        heartbeat_hw_uart_send_string("[ab-run] chassis launch\r\n");
         return;
     }
 

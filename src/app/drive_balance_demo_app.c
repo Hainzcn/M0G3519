@@ -41,16 +41,34 @@ typedef struct
 } drive_demo_balance_snapshot_t;
 
 static uint8 drive_demo_feedforward_only;
+static uint8 drive_demo_prestart_active;
+static uint32 drive_demo_prestart_start_ms;
 
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-static void drive_demo_get_planned_accel(float *planned_accel_mps2,
+static void drive_demo_get_planned_accel(uint32 now_ms,
+                                         float *planned_accel_mps2,
                                          float *preview_accel_mps2)
 {
     const float rpm_s_to_mps2 =
         DRIVE_BALANCE_PI * CHASSIS_WHEEL_DIAMETER_M / 60.0f;
+    float preview_s = BALANCE_SIMPLE_CAR_FF_PREVIEW_S;
 
     *planned_accel_mps2 = 0.0f;
     *preview_accel_mps2 = 0.0f;
+    if (0u != drive_demo_prestart_active)
+    {
+        uint32 elapsed_ms = now_ms - drive_demo_prestart_start_ms;
+
+        if (elapsed_ms > BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS)
+        {
+            elapsed_ms = BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS;
+        }
+        preview_s = (float)elapsed_ms * 0.001f;
+        *preview_accel_mps2 =
+            line_control_get_base_accel_preview_rpm_s(preview_s) *
+            rpm_s_to_mps2;
+        return;
+    }
     if (MOTOR_APP_MODE_LINE_FOLLOW != motor_app_get_mode())
     {
         return;
@@ -120,7 +138,7 @@ static void drive_demo_read_balance(uint32 now_ms,
             (imu.accel.ax - BALANCE_SIMPLE_CAR_ACCEL_OFFSET_MPS2) *
             BALANCE_SIMPLE_CAR_ACCEL_GAIN *
             BALANCE_SIMPLE_CAR_ACCEL_SIGN;
-        drive_demo_get_planned_accel(
+        drive_demo_get_planned_accel(now_ms,
             &planned_accel_mps2, &preview_accel_mps2);
         balance_simple_app_set_vehicle_accel_components_mps2(
             planned_accel_mps2, preview_accel_mps2,
@@ -216,6 +234,7 @@ static void drive_demo_stop(drive_balance_demo_state_enum state,
     drive_demo_marker_active = 0u;
     drive_demo_line_loss_active = 0u;
     drive_demo_imu_loss_active = 0u;
+    drive_demo_prestart_active = 0u;
     drive_demo_log_result();
 }
 
@@ -288,18 +307,19 @@ static uint8 drive_demo_start(uint8 capture_current, float line_follow_rpm,
     drive_demo_line_loss_active = 0u;
     drive_demo_imu_loss_active = 0u;
     motor_app_set_base_rpm(line_follow_rpm);
-    motor_app_set_line_follow_enabled(1u);
+    drive_demo_prestart_active = 1u;
+    drive_demo_prestart_start_ms = now_ms;
     drive_demo_read_balance(now_ms, &balance);
     if (0u != drive_demo_feedforward_only)
     {
         heartbeat_hw_uart_send_string(
-            "[drive-balance] vision off; feedforward-only lap start\r\n");
+            "[drive-balance] vision off; feedforward-only prestart\r\n");
     }
     else
     {
         heartbeat_hw_uart_send_string((0u != capture_current) ?
-            "[drive-balance] SW3 captured target; lap start\r\n" :
-            "[drive-balance] SW2 center target; lap start\r\n");
+            "[drive-balance] SW3 captured target; prestart\r\n" :
+            "[drive-balance] SW2 center target; prestart\r\n");
     }
     return 1u;
 }
@@ -329,6 +349,44 @@ static void drive_demo_process_running(uint32 now_ms)
     float error;
 
     drive_demo_read_balance(now_ms, &balance);
+    if (0u != drive_demo_prestart_active)
+    {
+        if ((0u == balance.vision_ready) &&
+            !((0u != drive_demo_feedforward_only) &&
+              (0u != balance.feedforward_only_ready)))
+        {
+            drive_demo_stop(DRIVE_BALANCE_DEMO_FAULT_STOP,
+                            DRIVE_BALANCE_STOP_BALANCE, now_ms);
+            return;
+        }
+        if (0u != drive_demo_loss_timed_out(
+                (uint8)(0u == balance.imu_valid),
+                &drive_demo_imu_loss_active,
+                &drive_demo_imu_loss_start_ms,
+                BALANCE_DRIVE_DEMO_IMU_LOSS_TIMEOUT_MS, now_ms))
+        {
+            drive_demo_stop(DRIVE_BALANCE_DEMO_FAULT_STOP,
+                            DRIVE_BALANCE_STOP_IMU, now_ms);
+            return;
+        }
+        drive_demo_status.elapsed_ms = 0u;
+        if ((now_ms - drive_demo_prestart_start_ms) <
+            BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS)
+        {
+            return;
+        }
+        motor_app_set_line_follow_enabled(1u);
+        drive_demo_prestart_active = 0u;
+        drive_demo_start_ms = now_ms;
+        drive_demo_previous_left_count = encoder_get_left_total_count();
+        drive_demo_previous_right_count = encoder_get_right_total_count();
+        drive_demo_line_loss_active = 0u;
+        drive_demo_imu_loss_active = 0u;
+        drive_demo_read_balance(now_ms, &balance);
+        heartbeat_hw_uart_send_string(
+            "[drive-balance] chassis launch\r\n");
+        return;
+    }
     if (DRIVE_BALANCE_DEMO_BRAKING == drive_demo_status.state)
     {
         if ((0u == balance.vision_ready) &&
@@ -461,6 +519,8 @@ void drive_balance_demo_app_init(void)
     drive_demo_line_loss_active = 0u;
     drive_demo_imu_loss_active = 0u;
     drive_demo_feedforward_only = 0u;
+    drive_demo_prestart_active = 0u;
+    drive_demo_prestart_start_ms = drive_demo_start_ms;
 }
 
 void drive_balance_demo_app_process(void)

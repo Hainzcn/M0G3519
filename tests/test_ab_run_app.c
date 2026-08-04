@@ -35,6 +35,8 @@ static float mock_left_target_rpm;
 static float mock_right_target_rpm;
 static float mock_line_accel_rpm_s;
 static float mock_line_preview_accel_rpm_s;
+static float mock_line_preview_s;
+static uint32 mock_line_start_count;
 
 uint32 heartbeat_get_ms(void) { return mock_now_ms; }
 void heartbeat_hw_uart_send_string(const char *message) { (void)message; }
@@ -76,6 +78,10 @@ void motor_app_set_line_follow_enabled(uint8 enabled)
 {
     mock_motor_mode = (0u != enabled) ?
         MOTOR_APP_MODE_LINE_FOLLOW : MOTOR_APP_MODE_DISABLED;
+    if (0u != enabled)
+    {
+        mock_line_start_count++;
+    }
 }
 void motor_app_set_speed_test(float left_rpm, float right_rpm)
 {
@@ -99,7 +105,7 @@ float line_control_get_base_accel_rpm_s(void)
 }
 float line_control_get_base_accel_preview_rpm_s(float preview_s)
 {
-    assert(preview_s == BALANCE_SIMPLE_CAR_FF_PREVIEW_S);
+    mock_line_preview_s = preview_s;
     return mock_line_preview_accel_rpm_s;
 }
 const wheel_speed_control_status_t *wheel_speed_control_get_status(void)
@@ -136,9 +142,23 @@ static void reset_mocks(void)
     mock_right_target_rpm = 0.0f;
     mock_line_accel_rpm_s = 0.0f;
     mock_line_preview_accel_rpm_s = 0.0f;
+    mock_line_preview_s = 0.0f;
+    mock_line_start_count = 0u;
     mock_left_count = 0;
     mock_right_count = 0;
     ab_run_app_init();
+}
+
+static void complete_prestart(void)
+{
+    assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
+    mock_now_ms += BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS;
+    mock_imu.accel_time_ms = mock_now_ms;
+    ab_run_app_process();
+    assert(mock_motor_mode == MOTOR_APP_MODE_LINE_FOLLOW);
+    assert(mock_line_start_count == 1u);
+    assert(fabsf(mock_line_preview_s -
+        BALANCE_SIMPLE_CAR_FF_PREVIEW_S) < 0.0001f);
 }
 
 static void test_planned_acceleration_is_previewed_and_imu_corrects_residual(void)
@@ -152,9 +172,16 @@ static void test_planned_acceleration_is_previewed_and_imu_corrects_residual(voi
     assert(0u != ab_run_app_start());
     mock_line_accel_rpm_s = 0.6f / rpm_s_to_mps2;
     mock_line_preview_accel_rpm_s = 0.8f / rpm_s_to_mps2;
-    mock_now_ms += 10u;
+    mock_now_ms += BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS / 2u;
     mock_imu.accel_time_ms = mock_now_ms;
     ab_run_app_process();
+    assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
+    assert(mock_planned_accel == 0.0f);
+    assert(fabsf(mock_line_preview_s -
+        (0.001f *
+         (float)(BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS / 2u))) <
+        0.0001f);
+    complete_prestart();
 
     assert(fabsf(mock_planned_accel - 0.6f) < 0.0001f);
     assert(fabsf(mock_preview_accel - 0.8f) < 0.0001f);
@@ -179,9 +206,11 @@ static void test_switches_to_straight_then_completes_at_target(void)
     assert(mock_target == 0.0f);
     assert(mock_feedforward_valid != 0u);
     assert(fabsf(mock_feedforward_accel - 0.25f) < 0.0001f);
+    assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
+    complete_prestart();
 
     set_distance(AB_RUN_FORCE_STRAIGHT_DISTANCE_M + 0.01f);
-    mock_now_ms = 3100u;
+    mock_now_ms += 3000u;
     mock_imu.accel_time_ms = mock_now_ms;
     mock_balance.estimated_position_m = 0.008f;
     ab_run_app_process();
@@ -233,6 +262,7 @@ static void test_timeout_and_imu_loss_stop(void)
 
     reset_mocks();
     assert(0u != ab_run_app_start());
+    complete_prestart();
     mock_now_ms += AB_RUN_TIMEOUT_MS;
     mock_imu.accel_time_ms = mock_now_ms;
     ab_run_app_process();
@@ -241,6 +271,7 @@ static void test_timeout_and_imu_loss_stop(void)
 
     reset_mocks();
     assert(0u != ab_run_app_start());
+    complete_prestart();
     mock_imu.flags = 0u;
     mock_now_ms += 1u;
     ab_run_app_process();
