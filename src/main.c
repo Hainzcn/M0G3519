@@ -87,7 +87,7 @@ int main(void)
 #elif (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
     heartbeat_hw_uart_send_string(" uart3=chassis-telemetry\r\n");
 #else
-    heartbeat_hw_uart_send_string(" uart3=normal\r\n");
+    heartbeat_hw_uart_send_string(" uart3=operational-telemetry\r\n");
 #endif
     heartbeat_hw_uart_flush_blocking();
 #if (BALANCE_CONTROL_ENABLE != 0u)

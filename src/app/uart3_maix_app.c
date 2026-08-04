@@ -2,15 +2,15 @@
 
 #include <stdio.h>
 
+#include "button.h"
 #include "control_config.h"
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
+#include "imu.h"
 #include "uart3_maix_hw.h"
 #include "vision_link.h"
+#include "wheel_speed_control.h"
 
-#if (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
-#include "imu.h"
-#endif
 #if (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
 #include "line_control.h"
 #include "motor_app.h"
@@ -71,6 +71,144 @@ static void balance_simple_send_diagnostic(void)
 #define UART3_MAIX_DIAGNOSTIC_PERIOD_MS       (1000u)
 
 static uint32 uart3_maix_last_diagnostic_ms;
+
+#define OPERATIONAL_TELEMETRY_PERIOD_MS       (10u)
+#define OPERATIONAL_TELEMETRY_FRAME_SIZE      (24u)
+#define OPERATIONAL_TELEMETRY_IMU_VALID       (0x01u)
+#define OPERATIONAL_TELEMETRY_IMU_MAX_AGE_MS  (100u)
+
+static uint32 operational_telemetry_last_ms;
+static uint16 operational_telemetry_sequence;
+static uint16 operational_button_sequence;
+static button_id_t operational_button_previous;
+static button_id_t operational_button_last_press;
+
+static void operational_write_u16_le(uint8 *buffer, uint16 value)
+{
+    buffer[0] = (uint8)(value & 0xFFu);
+    buffer[1] = (uint8)(value >> 8u);
+}
+
+static void operational_write_u32_le(uint8 *buffer, uint32 value)
+{
+    buffer[0] = (uint8)(value & 0xFFu);
+    buffer[1] = (uint8)((value >> 8u) & 0xFFu);
+    buffer[2] = (uint8)((value >> 16u) & 0xFFu);
+    buffer[3] = (uint8)((value >> 24u) & 0xFFu);
+}
+
+static int16 operational_float_to_i16(float value, float scale)
+{
+    float scaled = value * scale;
+
+    if (scaled > 32767.0f) return 32767;
+    if (scaled < -32768.0f) return -32768;
+    return (int16)(scaled + ((scaled >= 0.0f) ? 0.5f : -0.5f));
+}
+
+static uint16 operational_crc16_ccitt_false(
+    const uint8 *data, uint16 length)
+{
+    uint16 crc = 0xFFFFu;
+    uint16 index;
+    uint8 bit;
+
+    for (index = 0u; index < length; index++)
+    {
+        crc ^= (uint16)data[index] << 8u;
+        for (bit = 0u; bit < 8u; bit++)
+        {
+            crc = (0u != (crc & 0x8000u)) ?
+                (uint16)((crc << 1u) ^ 0x1021u) : (uint16)(crc << 1u);
+        }
+    }
+    return crc;
+}
+
+static void operational_telemetry_update_button(void)
+{
+    button_id_t active = button_get_active();
+
+    if ((BUTTON_ID_NONE != active) &&
+        (active != operational_button_previous))
+    {
+        operational_button_last_press = active;
+        operational_button_sequence++;
+    }
+    operational_button_previous = active;
+}
+
+static void operational_telemetry_send(uint32 now_ms)
+{
+    uint8 frame[OPERATIONAL_TELEMETRY_FRAME_SIZE];
+    uint8 flags = 0u;
+    imu_snapshot_t imu;
+    const wheel_speed_control_status_t *wheel =
+        wheel_speed_control_get_status();
+    float forward_accel_mps2 = 0.0f;
+    uint16 crc;
+
+    imu_get_snapshot(&imu);
+    if ((0u != (imu.flags & IMU_FLAG_ACCEL)) &&
+        ((now_ms - imu.accel_time_ms) <=
+         OPERATIONAL_TELEMETRY_IMU_MAX_AGE_MS))
+    {
+        flags |= OPERATIONAL_TELEMETRY_IMU_VALID;
+        forward_accel_mps2 =
+            imu.accel.ax * BALANCE_SIMPLE_CAR_ACCEL_SIGN;
+    }
+
+    frame[0] = 0xA5u;
+    frame[1] = 0x5Au;
+    frame[2] = 0x01u;
+    frame[3] = 0x83u;
+    frame[4] = OPERATIONAL_TELEMETRY_FRAME_SIZE;
+    frame[5] = flags;
+    frame[6] = (uint8)operational_button_last_press;
+    frame[7] = (uint8)operational_button_previous;
+    operational_write_u16_le(&frame[8], operational_button_sequence);
+    operational_write_u16_le(&frame[10], operational_telemetry_sequence);
+    operational_write_u32_le(&frame[12], now_ms);
+    if (0u != (flags & OPERATIONAL_TELEMETRY_IMU_VALID))
+    {
+        operational_write_u16_le(&frame[16],
+            (uint16)operational_float_to_i16(
+                forward_accel_mps2, 1000.0f));
+    }
+    else
+    {
+        operational_write_u16_le(&frame[16], 0x8000u);
+    }
+    operational_write_u16_le(&frame[18],
+        (uint16)operational_float_to_i16(
+            wheel->left_measured_rpm, 10.0f));
+    operational_write_u16_le(&frame[20],
+        (uint16)operational_float_to_i16(
+            wheel->right_measured_rpm, 10.0f));
+    crc = operational_crc16_ccitt_false(frame, 22u);
+    operational_write_u16_le(&frame[22], crc);
+    (void)uart3_maix_hw_write_atomic(
+        frame, OPERATIONAL_TELEMETRY_FRAME_SIZE);
+    operational_telemetry_sequence++;
+}
+
+static void operational_telemetry_process(uint32 now_ms)
+{
+    operational_telemetry_update_button();
+    uart3_maix_hw_tx_pump();
+    if ((now_ms - operational_telemetry_last_ms) >=
+        OPERATIONAL_TELEMETRY_PERIOD_MS)
+    {
+        operational_telemetry_last_ms += OPERATIONAL_TELEMETRY_PERIOD_MS;
+        if ((now_ms - operational_telemetry_last_ms) >=
+            OPERATIONAL_TELEMETRY_PERIOD_MS)
+        {
+            operational_telemetry_last_ms = now_ms;
+        }
+        operational_telemetry_send(now_ms);
+    }
+    uart3_maix_hw_tx_pump();
+}
 
 static void vision_link_send_diagnostic(void)
 {
@@ -604,6 +742,12 @@ void uart3_maix_app_init(void)
     vision_link_init();
     now_ms = heartbeat_get_ms();
     uart3_maix_last_diagnostic_ms = now_ms;
+    operational_telemetry_last_ms =
+        now_ms - OPERATIONAL_TELEMETRY_PERIOD_MS;
+    operational_telemetry_sequence = 0u;
+    operational_button_sequence = 0u;
+    operational_button_previous = BUTTON_ID_NONE;
+    operational_button_last_press = BUTTON_ID_NONE;
 #if (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
     chassis_telemetry_last_ms = now_ms;
     chassis_telemetry_sequence = 0u;
@@ -627,13 +771,15 @@ void uart3_maix_app_init(void)
 #endif
 #else
     heartbeat_hw_uart_send_string(
-        "[mode] uart3 normal, vision RX only, TX silent\r\n");
+        "[mode] uart3 operational telemetry, 0x83/100Hz; vision RX\r\n");
 #endif
 }
 
 void uart3_maix_app_process(void)
 {
     uint32 now_ms = heartbeat_get_ms();
+
+    operational_telemetry_process(now_ms);
 
 #if (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
     uart3_maix_hw_tx_pump();

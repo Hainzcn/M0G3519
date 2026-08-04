@@ -78,6 +78,10 @@ try {
         "-DBALANCE_DRIVE_DEMO_ENABLE=1",
         "-DBALANCE_SIMPLE_CONTROL_ENABLE=1",
         "tests/test_button_app.c", "src/app/button_app.c")
+    Invoke-CTest "test_uart3_maix_app" @(
+        "-DBALANCE_CONTROL_ENABLE=0",
+        "-DBALANCE_SIMPLE_CONTROL_ENABLE=0",
+        "tests/test_uart3_maix_app.c", "src/app/uart3_maix_app.c")
     Invoke-CTest "test_emm42_demo_app" @(
         "tests/test_emm42_demo_app.c", "src/app/emm42_demo_app.c",
         "src/middle/balance_linkage.c")

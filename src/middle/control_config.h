@@ -10,7 +10,7 @@
 #define NO_LOAD_LAP_CRUISE_RPM                        (170.0f) /* 正常循迹基础轮速，单位：RPM */
 #define NO_LOAD_LAP_MARKER_MIN_DISTANCE_M             (5.0f)   /* 超过该里程后才允许识别启停线，单位：米 */
 #define NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT            (5u)     /* 模式1启停线至少同时覆盖的探头数 */
-#define NO_LOAD_LAP_POST_MARKER_DISTANCE_M            (0.210f) /* 启停线后继续循迹的制动触发距离，单位：米 */
+#define NO_LOAD_LAP_POST_MARKER_DISTANCE_M            (0.300f) /* 启停线后继续循迹的制动触发距离，单位：米 */
 #define NO_LOAD_LAP_POST_MARKER_MIN_RPM                (25.0f)  /* 到达停车点前保持循迹的最低轮速 */
 #define NO_LOAD_LAP_LINE_LOSS_TIMEOUT_MS              (500u)   /* 持续丢线后终止任务，单位：毫秒 */
 #define NO_LOAD_LAP_SENSOR_OFFLINE_TIMEOUT_MS         (500u)   /* 灰度持续离线后终止任务，单位：毫秒 */
@@ -53,10 +53,10 @@
 #define AB_RUN_IMU_LOSS_TIMEOUT_MS                     (100u)   /* 连续无新鲜 IMU 的故障时间 */
 #define AB_RUN_MAX_ERROR_M                             (0.010f) /* 赛题钢球最大允许中心误差 */
 
-#define UART3_MAIX_MODE_NORMAL                        (0u)     /* UART3 正常模式：仅接收视觉数据，发送端静默 */
+#define UART3_MAIX_MODE_NORMAL                        (0u)     /* UART3 正常模式：接收视觉数据并发送运行遥测 */
 #define UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG       (1u)     /* UART3 底盘遥测调试模式 */
 #define UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG       (2u)     /* UART3 摆杆遥测调试模式 */
-#define UART3_MAIX_MODE                               (UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) /* UART3 当前工作模式 */
+#define UART3_MAIX_MODE                               (UART3_MAIX_MODE_NORMAL) /* UART3 当前工作模式 */
 
 /* 视觉绝对位置校准：校正位置 = 视觉下发位置 + 本偏置 */
 #ifndef BALANCE_VISION_POSITION_OFFSET_M
@@ -131,7 +131,7 @@
 #define BALANCE_SIMPLE_NEAR_SCALE_MAX                  (1.15f)   /* 近中心增益最大倍率 */
 #define BALANCE_SIMPLE_INTEGRAL_ZONE_M                 (0.050f)  /* 位置积分生效范围，单位：米 */
 #define BALANCE_SIMPLE_INTEGRAL_LIMIT_MPS              (0.010f)  /* 位置积分对应目标球速上限，单位：米每秒 */
-#define BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG             (0.4f)   /* 球状态到目标摆角的固定正向偏置，单位：度 */
+#define BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG             (0.2f)   /* 球状态到目标摆角的固定正向偏置，单位：度 */
 #define BALANCE_SIMPLE_ACCELERATION_KA                 (0.0f)    /* 球加速度补偿增益，0 表示关闭 */
 #define BALANCE_SIMPLE_ACCELERATION_FILTER_ALPHA       (0.20f)   /* 球加速度低通滤波系数 */
 #define BALANCE_SIMPLE_CAR_ACCEL_OFFSET_MPS2           (0.200f)  /* IMU X 轴静态零偏 */
