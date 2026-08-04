@@ -40,9 +40,54 @@ static void test_vehicle_feedforward_is_position_weighted(void)
     assert(fabsf(output->target_beam_angle_deg) < 0.0001f);
 }
 
+static void test_near_damping_is_independent_of_motion_direction(void)
+{
+    ball_velocity_controller_t controller;
+    ball_velocity_controller_config_t config;
+    ball_velocity_controller_input_t input;
+    const ball_velocity_controller_output_t *output;
+
+    memset(&config, 0, sizeof(config));
+    config.position_kp_s_inv = 1.0f;
+    config.position_on_m = 0.001f;
+    config.max_target_velocity_mps = 1.0f;
+    config.braking_envelope_mps2 = 1.0f;
+    config.velocity_kv_deg_per_mmps = 1.0f;
+    config.near_position_m = 0.020f;
+    config.near_gain = 0.50f;
+    config.near_scale_max = 1.50f;
+    config.max_target_beam_angle_deg = 100.0f;
+    config.target_beam_angle_slew_deg_s = 1000.0f;
+    config.beam_angle_kp_s_inv = 1.0f;
+    config.max_beam_velocity_deg_s = 100.0f;
+    ball_velocity_controller_init(&controller, &config);
+
+    memset(&input, 0, sizeof(input));
+    input.position_m = 0.010f;
+    input.target_position_m = 0.0f;
+    input.velocity_mps = -0.010f;
+    input.observer_valid = 1u;
+    input.control_dt_s = 0.02f;
+    ball_velocity_controller_step(&controller, &input);
+    output = ball_velocity_controller_get_output(&controller);
+    assert(fabsf(output->effective_kv_deg_per_mm - 1.25f) < 0.0001f);
+    assert(0u != (output->flags & BALL_VELOCITY_CONTROL_NEAR_DAMPING));
+
+    input.velocity_mps = 0.010f;
+    ball_velocity_controller_step(&controller, &input);
+    assert(fabsf(output->effective_kv_deg_per_mm - 1.25f) < 0.0001f);
+    assert(0u != (output->flags & BALL_VELOCITY_CONTROL_NEAR_DAMPING));
+
+    input.position_m = 0.0f;
+    input.velocity_mps = 0.0f;
+    ball_velocity_controller_step(&controller, &input);
+    assert(fabsf(output->effective_kv_deg_per_mm - 1.50f) < 0.0001f);
+}
+
 int main(void)
 {
     test_vehicle_feedforward_is_position_weighted();
+    test_near_damping_is_independent_of_motion_direction();
     puts("ball velocity controller tests passed");
     return 0;
 }

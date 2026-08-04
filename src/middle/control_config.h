@@ -28,6 +28,16 @@
 #define STOP_TEST_CENTER_TOLERANCE_M                   (0.005f) /* SW4 回中完成阈值 */
 #define STOP_TEST_CENTER_RETRY_MS                      (100u)   /* 回中目标拒绝后的重试周期 */
 
+/* STOP_TEST 独立滚球控制参数 */
+#define STOP_TEST_POSITION_KP_S_INV                    (1.50f)
+#define STOP_TEST_POSITION_KI_S2_INV                   (0.00f)
+#define STOP_TEST_MAX_TARGET_VELOCITY_MPS              (0.050f)
+#define STOP_TEST_BRAKING_ENVELOPE_MPS2                (0.10f)
+#define STOP_TEST_VELOCITY_KV_DEG_PER_MM               (0.020f)
+#define STOP_TEST_NEAR_POSITION_M                      (0.020f)
+#define STOP_TEST_NEAR_GAIN                            (0.30f)
+#define STOP_TEST_NEAR_SCALE_MAX                       (1.30f)
+
 /* 赛题 MODE_4：A 点到 B 点，钢球保持中心 */
 #define AB_RUN_CRUISE_RPM                              (150.0f) /* AB 直线基础轮速，单位：RPM */
 #define AB_RUN_TARGET_DISTANCE_M                       (1.52f)  /* 略过 B 点的目标里程，单位：米 */

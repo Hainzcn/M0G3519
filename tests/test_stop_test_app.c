@@ -14,6 +14,9 @@ static uint8 mock_target_result;
 static float mock_targets[8];
 static uint8 mock_target_count;
 static uint32 mock_motor_stop_count;
+static uint8 mock_stop_test_mode;
+static uint32 mock_stop_test_mode_enable_count;
+static uint32 mock_stop_test_mode_disable_count;
 
 uint32 heartbeat_get_ms(void)
 {
@@ -33,6 +36,19 @@ void motor_app_stop(void)
 uint8 balance_simple_app_start(void)
 {
     return mock_balance_start_result;
+}
+
+void balance_simple_app_set_stop_test_mode(uint8 enabled)
+{
+    mock_stop_test_mode = (0u != enabled) ? 1u : 0u;
+    if (0u != enabled)
+    {
+        mock_stop_test_mode_enable_count++;
+    }
+    else
+    {
+        mock_stop_test_mode_disable_count++;
+    }
 }
 
 uint8 balance_simple_app_set_target_position_m(float target_position_m)
@@ -63,6 +79,9 @@ static void reset_mocks(void)
     memset(mock_targets, 0, sizeof(mock_targets));
     mock_target_count = 0u;
     mock_motor_stop_count = 0u;
+    mock_stop_test_mode = 0u;
+    mock_stop_test_mode_enable_count = 0u;
+    mock_stop_test_mode_disable_count = 0u;
     stop_test_app_init();
 }
 
@@ -73,6 +92,8 @@ static void test_complete_plus_five_to_minus_five(void)
     reset_mocks();
     assert(0u != stop_test_app_start());
     assert(mock_motor_stop_count == 1u);
+    assert(mock_stop_test_mode != 0u);
+    assert(mock_stop_test_mode_enable_count == 1u);
     assert(mock_target_count == 1u);
     assert(fabsf(mock_targets[0] - 0.050f) < 0.0001f);
 
@@ -110,6 +131,7 @@ static void test_complete_plus_five_to_minus_five(void)
     assert(status->error_requirement_met != 0u);
     assert(status->overall_requirement_met != 0u);
     assert(0u == stop_test_app_is_running());
+    assert(mock_stop_test_mode != 0u);
     assert(mock_target_count == 2u);
     assert(fabsf(mock_targets[1] + 0.050f) < 0.0001f);
 
@@ -124,6 +146,8 @@ static void test_complete_plus_five_to_minus_five(void)
     mock_balance.estimated_velocity_mps = 0.0f;
     stop_test_app_process();
     assert(status->state == STOP_TEST_IDLE);
+    assert(mock_stop_test_mode == 0u);
+    assert(mock_stop_test_mode_disable_count == 1u);
 }
 
 static void test_center_target_retries_after_temporary_rejection(void)
@@ -241,6 +265,7 @@ static void test_user_stop_and_balance_fault(void)
     stop_test_app_stop();
     assert(stop_test_app_get_status()->state == STOP_TEST_USER_STOP);
     assert(mock_targets[mock_target_count - 1u] == 0.0f);
+    assert(mock_stop_test_mode == 0u);
 
     reset_mocks();
     assert(0u != stop_test_app_start());

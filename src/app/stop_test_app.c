@@ -104,6 +104,15 @@ static void stop_test_return_to_center(void)
 #endif
 }
 
+static void stop_test_set_control_mode(uint8 enabled)
+{
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    balance_simple_app_set_stop_test_mode(enabled);
+#else
+    (void)enabled;
+#endif
+}
+
 static void stop_test_log_result(void)
 {
     char message[176];
@@ -147,6 +156,10 @@ static void stop_test_finish(stop_test_state_enum state,
         stop_test_return_to_center();
         stop_test_status.target_position_m = 0.0f;
     }
+    if (STOP_TEST_STOP_COMPLETE != reason)
+    {
+        stop_test_set_control_mode(0u);
+    }
     stop_test_log_result();
 }
 
@@ -184,6 +197,7 @@ static void stop_test_process_center_return(uint32 now_ms)
     {
         stop_test_status.state = STOP_TEST_FAULT;
         stop_test_status.stop_reason = STOP_TEST_STOP_BALANCE;
+        stop_test_set_control_mode(0u);
         heartbeat_hw_uart_send_string(
             "[stop-test] center return stopped: balance fault\r\n");
         return;
@@ -209,6 +223,7 @@ static void stop_test_process_center_return(uint32 now_ms)
          STOP_TEST_VELOCITY_TOLERANCE_MPS))
     {
         stop_test_status.state = STOP_TEST_IDLE;
+        stop_test_set_control_mode(0u);
         heartbeat_hw_uart_send_string("[stop-test] centered\r\n");
     }
 }
@@ -322,6 +337,7 @@ uint8 stop_test_app_start(void)
         heartbeat_hw_uart_send_string("[stop-test] start rejected\r\n");
         return 0u;
     }
+    stop_test_set_control_mode(1u);
     stop_test_status.state = STOP_TEST_WAIT_BALANCE;
     stop_test_ready_start_ms = now_ms;
     stop_test_read_balance(&balance);
@@ -329,6 +345,7 @@ uint8 stop_test_app_start(void)
     {
         stop_test_status.state = STOP_TEST_IDLE;
         stop_test_status.stop_reason = STOP_TEST_STOP_START_REJECTED;
+        stop_test_set_control_mode(0u);
         return 0u;
     }
     if (0u != balance.ready)

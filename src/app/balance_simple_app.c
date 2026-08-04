@@ -89,10 +89,55 @@ static uint32 simple_vehicle_ff_transition_ms;
 static uint8 simple_vehicle_filter_initialized;
 static uint8 simple_vehicle_ff_transition_active;
 static uint8 simple_vehicle_ff_active;
+static uint8 simple_stop_test_mode;
 
 static float simple_abs(float value)
 {
     return (value < 0.0f) ? -value : value;
+}
+
+static void simple_apply_control_mode(void)
+{
+    if (0u != simple_stop_test_mode)
+    {
+        simple_controller.config.position_kp_s_inv =
+            STOP_TEST_POSITION_KP_S_INV;
+        simple_controller.config.position_ki_s2_inv =
+            STOP_TEST_POSITION_KI_S2_INV;
+        simple_controller.config.max_target_velocity_mps =
+            STOP_TEST_MAX_TARGET_VELOCITY_MPS;
+        simple_controller.config.braking_envelope_mps2 =
+            STOP_TEST_BRAKING_ENVELOPE_MPS2;
+        simple_controller.config.velocity_kv_deg_per_mmps =
+            STOP_TEST_VELOCITY_KV_DEG_PER_MM;
+        simple_controller.config.near_position_m =
+            STOP_TEST_NEAR_POSITION_M;
+        simple_controller.config.near_gain = STOP_TEST_NEAR_GAIN;
+        simple_controller.config.near_scale_max =
+            STOP_TEST_NEAR_SCALE_MAX;
+        simple_status.flags |= BALANCE_SIMPLE_FLAG_STOP_TEST_TUNING;
+    }
+    else
+    {
+        simple_controller.config.position_kp_s_inv =
+            BALANCE_SIMPLE_POSITION_KP_S_INV;
+        simple_controller.config.position_ki_s2_inv =
+            BALANCE_SIMPLE_POSITION_KI_S2_INV;
+        simple_controller.config.max_target_velocity_mps =
+            BALANCE_SIMPLE_MAX_TARGET_VELOCITY_MPS;
+        simple_controller.config.braking_envelope_mps2 =
+            BALANCE_SIMPLE_BRAKING_ENVELOPE_MPS2;
+        simple_controller.config.velocity_kv_deg_per_mmps =
+            BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM;
+        simple_controller.config.near_position_m =
+            BALANCE_SIMPLE_NEAR_POSITION_M;
+        simple_controller.config.near_gain = BALANCE_SIMPLE_NEAR_GAIN;
+        simple_controller.config.near_scale_max =
+            BALANCE_SIMPLE_NEAR_SCALE_MAX;
+        simple_status.flags &=
+            (uint16)(~BALANCE_SIMPLE_FLAG_STOP_TEST_TUNING);
+    }
+    ball_velocity_controller_reset(&simple_controller);
 }
 
 static float simple_clamp(float value, float low, float high)
@@ -937,6 +982,7 @@ void balance_simple_app_init(void)
     uint32 now_ms = heartbeat_get_ms();
 
     memset(&simple_status, 0, sizeof(simple_status));
+    simple_stop_test_mode = 0u;
     observer_config.alpha = BALANCE_SIMPLE_OBSERVER_ALPHA;
     observer_config.beta = BALANCE_SIMPLE_OBSERVER_BETA;
     observer_config.position_limit_m = BALANCE_SIMPLE_VISIBLE_LIMIT_M;
@@ -1064,6 +1110,21 @@ uint8 balance_simple_app_start(void)
         return 1u;
     }
     return 0u;
+}
+
+void balance_simple_app_set_stop_test_mode(uint8 enabled)
+{
+    uint8 requested = (0u != enabled) ? 1u : 0u;
+
+    if (requested == simple_stop_test_mode)
+    {
+        return;
+    }
+    simple_stop_test_mode = requested;
+    simple_apply_control_mode();
+    heartbeat_hw_uart_send_string((0u != requested) ?
+        "[balance-simple] stop-test tuning enabled\r\n" :
+        "[balance-simple] stop-test tuning disabled\r\n");
 }
 
 void balance_simple_app_process(void)

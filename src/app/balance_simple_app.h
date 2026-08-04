@@ -34,6 +34,7 @@ typedef enum
 #define BALANCE_SIMPLE_FLAG_SOFT_BALL_EDGE        (0x0020u)
 #define BALANCE_SIMPLE_FLAG_HARD_BALL_EDGE        (0x0040u)
 #define BALANCE_SIMPLE_FLAG_MOTOR_VELOCITY_VALID  (0x0080u)
+#define BALANCE_SIMPLE_FLAG_STOP_TEST_TUNING      (0x0100u)
 
 typedef struct
 {
@@ -80,6 +81,7 @@ typedef struct
 void balance_simple_app_init(void);
 void balance_simple_app_process(void);
 uint8 balance_simple_app_start(void);
+void balance_simple_app_set_stop_test_mode(uint8 enabled);
 uint8 balance_simple_app_set_target_position_m(float target_position_m);
 void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid);
 void balance_simple_app_disable(void);

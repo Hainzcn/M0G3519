@@ -146,7 +146,6 @@ void ball_velocity_controller_step(
 
     if ((controller->config.near_gain > 0.0f) &&
         (controller->config.near_position_m > 0.0f) &&
-        ((error_m * input->velocity_mps) < 0.0f) &&
         (velocity_abs(error_m) < controller->config.near_position_m))
     {
         near_scale = 1.0f + controller->config.near_gain *
