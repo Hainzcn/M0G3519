@@ -7,6 +7,7 @@ typedef enum
 {
     NO_LOAD_LAP_IDLE = 0,
     NO_LOAD_LAP_RUNNING,
+    NO_LOAD_LAP_POST_MARKER,
     NO_LOAD_LAP_COMPLETE,
     NO_LOAD_LAP_USER_STOP,
     NO_LOAD_LAP_TIMEOUT,
@@ -23,6 +24,7 @@ typedef struct
     uint8 brake_active;
     uint32 elapsed_ms;
     float distance_m;
+    float marker_distance_m;
     float brake_distance_m;
 } no_load_lap_status_t;
 

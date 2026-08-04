@@ -9,6 +9,7 @@
 #include "oled.h"
 #include "oled_app.h"
 #include "stop_test_app.h"
+#include "vision_link.h"
 #if (BALANCE_CONTROL_ENABLE != 0u)
 #include "balance_app.h"
 #endif
@@ -45,6 +46,16 @@ static button_app_mode_enum button_app_selected_mode;
 static button_app_mode_enum button_app_running_mode;
 static button_app_view_enum button_app_view;
 static uint8 button_app_force_render;
+static uint8 button_app_last_vision_online;
+static no_load_lap_state_enum button_app_last_no_load_state;
+static uint32 button_app_last_post_distance_step;
+
+static uint8 button_app_mode_uses_vision(button_app_mode_enum mode)
+{
+    return ((BUTTON_APP_MODE_AB == mode) ||
+            (BUTTON_APP_MODE_BALL_LAP == mode) ||
+            (BUTTON_APP_MODE_ARBITRARY == mode)) ? 1u : 0u;
+}
 
 static void button_app_show_mode(uint8 page, button_app_mode_enum mode,
                                  uint8 selected)
@@ -84,6 +95,8 @@ static void button_app_render_dialog(const char *title, const char *message)
 
 static void button_app_render_running(void)
 {
+    vision_link_status_t vision_status;
+
     oled_clear();
     oled_show_string(0u, 0u,
         (BUTTON_APP_MODE_NO_LOAD == button_app_running_mode) ?
@@ -91,9 +104,83 @@ static void button_app_render_running(void)
     button_app_show_mode(2u, button_app_running_mode, 1u);
     if (BUTTON_APP_MODE_NO_LOAD == button_app_running_mode)
     {
-        oled_show_string(0u, 4u, "TIMING...", OLED_FONT_6X8);
+        const no_load_lap_status_t *status =
+            no_load_lap_app_get_status();
+
+        if (NO_LOAD_LAP_POST_MARKER == status->state)
+        {
+            oled_show_string(0u, 4u, "POST:", OLED_FONT_6X8);
+            oled_show_uint(30u, 4u,
+                (uint32)(status->brake_distance_m * 1000.0f),
+                OLED_FONT_6X8);
+            oled_show_string(66u, 4u, "/210mm", OLED_FONT_6X8);
+        }
+        else
+        {
+            oled_show_string(0u, 4u, "SEARCH A", OLED_FONT_6X8);
+        }
+    }
+    else if (0u != button_app_mode_uses_vision(button_app_running_mode))
+    {
+        vision_link_get_status(&vision_status);
+        if (0u == vision_status.link_online)
+        {
+            oled_show_string(0u, 4u, "VISION OFF", OLED_FONT_6X8);
+        }
     }
     oled_show_string(0u, 5u, "SW4 STOP / BACK", OLED_FONT_6X8);
+}
+
+static void button_app_check_vision_status(void)
+{
+    vision_link_status_t vision_status;
+
+    if ((BUTTON_APP_VIEW_RUNNING != button_app_view) ||
+        (0u == button_app_mode_uses_vision(button_app_running_mode)))
+    {
+        button_app_last_vision_online = 2u;
+        return;
+    }
+    vision_link_get_status(&vision_status);
+    if (button_app_last_vision_online != vision_status.link_online)
+    {
+        button_app_last_vision_online = vision_status.link_online;
+        button_app_force_render = 1u;
+    }
+}
+
+static void button_app_check_no_load_status(void)
+{
+    const no_load_lap_status_t *status;
+    uint32 post_distance_step;
+
+    if ((BUTTON_APP_VIEW_RUNNING != button_app_view) ||
+        (BUTTON_APP_MODE_NO_LOAD != button_app_running_mode))
+    {
+        button_app_last_no_load_state = NO_LOAD_LAP_IDLE;
+        button_app_last_post_distance_step = 0u;
+        return;
+    }
+
+    status = no_load_lap_app_get_status();
+    if (button_app_last_no_load_state != status->state)
+    {
+        button_app_last_no_load_state = status->state;
+        button_app_force_render = 1u;
+    }
+    if (NO_LOAD_LAP_POST_MARKER != status->state)
+    {
+        button_app_last_post_distance_step = 0u;
+        return;
+    }
+
+    post_distance_step =
+        (uint32)(status->brake_distance_m * 100.0f);
+    if (button_app_last_post_distance_step != post_distance_step)
+    {
+        button_app_last_post_distance_step = post_distance_step;
+        button_app_force_render = 1u;
+    }
 }
 
 static void button_app_render_no_load_result(void)
@@ -395,6 +482,10 @@ static void button_app_handle_press(button_id_t pressed)
     else if ((BUTTON_APP_VIEW_RESULT == button_app_view) &&
              (BUTTON_ID_SW4 == pressed))
     {
+        if (BUTTON_APP_MODE_NO_LOAD == button_app_running_mode)
+        {
+            motor_app_stop();
+        }
         if (BUTTON_APP_MODE_STOP_TEST == button_app_running_mode)
         {
             stop_test_app_stop();
@@ -459,6 +550,9 @@ void button_app_init(void)
     button_app_running_mode = BUTTON_APP_MODE_NO_LOAD;
     button_app_view = BUTTON_APP_VIEW_MENU;
     button_app_force_render = 1u;
+    button_app_last_vision_online = 2u;
+    button_app_last_no_load_state = NO_LOAD_LAP_IDLE;
+    button_app_last_post_distance_step = 0u;
     oled_app_set_dashboard_enabled(0u);
 }
 
@@ -474,6 +568,8 @@ void button_app_process(void)
     }
     button_app_previous = active;
     button_app_check_mode_completion();
+    button_app_check_no_load_status();
+    button_app_check_vision_status();
 
     if (0u == oled_is_ready())
     {

@@ -24,6 +24,7 @@ static float wheel_previous_planned_speed_mps;
 static float wheel_previous_measured_speed_mps;
 static float wheel_filtered_measured_accel_mps2;
 static uint8 wheel_kinematics_initialized;
+static uint8 wheel_rapid_brake_enabled;
 
 #define WHEEL_PI_F                         (3.14159265f)
 
@@ -199,12 +200,24 @@ void wheel_speed_control_reset(void)
     wheel_previous_measured_speed_mps = 0.0f;
     wheel_filtered_measured_accel_mps2 = 0.0f;
     wheel_kinematics_initialized = 0u;
+    wheel_rapid_brake_enabled = 0u;
 }
 
 void wheel_speed_control_set_target(float left_rpm, float right_rpm)
 {
     wheel_left.target_rpm = wheel_clamp(left_rpm, WHEEL_TARGET_RPM_LIMIT);
     wheel_right.target_rpm = wheel_clamp(right_rpm, WHEEL_TARGET_RPM_LIMIT);
+}
+
+void wheel_speed_control_set_rapid_brake_enabled(uint8 enabled)
+{
+    enabled = (0u != enabled) ? 1u : 0u;
+    if ((0u != enabled) && (0u == wheel_rapid_brake_enabled))
+    {
+        control_pid_reset(&wheel_left.pid);
+        control_pid_reset(&wheel_right.pid);
+    }
+    wheel_rapid_brake_enabled = enabled;
 }
 
 void wheel_speed_control_update(uint32 period_ms, uint8 enabled)
@@ -242,7 +255,9 @@ void wheel_speed_control_update(uint32 period_ms, uint8 enabled)
                               WHEEL_PID_OUTPUT_LIMIT);
     right_output = wheel_clamp(right_output * WHEEL_RIGHT_PWM_MAP_SCALE,
                                WHEEL_PID_OUTPUT_LIMIT);
-    max_output_delta = WHEEL_PWM_SLEW_DUTY_PER_S * dt_s;
+    max_output_delta = ((0u != wheel_rapid_brake_enabled) ?
+        WHEEL_RAPID_BRAKE_PWM_SLEW_DUTY_PER_S :
+        WHEEL_PWM_SLEW_DUTY_PER_S) * dt_s;
     wheel_left.applied_output = wheel_slew(wheel_left.applied_output,
         left_output, max_output_delta);
     wheel_right.applied_output = wheel_slew(wheel_right.applied_output,

@@ -6,16 +6,20 @@
 #define MOTOR_APP_AUTO_START_LINE_FOLLOW             (0u)     /* 上电自动启动循迹：0=关闭，1=开启 */
 #define MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO       (0u)     /* 上电自动启动右转圆周演示：0=关闭，1=开启 */
 
-/* 赛题 MODE_2：无负载循迹一圈并停回 A 点 */
+/* 菜单赛道模式 1：无负载循迹一圈并停回 A 点 */
 #define NO_LOAD_LAP_CRUISE_RPM                        (170.0f) /* 正常循迹基础轮速，单位：RPM */
-#define NO_LOAD_LAP_APPROACH_RPM                      (60.0f)  /* 接近 A 点时的基础轮速，单位：RPM */
-#define NO_LOAD_LAP_ARM_DISTANCE_M                    (4.5f)   /* 允许识别终点横线的最短里程，单位：米 */
-#define NO_LOAD_LAP_APPROACH_DISTANCE_M               (5.6f)   /* 开始低速进站的累计里程，单位：米 */
-#define NO_LOAD_LAP_MARKER_DEBOUNCE_MS                (10u)    /* A 点横线连续有效确认时间，单位：毫秒 */
-#define NO_LOAD_LAP_POST_MARKER_DISTANCE_M            (0.230f) /* 横线后继续低速循迹的停车距离，单位：米 */
+#define NO_LOAD_LAP_MARKER_MIN_DISTANCE_M             (5.0f)   /* 超过该里程后才允许识别启停线，单位：米 */
+#define NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT            (5u)     /* 模式1启停线至少同时覆盖的探头数 */
+#define NO_LOAD_LAP_POST_MARKER_DISTANCE_M            (0.210f) /* 启停线后继续循迹的制动触发距离，单位：米 */
+#define NO_LOAD_LAP_POST_MARKER_MIN_RPM                (25.0f)  /* 到达停车点前保持循迹的最低轮速 */
 #define NO_LOAD_LAP_LINE_LOSS_TIMEOUT_MS              (500u)   /* 持续丢线后终止任务，单位：毫秒 */
 #define NO_LOAD_LAP_SENSOR_OFFLINE_TIMEOUT_MS         (500u)   /* 灰度持续离线后终止任务，单位：毫秒 */
 #define NO_LOAD_LAP_TIMEOUT_MS                        (20000u) /* 一圈任务硬超时，单位：毫秒 */
+
+/* 菜单赛道 3/4/5：独立循迹速度 */
+#define TRACK_MODE_3_LINE_FOLLOW_RPM                   (60.0f) /* 赛道 3：A-B RUN */
+#define TRACK_MODE_4_LINE_FOLLOW_RPM                   (60.0f) /* 赛道 4：BALL LAP */
+#define TRACK_MODE_5_LINE_FOLLOW_RPM                   (60.0f) /* 赛道 5：ANY POSITION */
 
 /* 赛道状态 2 / 赛题第 3 项：静止小车上小球 O -> +5 cm -> -5 cm */
 #define STOP_TEST_POSITIVE_TARGET_M                    (0.050f) /* 正端目标位置 */
@@ -42,7 +46,6 @@
 #define STOP_TEST_MAX_BEAM_VELOCITY_DEG_S              (80.0f)
 
 /* 赛题 MODE_4：A 点到 B 点，钢球保持中心 */
-#define AB_RUN_CRUISE_RPM                              (150.0f) /* AB 直线基础轮速，单位：RPM */
 #define AB_RUN_TARGET_DISTANCE_M                       (1.52f)  /* 略过 B 点的目标里程，单位：米 */
 #define AB_RUN_TIMEOUT_MS                              (8000u)  /* A 到 B 最大允许时间，单位：毫秒 */
 #define AB_RUN_BRAKE_HOLD_MS                           (600u)   /* 过 B 后保留前馈覆盖制动的时间 */
@@ -119,10 +122,10 @@
 #define BALANCE_SIMPLE_ACTUATOR_DELAY_S                (0.25f)   /* 含目标摆角爬升的等效执行延迟，单位：秒 */
 #define BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM          (0.020f)  /* 球速误差到目标摆角的增益，单位：度/(毫米/秒) */
 #define BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG       (5.0f)    /* 含车辆前馈的目标摆角绝对值上限 */
-#define BALANCE_SIMPLE_TARGET_BEAM_ANGLE_SLEW_DEG_S    (15.0f)   /* 目标摆角变化率上限，单位：度每秒 */
+#define BALANCE_SIMPLE_TARGET_BEAM_ANGLE_SLEW_DEG_S    (30.0f)   /* 跟随底盘加速度包络，单位：度每秒 */
 #define BALANCE_SIMPLE_BEAM_ANGLE_KP_S_INV             (7.0f)    /* 摆角误差到摆杆角速度的比例增益，单位：每秒 */
 #define BALANCE_SIMPLE_BEAM_ANGLE_DEADBAND_DEG         (0.05f)   /* 抑制整数 RPM 往返动作的摆角死区 */
-#define BALANCE_SIMPLE_MAX_BEAM_VELOCITY_DEG_S         (12.0f)   /* 最大摆杆角速度，单位：度每秒 */
+#define BALANCE_SIMPLE_MAX_BEAM_VELOCITY_DEG_S         (30.0f)   /* 最大摆杆角速度，单位：度每秒 */
 #define BALANCE_SIMPLE_NEAR_POSITION_M                 (0.012f)  /* 近中心增益区间，单位：米 */
 #define BALANCE_SIMPLE_NEAR_GAIN                       (0.15f)    /* 近中心附加增益，0 表示关闭 */
 #define BALANCE_SIMPLE_NEAR_SCALE_MAX                  (1.15f)   /* 近中心增益最大倍率 */
@@ -136,19 +139,18 @@
 #define BALANCE_SIMPLE_CAR_ACCEL_SIGN                  (1.0f)    /* IMU X 轴与车头方向关系 */
 #define BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2            (2.0f)    /* 前馈加速度安全限幅 */
 #define BALANCE_SIMPLE_CAR_IMU_MAX_AGE_MS              (25u)     /* IMU 加速度最大有效年龄 */
-#define BALANCE_SIMPLE_CAR_ACCEL_FILTER_ALPHA          (0.15f)   /* 车体加速度一阶低通系数 */
-#define BALANCE_SIMPLE_CAR_FF_ENTER_MPS2               (0.08f)   /* 前馈进入加速度阈值 */
-#define BALANCE_SIMPLE_CAR_FF_EXIT_MPS2                (0.05f)   /* 前馈退出加速度阈值 */
-#define BALANCE_SIMPLE_CAR_FF_ENTER_MS                 (30u)     /* 前馈进入确认时间 */
+#define BALANCE_SIMPLE_CAR_ACCEL_FILTER_ALPHA          (0.35f)   /* 低延迟 IMU 加速度一阶低通系数 */
+#define BALANCE_SIMPLE_CAR_FF_ENTER_MPS2               (0.02f)   /* 尽早跟随启动加速度包络 */
+#define BALANCE_SIMPLE_CAR_FF_EXIT_MPS2                (0.01f)   /* 前馈退出加速度阈值 */
+#define BALANCE_SIMPLE_CAR_FF_ENTER_MS                 (10u)     /* 一个控制周期内启用预测前馈 */
 #define BALANCE_SIMPLE_CAR_FF_EXIT_MS                  (150u)    /* 前馈退出确认时间 */
-#define BALANCE_SIMPLE_CAR_FF_GAIN                     (0.35f)   /* atan(a/g) 缩放；小信号约 2.0 度/(米每平方秒) */
-#define BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG            (1.0f)    /* 首轮实机前馈摆角安全限幅，验证后再逐步放宽 */
+#define BALANCE_SIMPLE_CAR_FF_GAIN                     (1.0f)    /* 完整惯性补偿：摆角 = atan(a/g) */
+#define BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG            (4.0f)    /* 覆盖 0.613 m/s^2 启动所需的 3.57 度 */
 #define BALANCE_SIMPLE_CAR_FF_POSITION_CUTOFF_M        (0.010f)  /* 偏差到 1 cm 时前馈完全让权给回中环 */
-#define BALANCE_SIMPLE_CAR_FF_PLAN_WEIGHT              (0.70f)   /* 底盘规划加速度权重，用于提前补偿 */
-#define BALANCE_SIMPLE_CAR_FF_IMU_WEIGHT               (0.30f)   /* IMU 实际加速度权重，用于修正规划偏差 */
+#define BALANCE_SIMPLE_CAR_FF_PLAN_WEIGHT              (0.50f)   /* 赛道 3/4/5 规划加速度预测权重 */
+#define BALANCE_SIMPLE_CAR_FF_IMU_WEIGHT               (0.50f)   /* 赛道 3/4/5 IMU 实测加速度权重 */
 
 /* 赛题 MODE_5：带球顺时针循迹一圈并通过 A 点 */
-#define BALANCE_DRIVE_DEMO_CRUISE_RPM                  (150.0f)  /* 带球巡航基础轮速 */
 #define BALANCE_DRIVE_DEMO_APPROACH_RPM                (75.0f)   /* 接近 A 点时的基础轮速 */
 #define BALANCE_DRIVE_DEMO_APPROACH_DISTANCE_M         (5.6f)    /* 进站减速里程 */
 #define BALANCE_DRIVE_DEMO_BRAKE_HOLD_MS               (600u)    /* 过 A 后保持前馈覆盖制动 */
@@ -224,11 +226,13 @@
 #define WHEEL_LEFT_PWM_MAP_SCALE                       (1.00f)  /* 左电机控制量到 PWM 的映射比例 */
 #define WHEEL_RIGHT_PWM_MAP_SCALE                      (0.92f)  /* 右电机控制量到 PWM 的映射比例 */
 #define WHEEL_PWM_SLEW_DUTY_PER_S                      (30000.0f)/* PWM 占空比变化率上限，单位：每秒 */
+#define WHEEL_RAPID_BRAKE_PWM_SLEW_DUTY_PER_S         (150000.0f)/* 模式1减速时PWM变化率上限 */
 #define WHEEL_ACCEL_FILTER_ALPHA                       (0.20f)  /* 编码器加速度低通滤波系数 */
 #define WHEEL_MEASURED_ACCEL_MPS2_LIMIT                (20.0f)  /* 编码器测得加速度绝对值上限，单位：米每平方秒 */
 
 /* 黑线查表循迹 */
 #define LINE_BLACK_ACTIVE_LEVEL                        (1u)     /* 黑线传感器有效电平 */
+#define LINE_SENSOR_WIDE_PATTERN_MIN_COUNT             (4u)     /* 字母/横线宽图案过滤所需最少有效传感器数 */
 #define LINE_SENSOR_MARKER_MIN_COUNT                   (6u)     /* 赛道标记判定所需最少有效传感器数 */
 #define LINE_LOOKUP_CORRECTION_SIGN                    (1.0f)   /* 转向修正方向 */
 #define LINE_LOOKUP_INITIAL_PHASE                      (0u)     /* 初始赛段：0=直线，1=右弧 */
@@ -246,7 +250,8 @@
 #define LINE_LOOKUP_LEVEL_3_TURN_RPM                   (28.0f)  /* 三级偏差转向差速，单位：RPM */
 #define LINE_LOOKUP_LEVEL_4_TURN_RPM                   (42.0f)  /* 四级偏差转向差速，单位：RPM */
 #define LINE_LOOKUP_TURN_RPM_LIMIT                     (55.0f)  /* 转向差速绝对值上限，单位：RPM */
-#define LINE_LOOKUP_BASE_START_SLEW_RPM_PER_S          (180.0f) /* 降低启停冲击，单位：RPM 每秒 */
+#define LINE_LOOKUP_BASE_START_SLEW_RPM_PER_S          (180.0f) /* 基础轮速加速度上限，单位：RPM 每秒 */
+#define LINE_LOOKUP_BASE_JERK_RPM_PER_S2               (720.0f) /* S 型启停加加速度上限，单位：RPM 每平方秒 */
 #define LINE_LOOKUP_TURN_SLEW_RPM_PER_S                (240.0f) /* 转向差速变化率，单位：RPM 每秒 */
 #define LINE_LOOKUP_REVERSE_HOLD_MS                    (40u)    /* 转向反向前保持时间，单位：毫秒 */
 #define LINE_LOOKUP_LOST_HOLD_MS                       (80u)    /* 丢线后保持原指令时间，单位：毫秒 */

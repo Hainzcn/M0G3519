@@ -13,6 +13,7 @@
 #include "no_load_lap_app.h"
 #include "oled.h"
 #include "stop_test_app.h"
+#include "vision_link.h"
 
 static button_id_t mock_button;
 static uint8 mock_oled_ready;
@@ -48,6 +49,9 @@ static uint32 mock_ab_start_count;
 static uint32 mock_ab_stop_count;
 static uint32 mock_stop_test_start_count;
 static uint32 mock_stop_test_stop_count;
+static uint8 mock_vision_online;
+static uint8 mock_oled_vision_off;
+static uint8 mock_oled_post_marker;
 
 void button_init(void)
 {
@@ -69,6 +73,8 @@ uint8 oled_is_ready(void)
 
 void oled_clear(void)
 {
+    mock_oled_vision_off = 0u;
+    mock_oled_post_marker = 0u;
 }
 
 void oled_show_char(uint8 x, uint8 page, char chr, uint8 font)
@@ -86,6 +92,22 @@ void oled_show_string(uint8 x, uint8 page, const char *text, uint8 font)
     {
         mock_oled_title = text;
     }
+    if ((0u == x) && (4u == page) &&
+        (0 == strcmp(text, "VISION OFF")))
+    {
+        mock_oled_vision_off = 1u;
+    }
+    if ((0u == x) && (4u == page) &&
+        (0 == strcmp(text, "POST:")))
+    {
+        mock_oled_post_marker = 1u;
+    }
+}
+
+void vision_link_get_status(vision_link_status_t *status)
+{
+    memset(status, 0, sizeof(*status));
+    status->link_online = mock_vision_online;
 }
 
 void oled_show_uint(uint8 x, uint8 page, uint32 value, uint8 font)
@@ -295,6 +317,9 @@ static void reset_mocks(void)
     mock_ab_stop_count = 0u;
     mock_stop_test_start_count = 0u;
     mock_stop_test_stop_count = 0u;
+    mock_vision_online = 1u;
+    mock_oled_vision_off = 0u;
+    mock_oled_post_marker = 0u;
     button_app_init();
     button_app_process();
 }
@@ -360,6 +385,7 @@ static void test_no_load_completion_holds_result_page(void)
 static void test_ab_start_and_completion(void)
 {
     reset_mocks();
+    mock_vision_online = 0u;
     press_button(BUTTON_ID_SW1);
     press_button(BUTTON_ID_SW1);
     assert(button_app_get_selected_mode() == BUTTON_APP_MODE_AB);
@@ -368,6 +394,7 @@ static void test_ab_start_and_completion(void)
     assert(mock_ab_start_count == 1u);
     assert(mock_no_load_start_count == 0u);
     assert(mock_drive_center_start_count == 0u);
+    assert(mock_oled_vision_off != 0u);
 
     mock_ab_running = 0u;
     mock_ab_status.state = AB_RUN_COMPLETE;
@@ -409,10 +436,36 @@ static void test_stop_test_start_completion_and_stop(void)
     assert(mock_stop_test_stop_count == 2u);
 }
 
+static void test_no_load_marker_state_refreshes_running_page(void)
+{
+    uint32 refresh_count;
+
+    reset_mocks();
+    confirm_selected_mode();
+    refresh_count = mock_refresh_count;
+
+    mock_no_load_status.state = NO_LOAD_LAP_POST_MARKER;
+    mock_no_load_status.brake_distance_m = 0.001f;
+    button_app_process();
+    assert(mock_refresh_count == (refresh_count + 1u));
+    assert(0u != mock_oled_post_marker);
+
+    refresh_count = mock_refresh_count;
+    mock_no_load_status.brake_distance_m = 0.009f;
+    button_app_process();
+    assert(mock_refresh_count == refresh_count);
+
+    mock_no_load_status.brake_distance_m = 0.011f;
+    button_app_process();
+    assert(mock_refresh_count == (refresh_count + 1u));
+    assert(0u != mock_oled_post_marker);
+}
+
 #if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
 static void test_drive_mode_completion_shows_result(void)
 {
     reset_mocks();
+    mock_vision_online = 0u;
     press_button(BUTTON_ID_SW1);
     press_button(BUTTON_ID_SW1);
     press_button(BUTTON_ID_SW1);
@@ -420,6 +473,7 @@ static void test_drive_mode_completion_shows_result(void)
     confirm_selected_mode();
     assert(0u != button_app_is_running());
     assert(mock_drive_center_start_count == 1u);
+    assert(mock_oled_vision_off != 0u);
     mock_drive_running = 0u;
     mock_drive_status.state = DRIVE_BALANCE_DEMO_COMPLETE;
     mock_drive_status.error_requirement_met = 1u;
@@ -435,6 +489,7 @@ static void test_drive_mode_completion_shows_result(void)
     confirm_selected_mode();
     assert(0u != button_app_is_running());
     assert(mock_drive_captured_start_count == 1u);
+    assert(mock_oled_vision_off != 0u);
     press_button(BUTTON_ID_SW4);
     assert(mock_drive_stop_count == 1u);
     assert(0u == button_app_is_running());
@@ -446,6 +501,7 @@ int main(void)
     test_navigation_wraps();
     test_no_load_start_and_stop();
     test_no_load_completion_holds_result_page();
+    test_no_load_marker_state_refreshes_running_page();
     test_ab_start_and_completion();
     test_stop_test_start_completion_and_stop();
 #if (BALANCE_DRIVE_DEMO_ENABLE != 0u)

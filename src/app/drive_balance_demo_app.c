@@ -35,9 +35,12 @@ static uint8 drive_demo_imu_loss_active;
 typedef struct
 {
     float position_m;
-    uint8 ready;
+    uint8 vision_ready;
+    uint8 feedforward_only_ready;
     uint8 imu_valid;
 } drive_demo_balance_snapshot_t;
+
+static uint8 drive_demo_feedforward_only;
 
 static float drive_demo_abs(float value)
 {
@@ -71,14 +74,17 @@ static void drive_demo_read_balance(uint32 now_ms,
     float feedforward_accel;
     const wheel_speed_control_status_t *wheel =
         wheel_speed_control_get_status();
-    uint16 required_flags = BALANCE_SIMPLE_FLAG_OBSERVER_VALID |
-                            BALANCE_SIMPLE_FLAG_MOTOR_POSITION_VALID;
-
     snapshot->position_m = balance->estimated_position_m;
-    snapshot->ready = ((((BALANCE_SIMPLE_ACTIVE == balance->state) ||
-                         (BALANCE_SIMPLE_STATIC_LOCK == balance->state)) &&
-                        ((balance->flags & required_flags) ==
-                         required_flags)) ? 1u : 0u);
+    snapshot->vision_ready =
+        (((BALANCE_SIMPLE_ACTIVE == balance->state) ||
+          (BALANCE_SIMPLE_STATIC_LOCK == balance->state)) &&
+         (0u != (balance->flags & BALANCE_SIMPLE_FLAG_OBSERVER_VALID)) &&
+         (0u != (balance->flags &
+                 BALANCE_SIMPLE_FLAG_MOTOR_POSITION_VALID))) ? 1u : 0u;
+    snapshot->feedforward_only_ready =
+        ((BALANCE_SIMPLE_WAIT_VISION == balance->state) &&
+         (0u != (balance->flags &
+                 BALANCE_SIMPLE_FLAG_MOTOR_POSITION_VALID))) ? 1u : 0u;
     snapshot->imu_valid = 0u;
     imu_get_snapshot(&imu);
     if ((0u != (imu.flags & IMU_FLAG_ACCEL)) &&
@@ -108,8 +114,9 @@ static void drive_demo_read_balance(uint32 now_ms,
     const balance_app_status_t *balance = balance_app_get_status();
     (void)now_ms;
     snapshot->position_m = balance->estimated_position_m;
-    snapshot->ready = ((BALANCE_APP_ACTIVE == balance->state) &&
+    snapshot->vision_ready = ((BALANCE_APP_ACTIVE == balance->state) &&
         (0u == (balance->flags & BALANCE_APP_FLAG_SEQUENCE_ACTIVE))) ? 1u : 0u;
+    snapshot->feedforward_only_ready = 0u;
     snapshot->imu_valid = balance->car_imu_accel_valid;
 #endif
 }
@@ -168,6 +175,13 @@ static void drive_demo_stop(drive_balance_demo_state_enum state,
 {
     motor_app_stop();
     drive_demo_clear_feedforward();
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    if (0u != drive_demo_feedforward_only)
+    {
+        (void)balance_simple_app_set_feedforward_only(0u);
+        drive_demo_feedforward_only = 0u;
+    }
+#endif
     if (0u == drive_demo_status.passed_a)
     {
         drive_demo_status.elapsed_ms = now_ms - drive_demo_start_ms;
@@ -183,18 +197,29 @@ static void drive_demo_stop(drive_balance_demo_state_enum state,
     drive_demo_log_result();
 }
 
-static uint8 drive_demo_start(uint8 capture_current, uint32 now_ms)
+static uint8 drive_demo_start(uint8 capture_current, float line_follow_rpm,
+                              uint32 now_ms)
 {
     drive_demo_balance_snapshot_t balance;
     float target_position_m = 0.0f;
 
     drive_demo_read_balance(now_ms, &balance);
-    if (0u != capture_current)
+    drive_demo_feedforward_only = 0u;
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    if ((0u == balance.vision_ready) &&
+        (0u != balance.feedforward_only_ready))
+    {
+        drive_demo_feedforward_only =
+            balance_simple_app_set_feedforward_only(1u);
+    }
+#endif
+    if ((0u != capture_current) && (0u != balance.vision_ready))
     {
         target_position_m = balance.position_m;
     }
 
-    if ((0u == balance.ready) ||
+    if (((0u == balance.vision_ready) &&
+         (0u == drive_demo_feedforward_only)) ||
         (0u == balance.imu_valid) ||
         (MOTOR_APP_MODE_DISABLED != motor_app_get_mode()) ||
         (0u == grayscale_is_online()) ||
@@ -203,6 +228,13 @@ static uint8 drive_demo_start(uint8 capture_current, uint32 now_ms)
         (0u == drive_demo_set_target(target_position_m)))
     {
         drive_demo_clear_feedforward();
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+        if (0u != drive_demo_feedforward_only)
+        {
+            (void)balance_simple_app_set_feedforward_only(0u);
+            drive_demo_feedforward_only = 0u;
+        }
+#endif
         drive_demo_status.state = DRIVE_BALANCE_DEMO_IDLE;
         drive_demo_status.stop_reason = DRIVE_BALANCE_STOP_START_REJECTED;
         heartbeat_hw_uart_send_string(
@@ -219,8 +251,8 @@ static uint8 drive_demo_start(uint8 capture_current, uint32 now_ms)
     drive_demo_status.passed_a = 0u;
     drive_demo_status.elapsed_ms = 0u;
     drive_demo_status.target_position_m = target_position_m;
-    drive_demo_status.max_abs_error_m =
-        drive_demo_abs(target_position_m - balance.position_m);
+    drive_demo_status.max_abs_error_m = (0u != balance.vision_ready) ?
+        drive_demo_abs(target_position_m - balance.position_m) : 0.0f;
     drive_demo_status.error_requirement_met =
         (drive_demo_status.max_abs_error_m <=
          BALANCE_DRIVE_DEMO_MAX_ERROR_M) ? 1u : 0u;
@@ -231,11 +263,19 @@ static uint8 drive_demo_start(uint8 capture_current, uint32 now_ms)
     drive_demo_marker_active = 0u;
     drive_demo_line_loss_active = 0u;
     drive_demo_imu_loss_active = 0u;
-    motor_app_set_base_rpm(BALANCE_DRIVE_DEMO_CRUISE_RPM);
+    motor_app_set_base_rpm(line_follow_rpm);
     motor_app_set_line_follow_enabled(1u);
-    heartbeat_hw_uart_send_string((0u != capture_current) ?
-        "[drive-balance] SW3 captured target; lap start\r\n" :
-        "[drive-balance] SW2 center target; lap start\r\n");
+    if (0u != drive_demo_feedforward_only)
+    {
+        heartbeat_hw_uart_send_string(
+            "[drive-balance] vision off; feedforward-only lap start\r\n");
+    }
+    else
+    {
+        heartbeat_hw_uart_send_string((0u != capture_current) ?
+            "[drive-balance] SW3 captured target; lap start\r\n" :
+            "[drive-balance] SW2 center target; lap start\r\n");
+    }
     return 1u;
 }
 
@@ -266,7 +306,9 @@ static void drive_demo_process_running(uint32 now_ms)
     drive_demo_read_balance(now_ms, &balance);
     if (DRIVE_BALANCE_DEMO_BRAKING == drive_demo_status.state)
     {
-        if (0u == balance.ready)
+        if ((0u == balance.vision_ready) &&
+            !((0u != drive_demo_feedforward_only) &&
+              (0u != balance.feedforward_only_ready)))
         {
             drive_demo_stop(DRIVE_BALANCE_DEMO_FAULT_STOP,
                             DRIVE_BALANCE_STOP_BALANCE, now_ms);
@@ -289,16 +331,20 @@ static void drive_demo_process_running(uint32 now_ms)
     drive_demo_update_distance();
     error = drive_demo_abs(drive_demo_status.target_position_m -
                            balance.position_m);
-    if (error > drive_demo_status.max_abs_error_m)
+    if ((0u != balance.vision_ready) &&
+        (error > drive_demo_status.max_abs_error_m))
     {
         drive_demo_status.max_abs_error_m = error;
     }
-    if (error > BALANCE_DRIVE_DEMO_MAX_ERROR_M)
+    if ((0u != balance.vision_ready) &&
+        (error > BALANCE_DRIVE_DEMO_MAX_ERROR_M))
     {
         drive_demo_status.error_requirement_met = 0u;
     }
 
-    if (0u == balance.ready)
+    if ((0u == balance.vision_ready) &&
+        !((0u != drive_demo_feedforward_only) &&
+          (0u != balance.feedforward_only_ready)))
     {
         drive_demo_stop(DRIVE_BALANCE_DEMO_FAULT_STOP,
                         DRIVE_BALANCE_STOP_BALANCE, now_ms);
@@ -388,6 +434,7 @@ void drive_balance_demo_app_init(void)
     drive_demo_marker_active = 0u;
     drive_demo_line_loss_active = 0u;
     drive_demo_imu_loss_active = 0u;
+    drive_demo_feedforward_only = 0u;
 }
 
 void drive_balance_demo_app_process(void)
@@ -400,12 +447,14 @@ void drive_balance_demo_app_process(void)
 
 uint8 drive_balance_demo_app_start_center(void)
 {
-    return drive_demo_start(0u, heartbeat_get_ms());
+    return drive_demo_start(
+        0u, TRACK_MODE_4_LINE_FOLLOW_RPM, heartbeat_get_ms());
 }
 
 uint8 drive_balance_demo_app_start_captured(void)
 {
-    return drive_demo_start(1u, heartbeat_get_ms());
+    return drive_demo_start(
+        1u, TRACK_MODE_5_LINE_FOLLOW_RPM, heartbeat_get_ms());
 }
 
 void drive_balance_demo_app_stop(void)

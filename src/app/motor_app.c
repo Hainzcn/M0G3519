@@ -20,6 +20,7 @@ static uint32 motor_app_last_scan_sequence;
 static uint32 motor_app_last_debug_ms;
 static float motor_app_test_left_rpm;
 static float motor_app_test_right_rpm;
+static uint8 motor_app_brake_active;
 
 static float motor_app_clamp(float value, float min_value, float max_value)
 {
@@ -84,6 +85,7 @@ void motor_app_init(void)
     motor_app_last_debug_ms = motor_app_last_control_ms;
     motor_app_test_left_rpm = 0.0f;
     motor_app_test_right_rpm = 0.0f;
+    motor_app_brake_active = 0u;
 
     if (0u != MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO)
     {
@@ -108,6 +110,12 @@ void motor_app_process(void)
     }
 
     motor_app_last_control_ms = now_ms;
+
+    if (0u != motor_app_brake_active)
+    {
+        motor_brake();
+        return;
+    }
 
     /* Stop for one cycle after a long stall; use the real encoder interval. */
     if (elapsed_ms > 50u)
@@ -162,10 +170,20 @@ void motor_app_process(void)
 
 void motor_app_stop(void)
 {
+    motor_app_brake_active = 0u;
     motor_app_mode = MOTOR_APP_MODE_DISABLED;
     line_control_reset();
     wheel_speed_control_reset();
     motor_stop();
+}
+
+void motor_app_brake(void)
+{
+    motor_app_mode = MOTOR_APP_MODE_DISABLED;
+    motor_app_brake_active = 1u;
+    line_control_reset();
+    wheel_speed_control_reset();
+    motor_brake();
 }
 
 void motor_app_set_line_follow_enabled(uint8 enabled)
@@ -178,6 +196,7 @@ void motor_app_set_line_follow_enabled(uint8 enabled)
 
     line_control_reset();
     wheel_speed_control_reset();
+    motor_app_brake_active = 0u;
     motor_app_last_scan_ms = heartbeat_get_ms();
     motor_app_last_scan_sequence = grayscale_get_scan_sequence();
     motor_app_mode = MOTOR_APP_MODE_LINE_FOLLOW;
@@ -188,9 +207,20 @@ void motor_app_set_base_rpm(float base_rpm)
     line_control_set_base_rpm(base_rpm);
 }
 
+void motor_app_set_base_rpm_immediate(float base_rpm)
+{
+    line_control_set_base_rpm_immediate(base_rpm);
+}
+
+void motor_app_set_rapid_brake_enabled(uint8 enabled)
+{
+    wheel_speed_control_set_rapid_brake_enabled(enabled);
+}
+
 void motor_app_set_speed_test(float left_rpm, float right_rpm)
 {
     wheel_speed_control_reset();
+    motor_app_brake_active = 0u;
     motor_app_test_left_rpm = left_rpm;
     motor_app_test_right_rpm = right_rpm;
     motor_app_mode = MOTOR_APP_MODE_SPEED_TEST;
@@ -209,6 +239,7 @@ void motor_app_set_right_circle_demo(float center_rpm)
     turn_rpm = center_rpm * turn_ratio;
 
     wheel_speed_control_reset();
+    motor_app_brake_active = 0u;
     motor_app_test_left_rpm = motor_app_clamp(center_rpm + turn_rpm,
         0.0f, WHEEL_TARGET_RPM_LIMIT);
     motor_app_test_right_rpm = motor_app_clamp(center_rpm - turn_rpm,

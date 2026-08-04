@@ -31,12 +31,14 @@ typedef struct
     line_track_phase_t phase;
     uint8 line_valid;
     uint8 marker_detected;
+    uint8 wide_pattern_filtered;
     uint8 line_lost;
 } line_control_output_t;
 
 void line_control_init(void);
 void line_control_reset(void);
 void line_control_set_base_rpm(float base_rpm);
+void line_control_set_base_rpm_immediate(float base_rpm);
 float line_control_get_base_rpm(void);
 void line_control_update(const uint8 values[GRAYSCALE_CHANNELS],
                          uint32 now_ms, float dt_s);

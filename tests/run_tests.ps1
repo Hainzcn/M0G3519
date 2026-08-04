@@ -26,6 +26,10 @@ try {
     Invoke-CTest "test_wheel_speed_control" @(
         "tests/test_wheel_speed_control.c", "src/middle/wheel_speed_control.c",
         "src/middle/control_pid.c")
+    Invoke-CTest "test_motor_app" @(
+        "tests/test_motor_app.c", "src/app/motor_app.c")
+    Invoke-CTest "test_line_control" @(
+        "tests/test_line_control.c", "src/middle/line_control.c")
     Invoke-CTest "test_ball_motion_profile" @(
         "tests/test_ball_motion_profile.c", "src/middle/ball_motion_profile.c")
     Invoke-CTest "test_balance_actuator_trajectory" @(

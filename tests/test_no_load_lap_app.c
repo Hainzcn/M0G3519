@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "control_config.h"
 #include "encoder.h"
@@ -11,6 +12,7 @@
 
 static uint32 mock_now_ms;
 static uint8 mock_grayscale_online;
+static uint8 mock_grayscale_values[GRAYSCALE_CHANNELS];
 static int32 mock_left_count;
 static int32 mock_right_count;
 static line_control_output_t mock_line;
@@ -18,6 +20,8 @@ static motor_app_mode_enum mock_motor_mode;
 static float mock_base_rpm;
 static uint32 mock_line_start_count;
 static uint32 mock_stop_count;
+static uint32 mock_brake_count;
+static uint8 mock_rapid_brake_enabled;
 
 uint32 heartbeat_get_ms(void)
 {
@@ -32,6 +36,11 @@ void heartbeat_hw_uart_send_string(const char *message)
 uint8 grayscale_is_online(void)
 {
     return mock_grayscale_online;
+}
+
+const uint8 *grayscale_get_values(void)
+{
+    return mock_grayscale_values;
 }
 
 int32 encoder_get_left_total_count(void)
@@ -59,6 +68,16 @@ void motor_app_set_base_rpm(float base_rpm)
     mock_base_rpm = base_rpm;
 }
 
+void motor_app_set_base_rpm_immediate(float base_rpm)
+{
+    mock_base_rpm = base_rpm;
+}
+
+void motor_app_set_rapid_brake_enabled(uint8 enabled)
+{
+    mock_rapid_brake_enabled = enabled;
+}
+
 void motor_app_set_line_follow_enabled(uint8 enabled)
 {
     if (0u != enabled)
@@ -76,6 +95,12 @@ void motor_app_stop(void)
 {
     mock_motor_mode = MOTOR_APP_MODE_DISABLED;
     mock_stop_count++;
+}
+
+void motor_app_brake(void)
+{
+    mock_motor_mode = MOTOR_APP_MODE_DISABLED;
+    mock_brake_count++;
 }
 
 static void set_distance(float distance_m)
@@ -97,18 +122,35 @@ static void advance_distance(float distance_m)
     mock_right_count -= counts;
 }
 
+static void set_black_sensor_count(uint8 count)
+{
+    uint8 index;
+
+    memset(mock_grayscale_values, 0, sizeof(mock_grayscale_values));
+    for (index = 0u;
+         (index < count) && (index < GRAYSCALE_CHANNELS);
+         index++)
+    {
+        mock_grayscale_values[index] = LINE_BLACK_ACTIVE_LEVEL;
+    }
+}
+
 static void reset_mocks(void)
 {
     mock_now_ms = 0u;
     mock_grayscale_online = 1u;
+    memset(mock_grayscale_values, 0, sizeof(mock_grayscale_values));
     mock_left_count = 0;
     mock_right_count = 0;
     mock_line.line_lost = 0u;
     mock_line.marker_detected = 0u;
+    mock_line.active_count = 0u;
     mock_motor_mode = MOTOR_APP_MODE_DISABLED;
     mock_base_rpm = 0.0f;
     mock_line_start_count = 0u;
     mock_stop_count = 0u;
+    mock_brake_count = 0u;
+    mock_rapid_brake_enabled = 0u;
     no_load_lap_app_init();
 }
 
@@ -139,45 +181,73 @@ static void test_start_allows_sensor_warmup_but_requires_idle_chassis(void)
     assert(fabsf(mock_base_rpm - NO_LOAD_LAP_CRUISE_RPM) < 0.001f);
 }
 
-static void test_start_marker_is_ignored_then_stops_23cm_after_finish(void)
+static void test_first_marker_after_5m_stops_21cm_later(void)
 {
     const no_load_lap_status_t *status;
 
     reset_mocks();
-    mock_line.marker_detected = 1u;
+    set_black_sensor_count(NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT);
     assert(0u != no_load_lap_app_start());
-    mock_now_ms = 10u;
+    set_distance(NO_LOAD_LAP_MARKER_MIN_DISTANCE_M - 0.01f);
+    mock_now_ms = 20u;
     no_load_lap_app_process();
     status = no_load_lap_app_get_status();
     assert(status->state == NO_LOAD_LAP_RUNNING);
     assert(0u == status->finish_armed);
+    assert(0u == status->brake_active);
 
-    mock_line.marker_detected = 0u;
-    set_distance(NO_LOAD_LAP_APPROACH_DISTANCE_M + 0.1f);
+    mock_now_ms += 10u;
+    no_load_lap_app_process();
+    assert(0u == status->brake_active);
+
+    set_black_sensor_count(0u);
+    set_distance(NO_LOAD_LAP_MARKER_MIN_DISTANCE_M + 0.01f);
     mock_now_ms = 10000u;
     no_load_lap_app_process();
     assert(0u != status->finish_armed);
-    assert(0u != status->approach_active);
-    assert(fabsf(mock_base_rpm - NO_LOAD_LAP_APPROACH_RPM) < 0.001f);
 
-    mock_line.marker_detected = 1u;
-    mock_now_ms = 10010u;
+    set_black_sensor_count(NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT);
+    mock_grayscale_online = 0u;
+    mock_now_ms = 10002u;
     no_load_lap_app_process();
     assert(status->state == NO_LOAD_LAP_RUNNING);
-    mock_now_ms = 10010u + NO_LOAD_LAP_MARKER_DEBOUNCE_MS;
+
+    mock_grayscale_online = 1u;
+    set_black_sensor_count(NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT - 1u);
+    mock_now_ms = 10005u;
     no_load_lap_app_process();
     assert(status->state == NO_LOAD_LAP_RUNNING);
+
+    set_black_sensor_count(NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT);
+    mock_now_ms = NO_LOAD_LAP_TIMEOUT_MS - 10u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_POST_MARKER);
     assert(0u != status->brake_active);
+    assert(fabsf(status->marker_distance_m - status->distance_m) < 0.001f);
+    assert(status->brake_distance_m == 0.0f);
     assert(mock_stop_count == 0u);
-    assert(fabsf(mock_base_rpm - NO_LOAD_LAP_APPROACH_RPM) < 0.001f);
+    assert(mock_brake_count == 0u);
+    assert(0u != mock_rapid_brake_enabled);
+    assert(fabsf(mock_base_rpm - NO_LOAD_LAP_CRUISE_RPM) < 0.001f);
 
-    advance_distance(NO_LOAD_LAP_POST_MARKER_DISTANCE_M - 0.01f);
-    mock_line.marker_detected = 0u;
+    advance_distance(NO_LOAD_LAP_POST_MARKER_DISTANCE_M * 0.5f);
+    set_black_sensor_count(0u);
     mock_now_ms += 10u;
     no_load_lap_app_process();
-    assert(status->state == NO_LOAD_LAP_RUNNING);
+    assert(status->state == NO_LOAD_LAP_POST_MARKER);
+    assert(status->elapsed_ms >= NO_LOAD_LAP_TIMEOUT_MS);
     assert(status->brake_distance_m < NO_LOAD_LAP_POST_MARKER_DISTANCE_M);
     assert(mock_stop_count == 0u);
+    assert(mock_brake_count == 0u);
+    assert(mock_base_rpm < NO_LOAD_LAP_CRUISE_RPM);
+    assert(mock_base_rpm > NO_LOAD_LAP_POST_MARKER_MIN_RPM);
+
+    advance_distance(NO_LOAD_LAP_POST_MARKER_DISTANCE_M * 0.5f - 0.01f);
+    mock_now_ms += 10u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_POST_MARKER);
+    assert(mock_base_rpm < 40.0f);
+    assert(mock_base_rpm >= NO_LOAD_LAP_POST_MARKER_MIN_RPM);
 
     advance_distance(0.02f);
     mock_now_ms += 10u;
@@ -185,7 +255,8 @@ static void test_start_marker_is_ignored_then_stops_23cm_after_finish(void)
     assert(status->state == NO_LOAD_LAP_COMPLETE);
     assert(status->elapsed_ms == mock_now_ms);
     assert(status->brake_distance_m >= NO_LOAD_LAP_POST_MARKER_DISTANCE_M);
-    assert(mock_stop_count == 1u);
+    assert(mock_stop_count == 0u);
+    assert(mock_brake_count == 1u);
     assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
 }
 
@@ -240,7 +311,7 @@ static void test_user_stop(void)
 int main(void)
 {
     test_start_allows_sensor_warmup_but_requires_idle_chassis();
-    test_start_marker_is_ignored_then_stops_23cm_after_finish();
+    test_first_marker_after_5m_stops_21cm_later();
     test_timeout_line_loss_and_sensor_failure_stop();
     test_user_stop();
     puts("no-load lap app tests passed");

@@ -16,13 +16,59 @@ static no_load_lap_status_t no_load_status;
 static uint32 no_load_start_ms;
 static int32 no_load_previous_left_count;
 static int32 no_load_previous_right_count;
-static uint32 no_load_marker_start_ms;
 static uint32 no_load_line_loss_start_ms;
 static uint32 no_load_sensor_offline_start_ms;
-static float no_load_marker_distance_m;
-static uint8 no_load_marker_active;
 static uint8 no_load_line_loss_active;
 static uint8 no_load_sensor_offline_active;
+
+static uint8 no_load_is_active(void)
+{
+    return ((NO_LOAD_LAP_RUNNING == no_load_status.state) ||
+            (NO_LOAD_LAP_POST_MARKER == no_load_status.state)) ? 1u : 0u;
+}
+
+static uint8 no_load_read_finish_marker(uint8 *sensor_mask,
+                                        uint8 *active_count)
+{
+    const uint8 *values = grayscale_get_values();
+    uint8 index;
+    uint8 mask = 0u;
+    uint8 count = 0u;
+
+    for (index = 0u; index < GRAYSCALE_CHANNELS; index++)
+    {
+        if (LINE_BLACK_ACTIVE_LEVEL == values[index])
+        {
+            mask |= (uint8)(1u << index);
+            count++;
+        }
+    }
+    *sensor_mask = mask;
+    *active_count = count;
+    return (count >=
+            NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT) ? 1u : 0u;
+}
+
+static float no_load_post_marker_rpm(float distance_m)
+{
+    float remaining_m = NO_LOAD_LAP_POST_MARKER_DISTANCE_M - distance_m;
+    float remaining_ratio;
+
+    if (remaining_m <= 0.0f)
+    {
+        return 0.0f;
+    }
+    remaining_ratio = remaining_m /
+        NO_LOAD_LAP_POST_MARKER_DISTANCE_M;
+    if (remaining_ratio > 1.0f)
+    {
+        remaining_ratio = 1.0f;
+    }
+    remaining_ratio *= remaining_ratio;
+    return NO_LOAD_LAP_POST_MARKER_MIN_RPM +
+        (NO_LOAD_LAP_CRUISE_RPM - NO_LOAD_LAP_POST_MARKER_MIN_RPM) *
+        remaining_ratio;
+}
 
 static void no_load_update_distance(void)
 {
@@ -49,24 +95,35 @@ static void no_load_update_distance(void)
 
 static void no_load_log_result(void)
 {
-    char message[96];
+    char message[144];
     uint32 distance_mm = (uint32)(no_load_status.distance_m * 1000.0f);
+    uint32 marker_mm =
+        (uint32)(no_load_status.marker_distance_m * 1000.0f);
+    uint32 brake_mm =
+        (uint32)(no_load_status.brake_distance_m * 1000.0f);
 
     snprintf(message, sizeof(message),
-        "[no-load] end=%u,t=%lu,dist=%lu\r\n",
+        "[no-load] end=%u,t=%lu,total=%lu,marker=%lu,post=%lu\r\n",
         (unsigned int)no_load_status.state,
         (unsigned long)no_load_status.elapsed_ms,
-        (unsigned long)distance_mm);
+        (unsigned long)distance_mm,
+        (unsigned long)marker_mm,
+        (unsigned long)brake_mm);
     heartbeat_hw_uart_send_string(message);
 }
 
 static void no_load_finish(no_load_lap_state_enum state, uint32 now_ms)
 {
-    motor_app_stop();
-    motor_app_set_base_rpm(NO_LOAD_LAP_CRUISE_RPM);
+    if (NO_LOAD_LAP_COMPLETE == state)
+    {
+        motor_app_brake();
+    }
+    else
+    {
+        motor_app_stop();
+    }
     no_load_status.elapsed_ms = now_ms - no_load_start_ms;
     no_load_status.state = state;
-    no_load_marker_active = 0u;
     no_load_line_loss_active = 0u;
     no_load_sensor_offline_active = 0u;
     no_load_log_result();
@@ -80,15 +137,13 @@ void no_load_lap_app_init(void)
     no_load_status.brake_active = 0u;
     no_load_status.elapsed_ms = 0u;
     no_load_status.distance_m = 0.0f;
+    no_load_status.marker_distance_m = 0.0f;
     no_load_status.brake_distance_m = 0.0f;
     no_load_start_ms = heartbeat_get_ms();
     no_load_previous_left_count = encoder_get_left_total_count();
     no_load_previous_right_count = encoder_get_right_total_count();
-    no_load_marker_start_ms = 0u;
     no_load_line_loss_start_ms = 0u;
     no_load_sensor_offline_start_ms = 0u;
-    no_load_marker_distance_m = 0.0f;
-    no_load_marker_active = 0u;
     no_load_line_loss_active = 0u;
     no_load_sensor_offline_active = 0u;
 }
@@ -108,14 +163,13 @@ uint8 no_load_lap_app_start(void)
     no_load_status.brake_active = 0u;
     no_load_status.elapsed_ms = 0u;
     no_load_status.distance_m = 0.0f;
+    no_load_status.marker_distance_m = 0.0f;
     no_load_status.brake_distance_m = 0.0f;
     no_load_start_ms = now_ms;
     no_load_previous_left_count = encoder_get_left_total_count();
     no_load_previous_right_count = encoder_get_right_total_count();
-    no_load_marker_active = 0u;
     no_load_line_loss_active = 0u;
     no_load_sensor_offline_active = 0u;
-    no_load_marker_distance_m = 0.0f;
     motor_app_set_base_rpm(NO_LOAD_LAP_CRUISE_RPM);
     motor_app_set_line_follow_enabled(1u);
     heartbeat_hw_uart_send_string("[no-load] lap start\r\n");
@@ -126,8 +180,11 @@ void no_load_lap_app_process(void)
 {
     const line_control_output_t *line;
     uint32 now_ms;
+    uint8 sensor_online;
+    uint8 marker_sensor_mask = 0u;
+    uint8 marker_active_count = 0u;
 
-    if (NO_LOAD_LAP_RUNNING != no_load_status.state)
+    if (0u == no_load_is_active())
     {
         return;
     }
@@ -141,7 +198,8 @@ void no_load_lap_app_process(void)
         no_load_finish(NO_LOAD_LAP_CHASSIS_STOPPED, now_ms);
         return;
     }
-    if (0u == grayscale_is_online())
+    sensor_online = grayscale_is_online();
+    if (0u == sensor_online)
     {
         if (0u == no_load_sensor_offline_active)
         {
@@ -159,7 +217,8 @@ void no_load_lap_app_process(void)
     {
         no_load_sensor_offline_active = 0u;
     }
-    if (no_load_status.elapsed_ms >= NO_LOAD_LAP_TIMEOUT_MS)
+    if ((NO_LOAD_LAP_RUNNING == no_load_status.state) &&
+        (no_load_status.elapsed_ms >= NO_LOAD_LAP_TIMEOUT_MS))
     {
         no_load_finish(NO_LOAD_LAP_TIMEOUT, now_ms);
         return;
@@ -185,59 +244,57 @@ void no_load_lap_app_process(void)
         no_load_line_loss_active = 0u;
     }
 
-    if ((0u == no_load_status.approach_active) &&
-        (no_load_status.distance_m >= NO_LOAD_LAP_APPROACH_DISTANCE_M))
-    {
-        no_load_status.approach_active = 1u;
-        motor_app_set_base_rpm(NO_LOAD_LAP_APPROACH_RPM);
-        heartbeat_hw_uart_send_string("[no-load] approach A\r\n");
-    }
-    if (no_load_status.distance_m >= NO_LOAD_LAP_ARM_DISTANCE_M)
+    /* Ignore start-area graphics and letter strokes until a full lap is plausible. */
+    if (no_load_status.distance_m > NO_LOAD_LAP_MARKER_MIN_DISTANCE_M)
     {
         no_load_status.finish_armed = 1u;
     }
 
-    if (0u != no_load_status.brake_active)
+    if (NO_LOAD_LAP_POST_MARKER == no_load_status.state)
     {
+        float target_rpm;
+
         no_load_status.brake_distance_m =
-            no_load_status.distance_m - no_load_marker_distance_m;
+            no_load_status.distance_m -
+            no_load_status.marker_distance_m;
         if (no_load_status.brake_distance_m >=
             NO_LOAD_LAP_POST_MARKER_DISTANCE_M)
         {
             no_load_finish(NO_LOAD_LAP_COMPLETE, now_ms);
+            return;
         }
+        target_rpm = no_load_post_marker_rpm(
+            no_load_status.brake_distance_m);
+        motor_app_set_base_rpm_immediate(target_rpm);
         return;
     }
 
     if ((0u != no_load_status.finish_armed) &&
-        (0u != line->marker_detected))
+        (0u != sensor_online) &&
+        (0u != no_load_read_finish_marker(&marker_sensor_mask,
+                                           &marker_active_count)))
     {
-        if (0u == no_load_marker_active)
-        {
-            no_load_marker_active = 1u;
-            no_load_marker_start_ms = now_ms;
-            no_load_marker_distance_m = no_load_status.distance_m;
-        }
-        else if ((now_ms - no_load_marker_start_ms) >=
-                 NO_LOAD_LAP_MARKER_DEBOUNCE_MS)
-        {
-            no_load_status.brake_active = 1u;
-            no_load_status.approach_active = 1u;
-            no_load_status.brake_distance_m =
-                no_load_status.distance_m - no_load_marker_distance_m;
-            motor_app_set_base_rpm(NO_LOAD_LAP_APPROACH_RPM);
-            heartbeat_hw_uart_send_string("[no-load] marker; braking 230mm\r\n");
-        }
-    }
-    else
-    {
-        no_load_marker_active = 0u;
+        char message[112];
+
+        no_load_status.state = NO_LOAD_LAP_POST_MARKER;
+        no_load_status.approach_active = 1u;
+        no_load_status.brake_active = 1u;
+        no_load_status.marker_distance_m = no_load_status.distance_m;
+        no_load_status.brake_distance_m = 0.0f;
+        motor_app_set_rapid_brake_enabled(1u);
+        motor_app_set_base_rpm_immediate(NO_LOAD_LAP_CRUISE_RPM);
+        snprintf(message, sizeof(message),
+            "[no-load] marker latched,total=%lu,mask=%02X,n=%u; post=210mm\r\n",
+            (unsigned long)(no_load_status.distance_m * 1000.0f),
+            (unsigned int)marker_sensor_mask,
+            (unsigned int)marker_active_count);
+        heartbeat_hw_uart_send_string(message);
     }
 }
 
 void no_load_lap_app_stop(void)
 {
-    if (NO_LOAD_LAP_RUNNING == no_load_status.state)
+    if (0u != no_load_is_active())
     {
         no_load_finish(NO_LOAD_LAP_USER_STOP, heartbeat_get_ms());
     }
@@ -245,7 +302,7 @@ void no_load_lap_app_stop(void)
 
 uint8 no_load_lap_app_is_running(void)
 {
-    return (NO_LOAD_LAP_RUNNING == no_load_status.state) ? 1u : 0u;
+    return no_load_is_active();
 }
 
 const no_load_lap_status_t *no_load_lap_app_get_status(void)

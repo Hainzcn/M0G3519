@@ -11,6 +11,7 @@
 #include "imu.h"
 #include "line_control.h"
 #include "motor_app.h"
+#include "wheel_speed_control.h"
 
 static uint32 mock_now_ms;
 static balance_simple_status_t mock_balance;
@@ -24,6 +25,8 @@ static float mock_target;
 static float mock_feedforward_accel;
 static uint8 mock_feedforward_valid;
 static uint32 mock_stop_count;
+static wheel_speed_control_status_t mock_wheel;
+static uint8 mock_feedforward_only;
 
 uint32 heartbeat_get_ms(void) { return mock_now_ms; }
 void heartbeat_hw_uart_send_string(const char *message) { (void)message; }
@@ -41,8 +44,16 @@ void balance_simple_app_set_vehicle_accel_mps2(float accel, uint8 valid)
     mock_feedforward_accel = accel;
     mock_feedforward_valid = valid;
 }
+uint8 balance_simple_app_set_feedforward_only(uint8 enabled)
+{
+    mock_feedforward_only = enabled;
+    return 1u;
+}
 motor_app_mode_enum motor_app_get_mode(void) { return mock_motor_mode; }
-void motor_app_set_base_rpm(float rpm) { assert(rpm == AB_RUN_CRUISE_RPM); }
+void motor_app_set_base_rpm(float rpm)
+{
+    assert(rpm == TRACK_MODE_3_LINE_FOLLOW_RPM);
+}
 void motor_app_set_line_follow_enabled(uint8 enabled)
 {
     mock_motor_mode = (0u != enabled) ?
@@ -57,6 +68,10 @@ int32 encoder_get_left_total_count(void) { return mock_left_count; }
 int32 encoder_get_right_total_count(void) { return mock_right_count; }
 uint8 grayscale_is_online(void) { return mock_grayscale_online; }
 const line_control_output_t *line_control_get_output(void) { return &mock_line; }
+const wheel_speed_control_status_t *wheel_speed_control_get_status(void)
+{
+    return &mock_wheel;
+}
 void imu_get_snapshot(imu_snapshot_t *snapshot) { *snapshot = mock_imu; }
 
 static void reset_mocks(void)
@@ -64,6 +79,7 @@ static void reset_mocks(void)
     memset(&mock_balance, 0, sizeof(mock_balance));
     memset(&mock_line, 0, sizeof(mock_line));
     memset(&mock_imu, 0, sizeof(mock_imu));
+    memset(&mock_wheel, 0, sizeof(mock_wheel));
     mock_now_ms = 100u;
     mock_balance.state = BALANCE_SIMPLE_ACTIVE;
     mock_balance.flags = BALANCE_SIMPLE_FLAG_OBSERVER_VALID |
@@ -77,9 +93,23 @@ static void reset_mocks(void)
     mock_feedforward_accel = 0.0f;
     mock_feedforward_valid = 0u;
     mock_stop_count = 0u;
+    mock_feedforward_only = 0u;
     mock_left_count = 0;
     mock_right_count = 0;
     ab_run_app_init();
+}
+
+static void test_planned_acceleration_is_blended_with_imu(void)
+{
+    reset_mocks();
+    mock_wheel.kinematics_valid = 1u;
+    mock_wheel.planned_accel_mps2 = 0.6f;
+    mock_imu.accel.ax = BALANCE_SIMPLE_CAR_ACCEL_OFFSET_MPS2 + 0.2f;
+
+    assert(0u != ab_run_app_start());
+    assert(BALANCE_SIMPLE_CAR_FF_PLAN_WEIGHT == 0.50f);
+    assert(BALANCE_SIMPLE_CAR_FF_IMU_WEIGHT == 0.50f);
+    assert(fabsf(mock_feedforward_accel - 0.4f) < 0.0001f);
 }
 
 static void set_distance(float distance_m)
@@ -143,12 +173,23 @@ static void test_timeout_and_imu_loss_stop(void)
     assert(status->state == AB_RUN_IMU_LOST);
 }
 
-static void test_start_requires_ready_balance_and_imu(void)
+static void test_vision_off_starts_feedforward_only_but_still_requires_imu(void)
 {
     reset_mocks();
     mock_balance.state = BALANCE_SIMPLE_WAIT_VISION;
-    assert(0u == ab_run_app_start());
+    mock_balance.flags = BALANCE_SIMPLE_FLAG_MOTOR_POSITION_VALID;
+    assert(0u != ab_run_app_start());
+    assert(mock_feedforward_only != 0u);
+    mock_now_ms += 10u;
+    mock_imu.accel_time_ms = mock_now_ms;
+    ab_run_app_process();
+    assert(ab_run_app_is_running() != 0u);
+    ab_run_app_stop();
+    assert(mock_feedforward_only == 0u);
+
     reset_mocks();
+    mock_balance.state = BALANCE_SIMPLE_WAIT_VISION;
+    mock_balance.flags = BALANCE_SIMPLE_FLAG_MOTOR_POSITION_VALID;
     mock_imu.flags = 0u;
     assert(0u == ab_run_app_start());
 }
@@ -156,8 +197,9 @@ static void test_start_requires_ready_balance_and_imu(void)
 int main(void)
 {
     test_passes_b_and_holds_feedforward_through_braking();
+    test_planned_acceleration_is_blended_with_imu();
     test_timeout_and_imu_loss_stop();
-    test_start_requires_ready_balance_and_imu();
+    test_vision_off_starts_feedforward_only_but_still_requires_imu();
     puts("AB run app tests passed");
     return 0;
 }

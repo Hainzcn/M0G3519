@@ -90,6 +90,7 @@ static uint8 simple_vehicle_filter_initialized;
 static uint8 simple_vehicle_ff_transition_active;
 static uint8 simple_vehicle_ff_active;
 static uint8 simple_stop_test_mode;
+static uint8 simple_feedforward_only;
 
 static float simple_abs(float value)
 {
@@ -630,6 +631,64 @@ static void simple_run_active_control(
     simple_apply_actuator(simple_status.omega_command_deg_s, now_ms);
 }
 
+static void simple_run_feedforward_only(uint32 now_ms)
+{
+    float measured_beam_angle_deg;
+    float desired_beam_angle_deg;
+    float target_delta_deg;
+    float error_deg;
+    float corrected_error_deg;
+    float omega_deg_s;
+    float max_target_delta_deg =
+        BALANCE_SIMPLE_TARGET_BEAM_ANGLE_SLEW_DEG_S *
+        (float)BALANCE_SIMPLE_CONTROL_PERIOD_MS * 0.001f;
+
+    if ((0u == simple_motor_feedback_is_fresh(now_ms)) ||
+        (0u == balance_linkage_physical_lever_from_motor_deg(
+            simple_status.motor_position_deg, &measured_beam_angle_deg)))
+    {
+        simple_set_state(BALANCE_SIMPLE_SAFE_RETURN, now_ms);
+        simple_preempt_with_zero(now_ms);
+        return;
+    }
+
+    simple_status.measured_beam_angle_deg = measured_beam_angle_deg;
+    desired_beam_angle_deg = simple_clamp(
+        simple_vehicle_feedforward_angle_deg,
+        -BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG,
+        BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG);
+    target_delta_deg = simple_clamp(
+        desired_beam_angle_deg - simple_status.target_beam_angle_deg,
+        -max_target_delta_deg, max_target_delta_deg);
+    simple_status.target_beam_angle_deg += target_delta_deg;
+    error_deg = simple_status.target_beam_angle_deg - measured_beam_angle_deg;
+    simple_status.beam_angle_error_deg = error_deg;
+
+    if (simple_abs(error_deg) <= BALANCE_SIMPLE_BEAM_ANGLE_DEADBAND_DEG)
+    {
+        omega_deg_s = 0.0f;
+    }
+    else
+    {
+        corrected_error_deg = error_deg -
+            ((error_deg > 0.0f) ?
+                BALANCE_SIMPLE_BEAM_ANGLE_DEADBAND_DEG :
+                -BALANCE_SIMPLE_BEAM_ANGLE_DEADBAND_DEG);
+        omega_deg_s = BALANCE_SIMPLE_BEAM_ANGLE_KP_S_INV *
+            corrected_error_deg;
+    }
+    omega_deg_s = simple_clamp(
+        omega_deg_s,
+        -BALANCE_SIMPLE_MAX_BEAM_VELOCITY_DEG_S,
+        BALANCE_SIMPLE_MAX_BEAM_VELOCITY_DEG_S);
+    simple_status.target_velocity_mps = 0.0f;
+    simple_status.integral_velocity_mps = 0.0f;
+    simple_status.omega_command_deg_s = omega_deg_s;
+    simple_status.flags &=
+        (uint16)(~BALANCE_SIMPLE_FLAG_POSITION_ACTIVE);
+    simple_apply_actuator(omega_deg_s, now_ms);
+}
+
 static void simple_update_static_lock(uint32 now_ms)
 {
 #if (BALANCE_SIMPLE_STATIC_LOCK_ENABLE != 0u)
@@ -705,6 +764,9 @@ static void simple_control_step(uint32 now_ms)
         (0u != simple_motor_feedback_is_fresh(now_ms)))
     {
         ball_velocity_controller_reset(&simple_controller);
+        simple_feedforward_only = 0u;
+        simple_status.flags &=
+            (uint16)(~BALANCE_SIMPLE_FLAG_FEEDFORWARD_ONLY);
         simple_set_state(BALANCE_SIMPLE_ACTIVE, now_ms);
     }
 
@@ -743,7 +805,14 @@ static void simple_control_step(uint32 now_ms)
     }
     else if (BALANCE_SIMPLE_WAIT_VISION == simple_status.state)
     {
-        simple_zero_control_command();
+        if (0u != simple_feedforward_only)
+        {
+            simple_run_feedforward_only(now_ms);
+        }
+        else
+        {
+            simple_zero_control_command();
+        }
     }
     simple_new_measurement = 0u;
 }
@@ -1087,6 +1156,7 @@ void balance_simple_app_init(void)
     simple_vehicle_filter_initialized = 0u;
     simple_vehicle_ff_transition_active = 0u;
     simple_vehicle_ff_active = 0u;
+    simple_feedforward_only = 0u;
     simple_last_capture_ms = 0u;
     simple_last_control_ms = now_ms;
     simple_last_position_query_ms = now_ms;
@@ -1192,6 +1262,37 @@ uint8 balance_simple_app_set_target_position_m(float target_position_m)
     {
         simple_set_state(BALANCE_SIMPLE_ACTIVE, heartbeat_get_ms());
     }
+    return 1u;
+}
+
+uint8 balance_simple_app_set_feedforward_only(uint8 enabled)
+{
+    if (0u == enabled)
+    {
+        if (0u != simple_feedforward_only)
+        {
+            simple_preempt_with_zero(heartbeat_get_ms());
+        }
+        simple_feedforward_only = 0u;
+        simple_status.flags &=
+            (uint16)(~BALANCE_SIMPLE_FLAG_FEEDFORWARD_ONLY);
+        if (BALANCE_SIMPLE_WAIT_VISION == simple_status.state)
+        {
+            simple_zero_control_command();
+        }
+        return 1u;
+    }
+    if (BALANCE_SIMPLE_WAIT_VISION != simple_status.state)
+    {
+        return 0u;
+    }
+
+    ball_velocity_controller_reset(&simple_controller);
+    simple_zero_control_command();
+    simple_feedforward_only = 1u;
+    simple_status.flags |= BALANCE_SIMPLE_FLAG_FEEDFORWARD_ONLY;
+    heartbeat_hw_uart_send_string(
+        "[balance-simple] vision bypass; feedforward only\r\n");
     return 1u;
 }
 
@@ -1307,6 +1408,7 @@ void balance_simple_app_disable(void)
     }
     simple_preempt_with_zero(now_ms);
     ball_velocity_controller_reset(&simple_controller);
+    (void)balance_simple_app_set_feedforward_only(0u);
     balance_simple_app_set_vehicle_accel_mps2(0.0f, 0u);
     simple_set_state(BALANCE_SIMPLE_DISABLED, now_ms);
 }

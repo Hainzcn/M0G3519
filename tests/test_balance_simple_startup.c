@@ -231,23 +231,33 @@ static void test_disable_waits_for_startup_level(void)
 static void test_vehicle_feedforward_filters_and_uses_hysteresis(void)
 {
     const balance_simple_status_t *status;
+    const float planned_accel_mps2 =
+        LINE_LOOKUP_BASE_START_SLEW_RPM_PER_S * 3.14159265f *
+        CHASSIS_WHEEL_DIAMETER_M / 60.0f;
+    const float expected_angle_deg =
+        -atan2f(planned_accel_mps2, 9.80665f) *
+        (180.0f / 3.14159265f);
     uint32 index;
 
     reset_mocks();
     balance_simple_app_init();
     status = balance_simple_app_get_status();
-    balance_simple_app_set_vehicle_accel_mps2(1.0f, 1u);
-    assert(fabsf(status->car_filtered_accel_mps2 - 1.0f) < 0.0001f);
+    balance_simple_app_set_vehicle_accel_mps2(planned_accel_mps2, 1u);
+    assert(fabsf(status->car_filtered_accel_mps2 - planned_accel_mps2) <
+           0.0001f);
     for (index = 1u; index <= 6u; index++)
     {
         mock_now_ms = index * BALANCE_SIMPLE_CONTROL_PERIOD_MS;
-        balance_simple_app_set_vehicle_accel_mps2(1.0f, 1u);
+        balance_simple_app_set_vehicle_accel_mps2(planned_accel_mps2, 1u);
     }
     assert(status->car_accel_valid != 0u);
     assert(status->car_filtered_accel_mps2 > 0.0f);
     assert(status->car_feedforward_active != 0u);
-    assert(fabsf(status->car_feedforward_angle_deg) <=
-           BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG);
+    assert(BALANCE_SIMPLE_CAR_FF_ENTER_MS <=
+           BALANCE_SIMPLE_CONTROL_PERIOD_MS);
+    assert(BALANCE_SIMPLE_CAR_FF_GAIN == 1.0f);
+    assert(BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG >= 3.6f);
+    assert(fabsf(expected_angle_deg) < BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG);
 
     for (index = 1u; index <= 40u; index++)
     {
@@ -262,11 +272,27 @@ static void test_vehicle_feedforward_filters_and_uses_hysteresis(void)
     assert(status->car_filtered_accel_mps2 == 0.0f);
 }
 
+static void test_wait_vision_accepts_feedforward_only_mode(void)
+{
+    const balance_simple_status_t *status;
+
+    reset_mocks();
+    balance_simple_app_init();
+    run_startup_without_uart_responses();
+    status = balance_simple_app_get_status();
+    assert(status->state == BALANCE_SIMPLE_WAIT_VISION);
+    assert(0u != balance_simple_app_set_feedforward_only(1u));
+    assert(0u != (status->flags & BALANCE_SIMPLE_FLAG_FEEDFORWARD_ONLY));
+    assert(0u != balance_simple_app_set_feedforward_only(0u));
+    assert(0u == (status->flags & BALANCE_SIMPLE_FLAG_FEEDFORWARD_ONLY));
+}
+
 int main(void)
 {
     test_startup_continues_without_uart_responses();
     test_disable_waits_for_startup_level();
     test_vehicle_feedforward_filters_and_uses_hysteresis();
+    test_wait_vision_accepts_feedforward_only_mode();
     puts("balance simple startup fallback tests passed");
     return 0;
 }

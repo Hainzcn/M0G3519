@@ -11,6 +11,7 @@
 #include "imu.h"
 #include "line_control.h"
 #include "motor_app.h"
+#include "wheel_speed_control.h"
 
 #define AB_RUN_PI_F       (3.14159265358979323846f)
 #define AB_RUN_INVALID_AGE (0xFFFFFFFFu)
@@ -24,6 +25,7 @@ static int32 ab_previous_left_count;
 static int32 ab_previous_right_count;
 static uint8 ab_line_loss_active;
 static uint8 ab_imu_loss_active;
+static uint8 ab_feedforward_only;
 
 static float ab_abs(float value)
 {
@@ -66,8 +68,11 @@ static void ab_update_distance(void)
 
 static uint8 ab_update_feedforward(uint32 now_ms)
 {
+    const wheel_speed_control_status_t *wheel =
+        wheel_speed_control_get_status();
     imu_snapshot_t imu;
     float corrected;
+    float feedforward;
 
     imu_get_snapshot(&imu);
     ab_status.imu_accel_mps2 = imu.accel.ax;
@@ -91,9 +96,17 @@ static uint8 ab_update_feedforward(uint32 now_ms)
     corrected = ab_clamp(corrected,
         -BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2,
         BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2);
-    ab_status.feedforward_accel_mps2 = corrected;
+    feedforward = corrected;
+    if (0u != wheel->kinematics_valid)
+    {
+        feedforward =
+            BALANCE_SIMPLE_CAR_FF_PLAN_WEIGHT *
+                wheel->planned_accel_mps2 +
+            BALANCE_SIMPLE_CAR_FF_IMU_WEIGHT * corrected;
+    }
+    ab_status.feedforward_accel_mps2 = feedforward;
     ab_status.imu_valid = 1u;
-    balance_simple_app_set_vehicle_accel_mps2(corrected, 1u);
+    balance_simple_app_set_vehicle_accel_mps2(feedforward, 1u);
     return 1u;
 }
 
@@ -119,6 +132,11 @@ static void ab_finish(ab_run_state_enum state, uint32 now_ms)
         motor_app_stop();
     }
     balance_simple_app_set_vehicle_accel_mps2(0.0f, 0u);
+    if (0u != ab_feedforward_only)
+    {
+        (void)balance_simple_app_set_feedforward_only(0u);
+        ab_feedforward_only = 0u;
+    }
     if (0u == ab_status.passed_b)
     {
         ab_status.elapsed_ms = now_ms - ab_start_ms;
@@ -169,6 +187,7 @@ void ab_run_app_init(void)
     ab_previous_right_count = encoder_get_right_total_count();
     ab_line_loss_active = 0u;
     ab_imu_loss_active = 0u;
+    ab_feedforward_only = 0u;
 }
 
 uint8 ab_run_app_start(void)
@@ -176,17 +195,33 @@ uint8 ab_run_app_start(void)
     const balance_simple_status_t *balance =
         balance_simple_app_get_status();
     uint32 now_ms = heartbeat_get_ms();
-    uint16 required_flags = BALANCE_SIMPLE_FLAG_OBSERVER_VALID |
-                            BALANCE_SIMPLE_FLAG_MOTOR_POSITION_VALID;
+    uint8 vision_ready =
+        (((BALANCE_SIMPLE_ACTIVE == balance->state) ||
+          (BALANCE_SIMPLE_STATIC_LOCK == balance->state)) &&
+         (0u != (balance->flags & BALANCE_SIMPLE_FLAG_OBSERVER_VALID))) ?
+        1u : 0u;
+    uint8 feedforward_only_ready =
+        ((BALANCE_SIMPLE_WAIT_VISION == balance->state) &&
+         (0u != (balance->flags &
+                 BALANCE_SIMPLE_FLAG_MOTOR_POSITION_VALID))) ? 1u : 0u;
 
-    if (((BALANCE_SIMPLE_ACTIVE != balance->state) &&
-         (BALANCE_SIMPLE_STATIC_LOCK != balance->state)) ||
-        ((balance->flags & required_flags) != required_flags) ||
+    ab_feedforward_only = 0u;
+    if ((0u == vision_ready) && (0u != feedforward_only_ready))
+    {
+        ab_feedforward_only =
+            balance_simple_app_set_feedforward_only(1u);
+    }
+    if (((0u == vision_ready) && (0u == ab_feedforward_only)) ||
         (MOTOR_APP_MODE_DISABLED != motor_app_get_mode()) ||
         (0u == grayscale_is_online()) ||
         (0u == ab_update_feedforward(now_ms)) ||
         (0u == balance_simple_app_set_target_position_m(0.0f)))
     {
+        if (0u != ab_feedforward_only)
+        {
+            (void)balance_simple_app_set_feedforward_only(0u);
+            ab_feedforward_only = 0u;
+        }
         balance_simple_app_set_vehicle_accel_mps2(0.0f, 0u);
         return 0u;
     }
@@ -196,15 +231,18 @@ uint8 ab_run_app_start(void)
     ab_status.error_requirement_met = 1u;
     ab_status.elapsed_ms = 0u;
     ab_status.distance_m = 0.0f;
-    ab_status.max_abs_error_m = ab_abs(balance->estimated_position_m);
+    ab_status.max_abs_error_m = (0u != vision_ready) ?
+        ab_abs(balance->estimated_position_m) : 0.0f;
     ab_start_ms = now_ms;
     ab_previous_left_count = encoder_get_left_total_count();
     ab_previous_right_count = encoder_get_right_total_count();
     ab_line_loss_active = 0u;
     ab_imu_loss_active = 0u;
-    motor_app_set_base_rpm(AB_RUN_CRUISE_RPM);
+    motor_app_set_base_rpm(TRACK_MODE_3_LINE_FOLLOW_RPM);
     motor_app_set_line_follow_enabled(1u);
-    heartbeat_hw_uart_send_string("[ab-run] start\r\n");
+    heartbeat_hw_uart_send_string((0u != ab_feedforward_only) ?
+        "[ab-run] start; vision off; feedforward only\r\n" :
+        "[ab-run] start\r\n");
     return 1u;
 }
 
@@ -225,13 +263,18 @@ void ab_run_app_process(void)
     imu_valid = ab_update_feedforward(now_ms);
     ab_update_distance();
     error = ab_abs(balance->estimated_position_m);
-    if (error > ab_status.max_abs_error_m)
+    if ((0u != (balance->flags & BALANCE_SIMPLE_FLAG_OBSERVER_VALID)) &&
+        (error > ab_status.max_abs_error_m))
     {
         ab_status.max_abs_error_m = error;
     }
 
-    if ((BALANCE_SIMPLE_ACTIVE != balance->state) &&
-        (BALANCE_SIMPLE_STATIC_LOCK != balance->state))
+    if (((BALANCE_SIMPLE_ACTIVE != balance->state) &&
+         (BALANCE_SIMPLE_STATIC_LOCK != balance->state)) &&
+        !((0u != ab_feedforward_only) &&
+          (BALANCE_SIMPLE_WAIT_VISION == balance->state) &&
+          (0u != (balance->flags &
+                  BALANCE_SIMPLE_FLAG_MOTOR_POSITION_VALID))))
     {
         ab_finish(AB_RUN_BALANCE_FAULT, now_ms);
         return;
