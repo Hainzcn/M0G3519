@@ -90,10 +90,60 @@ static void test_near_damping_tracks_position_and_velocity_error(void)
     assert(0u != (output->flags & BALL_VELOCITY_CONTROL_NEAR_DAMPING));
 }
 
+static void test_directional_beam_bias_is_selected_and_blended(void)
+{
+    ball_velocity_controller_t controller;
+    ball_velocity_controller_config_t config;
+    ball_velocity_controller_input_t input;
+    const ball_velocity_controller_output_t *output;
+
+    memset(&config, 0, sizeof(config));
+    config.velocity_kv_deg_per_mmps = 0.020f;
+    config.positive_beam_bias_deg = 0.30f;
+    config.negative_beam_bias_deg = -0.40f;
+    config.beam_bias_blend_angle_deg = 0.20f;
+    config.max_target_beam_angle_deg = 100.0f;
+    config.target_beam_angle_slew_deg_s = 1000.0f;
+    config.beam_angle_kp_s_inv = 1.0f;
+    config.max_beam_velocity_deg_s = 100.0f;
+    ball_velocity_controller_init(&controller, &config);
+
+    memset(&input, 0, sizeof(input));
+    input.observer_valid = 1u;
+    input.control_dt_s = 0.02f;
+
+    input.velocity_mps = 0.050f;
+    ball_velocity_controller_step(&controller, &input);
+    output = ball_velocity_controller_get_output(&controller);
+    assert(fabsf(output->unbiased_beam_angle_deg - 1.0f) < 0.0001f);
+    assert(fabsf(output->applied_beam_bias_deg - 0.30f) < 0.0001f);
+    assert(fabsf(output->target_beam_angle_deg - 1.30f) < 0.0001f);
+
+    input.velocity_mps = -0.050f;
+    ball_velocity_controller_step(&controller, &input);
+    assert(fabsf(output->unbiased_beam_angle_deg + 1.0f) < 0.0001f);
+    assert(fabsf(output->applied_beam_bias_deg + 0.40f) < 0.0001f);
+    assert(fabsf(output->target_beam_angle_deg + 1.40f) < 0.0001f);
+
+    input.velocity_mps = 0.0f;
+    ball_velocity_controller_step(&controller, &input);
+    assert(fabsf(output->unbiased_beam_angle_deg) < 0.0001f);
+    assert(fabsf(output->applied_beam_bias_deg + 0.05f) < 0.0001f);
+    assert(fabsf(output->target_beam_angle_deg + 0.05f) < 0.0001f);
+
+    input.velocity_mps = 0.010f;
+    ball_velocity_controller_step(&controller, &input);
+    assert(fabsf(output->applied_beam_bias_deg - 0.30f) < 0.0001f);
+    input.velocity_mps = -0.010f;
+    ball_velocity_controller_step(&controller, &input);
+    assert(fabsf(output->applied_beam_bias_deg + 0.40f) < 0.0001f);
+}
+
 int main(void)
 {
     test_vehicle_feedforward_is_position_weighted();
     test_near_damping_tracks_position_and_velocity_error();
+    test_directional_beam_bias_is_selected_and_blended();
     puts("ball velocity controller tests passed");
     return 0;
 }

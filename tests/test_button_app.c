@@ -55,7 +55,8 @@ static uint32 mock_stop_test_stop_count;
 static uint8 mock_vision_online;
 static uint8 mock_oled_vision_off;
 static uint8 mock_oled_post_marker;
-static float mock_fixed_beam_bias_deg;
+static float mock_positive_beam_bias_deg;
+static float mock_negative_beam_bias_deg;
 static float mock_vision_position_offset_m;
 static uint8 mock_vision_has_snapshot;
 static vision_link_snapshot_t mock_vision_snapshot;
@@ -226,7 +227,7 @@ uint8 drive_balance_demo_app_start_captured(void)
     return mock_drive_running;
 }
 
-void balance_simple_app_set_fixed_beam_bias_deg(float bias_deg)
+static float mock_limit_beam_bias_deg(float bias_deg)
 {
     if (bias_deg > BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG)
     {
@@ -236,12 +237,27 @@ void balance_simple_app_set_fixed_beam_bias_deg(float bias_deg)
     {
         bias_deg = -BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG;
     }
-    mock_fixed_beam_bias_deg = bias_deg;
+    return bias_deg;
 }
 
-float balance_simple_app_get_fixed_beam_bias_deg(void)
+void balance_simple_app_set_positive_beam_bias_deg(float bias_deg)
 {
-    return mock_fixed_beam_bias_deg;
+    mock_positive_beam_bias_deg = mock_limit_beam_bias_deg(bias_deg);
+}
+
+float balance_simple_app_get_positive_beam_bias_deg(void)
+{
+    return mock_positive_beam_bias_deg;
+}
+
+void balance_simple_app_set_negative_beam_bias_deg(float bias_deg)
+{
+    mock_negative_beam_bias_deg = mock_limit_beam_bias_deg(bias_deg);
+}
+
+float balance_simple_app_get_negative_beam_bias_deg(void)
+{
+    return mock_negative_beam_bias_deg;
 }
 
 void drive_balance_demo_app_stop(void)
@@ -393,7 +409,8 @@ static void reset_mocks(void)
     mock_vision_online = 1u;
     mock_oled_vision_off = 0u;
     mock_oled_post_marker = 0u;
-    mock_fixed_beam_bias_deg = BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG;
+    mock_positive_beam_bias_deg = BALANCE_SIMPLE_POSITIVE_BEAM_BIAS_DEG;
+    mock_negative_beam_bias_deg = BALANCE_SIMPLE_NEGATIVE_BEAM_BIAS_DEG;
     mock_vision_position_offset_m = BALANCE_VISION_POSITION_OFFSET_M;
     mock_vision_has_snapshot = 0u;
     memset(&mock_vision_snapshot, 0, sizeof(mock_vision_snapshot));
@@ -514,7 +531,7 @@ static void test_stop_test_start_completion_and_stop(void)
 }
 
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-static void test_long_sw1_opens_and_adjusts_bias(void)
+static void test_long_sw1_opens_and_adjusts_directional_bias(void)
 {
     reset_mocks();
     mock_button = BUTTON_ID_SW1;
@@ -527,12 +544,21 @@ static void test_long_sw1_opens_and_adjusts_bias(void)
     mock_button = BUTTON_ID_NONE;
     button_app_process();
     press_button(BUTTON_ID_SW1);
-    assert(mock_fixed_beam_bias_deg ==
-           BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG - 0.2f);
+    assert(mock_positive_beam_bias_deg ==
+           BALANCE_SIMPLE_POSITIVE_BEAM_BIAS_DEG - 0.2f);
+    assert(mock_negative_beam_bias_deg ==
+           BALANCE_SIMPLE_NEGATIVE_BEAM_BIAS_DEG);
     press_button(BUTTON_ID_SW2);
     press_button(BUTTON_ID_SW2);
-    assert(mock_fixed_beam_bias_deg ==
-           BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG + 0.2f);
+    assert(mock_positive_beam_bias_deg ==
+           BALANCE_SIMPLE_POSITIVE_BEAM_BIAS_DEG + 0.2f);
+
+    press_button(BUTTON_ID_SW3);
+    press_button(BUTTON_ID_SW1);
+    assert(mock_negative_beam_bias_deg ==
+           BALANCE_SIMPLE_NEGATIVE_BEAM_BIAS_DEG - 0.2f);
+    assert(mock_positive_beam_bias_deg ==
+           BALANCE_SIMPLE_POSITIVE_BEAM_BIAS_DEG + 0.2f);
 
     press_button(BUTTON_ID_SW4);
     assert(0 == strcmp(mock_oled_title, "TRACK MODE SELECT"));
@@ -640,7 +666,7 @@ int main(void)
     test_navigation_wraps();
     test_long_sw2_opens_and_adjusts_vision_offset();
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-    test_long_sw1_opens_and_adjusts_bias();
+    test_long_sw1_opens_and_adjusts_directional_bias();
 #endif
     test_no_load_start_and_stop();
     test_no_load_completion_holds_result_page();

@@ -46,8 +46,8 @@
 #define STOP_TEST_MAX_BEAM_VELOCITY_DEG_S              (80.0f)
 
 /* 赛道模式 3：A 点到 B 点，钢球保持中心 */
-#define AB_RUN_FORCE_STRAIGHT_DISTANCE_M               (1.30f)  /* 此里程后忽略循迹并等速直行 */
-#define AB_RUN_IGNORE_RIGHT_SHIFT_DISTANCE_M           (1.50f)  /* 右移黑线干扰起始里程；已包含在直行段内 */
+#define AB_RUN_FORCE_STRAIGHT_DISTANCE_M               (1.20f)  /* 此里程后忽略循迹并等速直行 */
+#define AB_RUN_IGNORE_RIGHT_SHIFT_DISTANCE_M           (1.40f)  /* 右移黑线干扰起始里程；已包含在直行段内 */
 #define AB_RUN_TARGET_DISTANCE_M                       (1.75f)  /* 本阶段结束里程，单位：米 */
 #define AB_RUN_TIMEOUT_MS                              (8000u)  /* A 到 B 最大允许时间，单位：毫秒 */
 #define AB_RUN_LINE_LOSS_TIMEOUT_MS                    (300u)   /* 连续丢线故障时间，单位：毫秒 */
@@ -132,7 +132,9 @@
 #define BALANCE_SIMPLE_NEAR_SCALE_MAX                  (1.15f)   /* 近中心增益最大倍率 */
 #define BALANCE_SIMPLE_INTEGRAL_ZONE_M                 (0.050f)  /* 位置积分生效范围，单位：米 */
 #define BALANCE_SIMPLE_INTEGRAL_LIMIT_MPS              (0.010f)  /* 位置积分对应目标球速上限，单位：米每秒 */
-#define BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG             (0.2f)   /* 球状态到目标摆角的固定正向偏置，单位：度 */
+#define BALANCE_SIMPLE_POSITIVE_BEAM_BIAS_DEG          (0.2f)   /* 加偏置前目标摆角为正时的修正量，单位：度 */
+#define BALANCE_SIMPLE_NEGATIVE_BEAM_BIAS_DEG          (0.2f)   /* 加偏置前目标摆角为负时的修正量，单位：度 */
+#define BALANCE_SIMPLE_BEAM_BIAS_BLEND_ANGLE_DEG       (0.2f)   /* 正负偏置在零点附近的连续混合半宽，单位：度 */
 #define BALANCE_SIMPLE_ACCELERATION_KA                 (0.0f)    /* 球加速度补偿增益，0 表示关闭 */
 #define BALANCE_SIMPLE_ACCELERATION_FILTER_ALPHA       (0.20f)   /* 球加速度低通滤波系数 */
 #define BALANCE_SIMPLE_CAR_ACCEL_OFFSET_MPS2           (0.200f)  /* IMU X 轴静态零偏 */

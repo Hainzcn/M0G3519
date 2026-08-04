@@ -15,6 +15,29 @@ static float velocity_clamp(float value, float low, float high)
     return value;
 }
 
+static float velocity_directional_beam_bias(
+    const ball_velocity_controller_config_t *config,
+    float unbiased_beam_angle_deg)
+{
+    float blend_angle_deg = velocity_abs(config->beam_bias_blend_angle_deg);
+    float positive_weight;
+
+    if (blend_angle_deg <= 0.0f)
+    {
+        return (unbiased_beam_angle_deg >= 0.0f) ?
+            config->positive_beam_bias_deg :
+            config->negative_beam_bias_deg;
+    }
+
+    positive_weight = velocity_clamp(
+        (unbiased_beam_angle_deg + blend_angle_deg) /
+            (2.0f * blend_angle_deg),
+        0.0f, 1.0f);
+    return config->negative_beam_bias_deg +
+        (config->positive_beam_bias_deg -
+         config->negative_beam_bias_deg) * positive_weight;
+}
+
 void ball_velocity_controller_init(
     ball_velocity_controller_t *controller,
     const ball_velocity_controller_config_t *config)
@@ -54,6 +77,8 @@ void ball_velocity_controller_step(
     float velocity_error_ratio;
     float feedforward_scale = 0.0f;
     float acceleration_mps2;
+    float unbiased_beam_angle_deg;
+    float applied_beam_bias_deg;
     float unrestricted_beam_angle_deg;
     float desired_beam_angle_deg;
     float target_angle_delta_deg;
@@ -197,13 +222,19 @@ void ball_velocity_controller_step(
         controller->previous_velocity_mps = input->velocity_mps;
         controller->has_previous_velocity = 1u;
     }
-    unrestricted_beam_angle_deg =
+    unbiased_beam_angle_deg =
         controller->output.effective_kv_deg_per_mm *
             controller->output.velocity_error_mps * 1000.0f +
         controller->config.acceleration_ka_deg_per_mps2 *
             controller->output.filtered_acceleration_mps2 +
-        controller->config.fixed_beam_bias_deg +
         controller->output.vehicle_feedforward_angle_deg;
+    applied_beam_bias_deg = velocity_directional_beam_bias(
+        &controller->config, unbiased_beam_angle_deg);
+    controller->output.unbiased_beam_angle_deg =
+        unbiased_beam_angle_deg;
+    controller->output.applied_beam_bias_deg = applied_beam_bias_deg;
+    unrestricted_beam_angle_deg =
+        unbiased_beam_angle_deg + applied_beam_bias_deg;
     desired_beam_angle_deg = velocity_clamp(
         unrestricted_beam_angle_deg,
         -controller->config.max_target_beam_angle_deg,

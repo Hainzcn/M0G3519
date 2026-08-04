@@ -93,8 +93,10 @@ static uint8 simple_vehicle_ff_active;
 static uint8 simple_stop_test_mode;
 static uint8 simple_feedforward_only;
 static uint8 simple_capture_hold;
-static float simple_fixed_beam_bias_deg =
-    BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG;
+static float simple_positive_beam_bias_deg =
+    BALANCE_SIMPLE_POSITIVE_BEAM_BIAS_DEG;
+static float simple_negative_beam_bias_deg =
+    BALANCE_SIMPLE_NEGATIVE_BEAM_BIAS_DEG;
 
 static float simple_abs(float value)
 {
@@ -1136,8 +1138,12 @@ void balance_simple_app_init(void)
         BALANCE_SIMPLE_BEAM_ANGLE_KP_S_INV;
     controller_config.beam_angle_deadband_deg =
         BALANCE_SIMPLE_BEAM_ANGLE_DEADBAND_DEG;
-    controller_config.fixed_beam_bias_deg =
-        simple_fixed_beam_bias_deg;
+    controller_config.positive_beam_bias_deg =
+        simple_positive_beam_bias_deg;
+    controller_config.negative_beam_bias_deg =
+        simple_negative_beam_bias_deg;
+    controller_config.beam_bias_blend_angle_deg =
+        BALANCE_SIMPLE_BEAM_BIAS_BLEND_ANGLE_DEG;
     controller_config.max_beam_velocity_deg_s =
         BALANCE_SIMPLE_MAX_BEAM_VELOCITY_DEG_S;
     controller_config.integral_zone_m = BALANCE_SIMPLE_INTEGRAL_ZONE_M;
@@ -1582,7 +1588,7 @@ void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid)
         accel_mps2, accel_mps2, accel_mps2, valid);
 }
 
-void balance_simple_app_set_fixed_beam_bias_deg(float bias_deg)
+static float simple_limit_beam_bias_deg(float bias_deg)
 {
     if (bias_deg > BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG)
     {
@@ -1593,13 +1599,31 @@ void balance_simple_app_set_fixed_beam_bias_deg(float bias_deg)
         bias_deg = -BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG;
     }
 
-    simple_fixed_beam_bias_deg = bias_deg;
-    simple_controller.config.fixed_beam_bias_deg = bias_deg;
+    return bias_deg;
 }
 
-float balance_simple_app_get_fixed_beam_bias_deg(void)
+void balance_simple_app_set_positive_beam_bias_deg(float bias_deg)
 {
-    return simple_fixed_beam_bias_deg;
+    bias_deg = simple_limit_beam_bias_deg(bias_deg);
+    simple_positive_beam_bias_deg = bias_deg;
+    simple_controller.config.positive_beam_bias_deg = bias_deg;
+}
+
+float balance_simple_app_get_positive_beam_bias_deg(void)
+{
+    return simple_positive_beam_bias_deg;
+}
+
+void balance_simple_app_set_negative_beam_bias_deg(float bias_deg)
+{
+    bias_deg = simple_limit_beam_bias_deg(bias_deg);
+    simple_negative_beam_bias_deg = bias_deg;
+    simple_controller.config.negative_beam_bias_deg = bias_deg;
+}
+
+float balance_simple_app_get_negative_beam_bias_deg(void)
+{
+    return simple_negative_beam_bias_deg;
 }
 
 void balance_simple_app_disable(void)

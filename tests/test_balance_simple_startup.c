@@ -344,22 +344,27 @@ static void test_wait_vision_accepts_feedforward_only_mode(void)
     assert(0u == (status->flags & BALANCE_SIMPLE_FLAG_FEEDFORWARD_ONLY));
 }
 
-static void test_fixed_beam_bias_tuning_is_retained_and_limited(void)
+static void test_directional_beam_bias_tuning_is_retained_and_limited(void)
 {
-    balance_simple_app_set_fixed_beam_bias_deg(1.7f);
+    balance_simple_app_set_positive_beam_bias_deg(1.7f);
+    balance_simple_app_set_negative_beam_bias_deg(-0.9f);
     balance_simple_app_init();
-    assert(fabsf(balance_simple_app_get_fixed_beam_bias_deg() - 1.7f) <
+    assert(fabsf(balance_simple_app_get_positive_beam_bias_deg() - 1.7f) <
+           0.0001f);
+    assert(fabsf(balance_simple_app_get_negative_beam_bias_deg() + 0.9f) <
            0.0001f);
 
-    balance_simple_app_set_fixed_beam_bias_deg(100.0f);
-    assert(balance_simple_app_get_fixed_beam_bias_deg() ==
+    balance_simple_app_set_positive_beam_bias_deg(100.0f);
+    assert(balance_simple_app_get_positive_beam_bias_deg() ==
            BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG);
-    balance_simple_app_set_fixed_beam_bias_deg(-100.0f);
-    assert(balance_simple_app_get_fixed_beam_bias_deg() ==
+    balance_simple_app_set_negative_beam_bias_deg(-100.0f);
+    assert(balance_simple_app_get_negative_beam_bias_deg() ==
            -BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG);
 
-    balance_simple_app_set_fixed_beam_bias_deg(
-        BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG);
+    balance_simple_app_set_positive_beam_bias_deg(
+        BALANCE_SIMPLE_POSITIVE_BEAM_BIAS_DEG);
+    balance_simple_app_set_negative_beam_bias_deg(
+        BALANCE_SIMPLE_NEGATIVE_BEAM_BIAS_DEG);
 }
 
 int main(void)
@@ -369,7 +374,7 @@ int main(void)
     test_capture_level_stops_before_absolute_move_and_holds_position();
     test_planned_feedforward_is_immediate_and_imu_is_correction();
     test_wait_vision_accepts_feedforward_only_mode();
-    test_fixed_beam_bias_tuning_is_retained_and_limited();
+    test_directional_beam_bias_tuning_is_retained_and_limited();
     puts("balance simple startup fallback tests passed");
     return 0;
 }

@@ -26,7 +26,9 @@ typedef struct
     float target_beam_angle_slew_deg_s;
     float beam_angle_kp_s_inv;
     float beam_angle_deadband_deg;
-    float fixed_beam_bias_deg;
+    float positive_beam_bias_deg;
+    float negative_beam_bias_deg;
+    float beam_bias_blend_angle_deg;
     float max_beam_velocity_deg_s;
     float integral_zone_m;
     float integral_velocity_limit_mps;
@@ -59,6 +61,8 @@ typedef struct
     float target_velocity_mps;
     float velocity_error_mps;
     float effective_kv_deg_per_mm;
+    float unbiased_beam_angle_deg;
+    float applied_beam_bias_deg;
     float target_beam_angle_deg;
     float beam_angle_error_deg;
     float beam_velocity_deg_s;

@@ -61,6 +61,9 @@ static uint8 button_app_long_press_handled;
 static uint16 button_app_last_tuning_boot_id;
 static uint16 button_app_last_tuning_sequence;
 static uint8 button_app_has_tuning_snapshot;
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+static uint8 button_app_positive_bias_selected;
+#endif
 
 static uint8 button_app_mode_uses_vision(button_app_mode_enum mode)
 {
@@ -144,30 +147,40 @@ static void button_app_render_running(void)
 }
 
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-static int32 button_app_bias_tenths(void)
+static int32 button_app_bias_tenths(float bias_deg)
 {
-    float bias_deg = balance_simple_app_get_fixed_beam_bias_deg();
-
     return (int32)(bias_deg * 10.0f +
         ((bias_deg >= 0.0f) ? 0.5f : -0.5f));
 }
 
-static void button_app_render_bias_tuning(void)
+static void button_app_render_bias_row(
+    uint8 page, const char *label, float bias_deg, uint8 selected)
 {
-    int32 bias_tenths = button_app_bias_tenths();
+    int32 bias_tenths = button_app_bias_tenths(bias_deg);
     uint32 magnitude = (uint32)((bias_tenths < 0) ?
         -bias_tenths : bias_tenths);
 
+    oled_show_char(0u, page, (0u != selected) ? '>' : ' ', OLED_FONT_6X8);
+    oled_show_string(6u, page, label, OLED_FONT_6X8);
+    oled_show_char(36u, page, (bias_tenths < 0) ? '-' : '+', OLED_FONT_6X8);
+    oled_show_uint(42u, page, magnitude / 10u, OLED_FONT_6X8);
+    oled_show_char(48u, page, '.', OLED_FONT_6X8);
+    oled_show_uint(54u, page, magnitude % 10u, OLED_FONT_6X8);
+    oled_show_string(60u, page, " deg", OLED_FONT_6X8);
+}
+
+static void button_app_render_bias_tuning(void)
+{
     oled_clear();
     oled_show_string(0u, 0u, "BEAM BIAS TUNE", OLED_FONT_6X8);
-    oled_show_string(0u, 2u, "FIXED BEAM BIAS", OLED_FONT_6X8);
-    oled_show_char(24u, 4u, (bias_tenths < 0) ? '-' : '+', OLED_FONT_6X8);
-    oled_show_uint(30u, 4u, magnitude / 10u, OLED_FONT_6X8);
-    oled_show_char(36u, 4u, '.', OLED_FONT_6X8);
-    oled_show_uint(42u, 4u, magnitude % 10u, OLED_FONT_6X8);
-    oled_show_string(48u, 4u, " deg", OLED_FONT_6X8);
-    oled_show_string(0u, 6u, "SW1 -0.2  SW2 +0.2", OLED_FONT_6X8);
-    oled_show_string(0u, 7u, "SW4 BACK", OLED_FONT_6X8);
+    button_app_render_bias_row(2u, "POS:",
+        balance_simple_app_get_positive_beam_bias_deg(),
+        button_app_positive_bias_selected);
+    button_app_render_bias_row(4u, "NEG:",
+        balance_simple_app_get_negative_beam_bias_deg(),
+        (0u == button_app_positive_bias_selected) ? 1u : 0u);
+    oled_show_string(0u, 6u, "SW3 SELECT SIDE", OLED_FONT_6X8);
+    oled_show_string(0u, 7u, "SW1- SW2+ SW4 BACK", OLED_FONT_6X8);
 }
 #endif
 
@@ -690,16 +703,40 @@ static void button_app_handle_press(button_id_t pressed)
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
         if (BUTTON_ID_SW1 == pressed)
         {
-            balance_simple_app_set_fixed_beam_bias_deg(
-                balance_simple_app_get_fixed_beam_bias_deg() -
-                BUTTON_APP_BIAS_STEP_DEG);
+            if (0u != button_app_positive_bias_selected)
+            {
+                balance_simple_app_set_positive_beam_bias_deg(
+                    balance_simple_app_get_positive_beam_bias_deg() -
+                    BUTTON_APP_BIAS_STEP_DEG);
+            }
+            else
+            {
+                balance_simple_app_set_negative_beam_bias_deg(
+                    balance_simple_app_get_negative_beam_bias_deg() -
+                    BUTTON_APP_BIAS_STEP_DEG);
+            }
             view_changed = 1u;
         }
         else if (BUTTON_ID_SW2 == pressed)
         {
-            balance_simple_app_set_fixed_beam_bias_deg(
-                balance_simple_app_get_fixed_beam_bias_deg() +
-                BUTTON_APP_BIAS_STEP_DEG);
+            if (0u != button_app_positive_bias_selected)
+            {
+                balance_simple_app_set_positive_beam_bias_deg(
+                    balance_simple_app_get_positive_beam_bias_deg() +
+                    BUTTON_APP_BIAS_STEP_DEG);
+            }
+            else
+            {
+                balance_simple_app_set_negative_beam_bias_deg(
+                    balance_simple_app_get_negative_beam_bias_deg() +
+                    BUTTON_APP_BIAS_STEP_DEG);
+            }
+            view_changed = 1u;
+        }
+        else if (BUTTON_ID_SW3 == pressed)
+        {
+            button_app_positive_bias_selected =
+                (0u == button_app_positive_bias_selected) ? 1u : 0u;
             view_changed = 1u;
         }
         else if (BUTTON_ID_SW4 == pressed)
@@ -819,6 +856,9 @@ void button_app_init(void)
     button_app_last_tuning_boot_id = 0u;
     button_app_last_tuning_sequence = 0u;
     button_app_has_tuning_snapshot = 0u;
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    button_app_positive_bias_selected = 1u;
+#endif
     oled_app_set_dashboard_enabled(0u);
 }
 
