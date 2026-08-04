@@ -22,7 +22,7 @@
 #define SIMPLE_COMMAND_VELOCITY_QUERY  (0x35u)
 #define SIMPLE_COMMAND_POSITION        (0x36u)
 #define SIMPLE_INVALID_AGE             (0xFFFFFFFFu)
-#define SIMPLE_CONTROLLER_REVISION     "angle-pi-v2"
+#define SIMPLE_CONTROLLER_REVISION     "angle-bias-v4"
 #define SIMPLE_CONTROLLER_LIMIT_FLAGS  ((uint16)( \
     (BALL_VELOCITY_CONTROL_VELOCITY_LIMITED | \
      BALL_VELOCITY_CONTROL_OMEGA_LIMITED | \
@@ -91,7 +91,7 @@ static float simple_clamp(float value, float low, float high)
     return value;
 }
 
-static uint8 simple_integrator_output_is_limited(void)
+static uint8 simple_angle_trim_output_is_limited(void)
 {
     uint16 limit_flags = SIMPLE_CONTROLLER_LIMIT_FLAGS |
                          SIMPLE_ACTUATOR_LIMIT_FLAGS;
@@ -105,6 +105,8 @@ static void simple_zero_control_command(void)
     simple_status.target_velocity_mps = 0.0f;
     simple_status.target_beam_angle_deg = simple_status.measured_beam_angle_deg;
     simple_status.beam_angle_error_deg = 0.0f;
+    simple_status.angle_trim_deg = 0.0f;
+    simple_status.integral_velocity_mps = 0.0f;
     simple_status.omega_command_deg_s = 0.0f;
     simple_status.motor_rpm_requested = 0.0f;
     simple_status.motor_rpm_command = 0;
@@ -461,6 +463,7 @@ static void simple_update_controller_status(void)
     simple_status.target_beam_angle_deg = output->target_beam_angle_deg;
     simple_status.beam_angle_error_deg = output->beam_angle_error_deg;
     simple_status.omega_command_deg_s = output->beam_velocity_deg_s;
+    simple_status.angle_trim_deg = output->angle_trim_deg;
     simple_status.integral_velocity_mps = output->integral_velocity_mps;
     simple_status.filtered_ball_accel_mps2 =
         output->filtered_acceleration_mps2;
@@ -527,8 +530,8 @@ static void simple_run_active_control(
     input.measured_beam_angle_deg = measured_beam_angle_deg;
     input.new_measurement = simple_new_measurement;
     input.observer_valid = 1u;
-    input.output_saturated = simple_integrator_output_is_limited();
-    input.freeze_integral =
+    input.output_saturated = simple_angle_trim_output_is_limited();
+    input.freeze_angle_trim =
         ((BALANCE_SIMPLE_STATIC_LOCK == simple_status.state) ||
          (0u != (simple_status.flags &
                  BALANCE_SIMPLE_FLAG_HARD_BALL_EDGE))) ? 1u : 0u;
@@ -861,8 +864,6 @@ void balance_simple_app_init(void)
     ball_state_observer_init(&simple_observer, &observer_config);
 
     controller_config.position_kp_s_inv = BALANCE_SIMPLE_POSITION_KP_S_INV;
-    controller_config.position_ki_s2_inv =
-        BALANCE_SIMPLE_POSITION_KI_S2_INV;
     controller_config.velocity_kv_deg_per_mmps =
         BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM;
     controller_config.acceleration_ka_deg_per_mps2 =
@@ -883,11 +884,15 @@ void balance_simple_app_init(void)
         BALANCE_SIMPLE_BEAM_ANGLE_KP_S_INV;
     controller_config.beam_angle_deadband_deg =
         BALANCE_SIMPLE_BEAM_ANGLE_DEADBAND_DEG;
+    controller_config.fixed_beam_bias_deg =
+        BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG;
     controller_config.max_beam_velocity_deg_s =
         BALANCE_SIMPLE_MAX_BEAM_VELOCITY_DEG_S;
-    controller_config.integral_zone_m = BALANCE_SIMPLE_INTEGRAL_ZONE_M;
-    controller_config.integral_velocity_limit_mps =
-        BALANCE_SIMPLE_INTEGRAL_LIMIT_MPS;
+    controller_config.angle_trim_ki_deg_per_m_s =
+        BALANCE_SIMPLE_ANGLE_TRIM_KI_DEG_PER_M_S;
+    controller_config.angle_trim_zone_m = BALANCE_SIMPLE_ANGLE_TRIM_ZONE_M;
+    controller_config.angle_trim_limit_deg =
+        BALANCE_SIMPLE_ANGLE_TRIM_LIMIT_DEG;
     controller_config.near_position_m = BALANCE_SIMPLE_NEAR_POSITION_M;
     controller_config.near_gain = BALANCE_SIMPLE_NEAR_GAIN;
     controller_config.near_scale_max = BALANCE_SIMPLE_NEAR_SCALE_MAX;

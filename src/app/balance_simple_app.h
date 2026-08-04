@@ -61,6 +61,8 @@ typedef struct
     float motor_position_deg;
     uint32 motor_position_age_ms;
     uint32 motor_velocity_age_ms;
+    float angle_trim_deg;
+    /* Legacy V7 field: angle trim converted to equivalent velocity. */
     float integral_velocity_mps;
     float filtered_ball_accel_mps2;
     balance_simple_state_enum state;

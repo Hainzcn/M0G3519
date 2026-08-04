@@ -7,14 +7,15 @@
 #define BALL_VELOCITY_CONTROL_VELOCITY_LIMITED (0x0002u)
 #define BALL_VELOCITY_CONTROL_OMEGA_LIMITED    (0x0004u)
 #define BALL_VELOCITY_CONTROL_NEAR_DAMPING     (0x0008u)
-#define BALL_VELOCITY_CONTROL_INTEGRAL_ACTIVE  (0x0010u)
+#define BALL_VELOCITY_CONTROL_TRIM_ACTIVE      (0x0010u)
+#define BALL_VELOCITY_CONTROL_INTEGRAL_ACTIVE  \
+    BALL_VELOCITY_CONTROL_TRIM_ACTIVE
 #define BALL_VELOCITY_CONTROL_ANGLE_LIMITED     (0x0020u)
 #define BALL_VELOCITY_CONTROL_ANGLE_SLEWED      (0x0040u)
 
 typedef struct
 {
     float position_kp_s_inv;
-    float position_ki_s2_inv;
     float velocity_kv_deg_per_mmps;
     float acceleration_ka_deg_per_mps2;
     float position_on_m;
@@ -26,9 +27,11 @@ typedef struct
     float target_beam_angle_slew_deg_s;
     float beam_angle_kp_s_inv;
     float beam_angle_deadband_deg;
+    float fixed_beam_bias_deg;
     float max_beam_velocity_deg_s;
-    float integral_zone_m;
-    float integral_velocity_limit_mps;
+    float angle_trim_ki_deg_per_m_s;
+    float angle_trim_zone_m;
+    float angle_trim_limit_deg;
     float near_position_m;
     float near_gain;
     float near_scale_max;
@@ -46,7 +49,7 @@ typedef struct
     uint8 new_measurement;
     uint8 observer_valid;
     uint8 output_saturated;
-    uint8 freeze_integral;
+    uint8 freeze_angle_trim;
 } ball_velocity_controller_input_t;
 
 typedef struct
@@ -59,6 +62,8 @@ typedef struct
     float target_beam_angle_deg;
     float beam_angle_error_deg;
     float beam_velocity_deg_s;
+    float angle_trim_deg;
+    /* V7 telemetry compatibility: trim expressed as equivalent velocity. */
     float integral_velocity_mps;
     float filtered_acceleration_mps2;
     uint16 flags;
@@ -70,6 +75,7 @@ typedef struct
     ball_velocity_controller_output_t output;
     float previous_velocity_mps;
     float target_beam_angle_deg;
+    float angle_trim_deg;
     uint8 position_active;
     uint8 has_previous_velocity;
     uint8 target_beam_angle_initialized;
