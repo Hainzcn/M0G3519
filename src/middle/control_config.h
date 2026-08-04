@@ -20,7 +20,7 @@
 #define STOP_TEST_POSITIVE_TARGET_M                    (0.050f) /* 正端目标位置 */
 #define STOP_TEST_NEGATIVE_TARGET_M                   (-0.050f) /* 负端目标位置 */
 #define STOP_TEST_MAX_ENDPOINT_ERROR_M                 (0.010f) /* 正负端点最大允许误差 */
-#define STOP_TEST_ARRIVAL_TOLERANCE_M                  (0.003f) /* 状态机端点到位阈值 */
+#define STOP_TEST_ARRIVAL_TOLERANCE_M                  (0.010f) /* 状态机端点到位阈值 */
 #define STOP_TEST_VELOCITY_TOLERANCE_MPS               (0.030f) /* 到位时允许的最大球速 */
 #define STOP_TEST_ENDPOINT_SETTLE_MS                   (200u)   /* 端点连续稳定确认时间 */
 #define STOP_TEST_TIMEOUT_MS                           (5000u)  /* 运动全流程最大时间 */
@@ -31,12 +31,14 @@
 /* STOP_TEST 独立滚球控制参数 */
 #define STOP_TEST_POSITION_KP_S_INV                    (1.50f)
 #define STOP_TEST_POSITION_KI_S2_INV                   (0.00f)
-#define STOP_TEST_MAX_TARGET_VELOCITY_MPS              (0.050f)
-#define STOP_TEST_BRAKING_ENVELOPE_MPS2                (0.10f)
+#define STOP_TEST_MAX_TARGET_VELOCITY_MPS              (0.100f)
+#define STOP_TEST_BRAKING_ENVELOPE_MPS2                (0.25f)
 #define STOP_TEST_VELOCITY_KV_DEG_PER_MM               (0.020f)
-#define STOP_TEST_NEAR_POSITION_M                      (0.020f)
-#define STOP_TEST_NEAR_GAIN                            (0.30f)
-#define STOP_TEST_NEAR_SCALE_MAX                       (1.30f)
+#define STOP_TEST_NEAR_POSITION_M                      (0.060f)
+#define STOP_TEST_NEAR_GAIN                            (0.40f)
+#define STOP_TEST_NEAR_SCALE_MAX                       (1.40f)
+#define STOP_TEST_MAX_BEAM_ANGLE_DEG                   (4.0f)
+#define STOP_TEST_MAX_BEAM_VELOCITY_DEG_S              (80.0f)
 
 /* 赛题 MODE_4：A 点到 B 点，钢球保持中心 */
 #define AB_RUN_CRUISE_RPM                              (150.0f) /* AB 直线基础轮速，单位：RPM */
@@ -104,7 +106,7 @@
 #define BALANCE_SIMPLE_POSITION_ON_M                   (0.002f)  /* 启用位置回中控制的误差阈值，单位：米 */
 #define BALANCE_SIMPLE_POSITION_OFF_M                  (0.001f)  /* 关闭位置回中控制的误差阈值，单位：米 */
 #define BALANCE_SIMPLE_POSITION_KP_S_INV               (1.00f)   /* 位置比例增益，单位：每秒 */
-#define BALANCE_SIMPLE_POSITION_KI_S2_INV              (0.00f)   /* 位置积分增益，单位：每平方秒 */
+#define BALANCE_SIMPLE_POSITION_KI_S2_INV              (0.30f)   /* 位置积分增益，单位：每平方秒 */
 #define BALANCE_SIMPLE_MAX_TARGET_VELOCITY_MPS         (0.05f)  /* 最大目标球速，单位：米每秒 */
 #define BALANCE_SIMPLE_BRAKING_ENVELOPE_MPS2           (0.10f) /* 回中制动包络加速度，单位：米每平方秒 */
 #define BALANCE_SIMPLE_ACTUATOR_DELAY_S                (0.25f)   /* 含目标摆角爬升的等效执行延迟，单位：秒 */
@@ -119,7 +121,7 @@
 #define BALANCE_SIMPLE_NEAR_SCALE_MAX                  (1.15f)   /* 近中心增益最大倍率 */
 #define BALANCE_SIMPLE_INTEGRAL_ZONE_M                 (0.050f)  /* 位置积分生效范围，单位：米 */
 #define BALANCE_SIMPLE_INTEGRAL_LIMIT_MPS              (0.010f)  /* 位置积分对应目标球速上限，单位：米每秒 */
-#define BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG             (0.40f)   /* 球状态到目标摆角的固定正向偏置，单位：度 */
+#define BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG             (0.4f)   /* 球状态到目标摆角的固定正向偏置，单位：度 */
 #define BALANCE_SIMPLE_ACCELERATION_KA                 (0.0f)    /* 球加速度补偿增益，0 表示关闭 */
 #define BALANCE_SIMPLE_ACCELERATION_FILTER_ALPHA       (0.20f)   /* 球加速度低通滤波系数 */
 #define BALANCE_SIMPLE_CAR_ACCEL_OFFSET_MPS2           (0.200f)  /* IMU X 轴静态零偏 */

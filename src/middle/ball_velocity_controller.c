@@ -50,6 +50,8 @@ void ball_velocity_controller_step(
     float unsigned_velocity_limit_mps;
     float braking_delay_velocity_mps;
     float near_scale = 1.0f;
+    float position_error_ratio;
+    float velocity_error_ratio;
     float feedforward_scale = 0.0f;
     float acceleration_mps2;
     float unrestricted_beam_angle_deg;
@@ -144,21 +146,29 @@ void ball_velocity_controller_step(
         controller->output.flags |= BALL_VELOCITY_CONTROL_VELOCITY_LIMITED;
     }
 
+    controller->output.velocity_error_mps =
+        input->velocity_mps - controller->output.target_velocity_mps;
+
     if ((controller->config.near_gain > 0.0f) &&
         (controller->config.near_position_m > 0.0f) &&
+        (controller->config.max_target_velocity_mps > 0.0f) &&
         (velocity_abs(error_m) < controller->config.near_position_m))
     {
+        position_error_ratio = velocity_clamp(
+            velocity_abs(error_m) / controller->config.near_position_m,
+            0.0f, 1.0f);
+        velocity_error_ratio = velocity_clamp(
+            velocity_abs(controller->output.velocity_error_mps) /
+                controller->config.max_target_velocity_mps,
+            0.0f, 1.0f);
         near_scale = 1.0f + controller->config.near_gain *
-            (1.0f - velocity_abs(error_m) /
-             controller->config.near_position_m);
+            position_error_ratio * velocity_error_ratio;
         near_scale = velocity_clamp(
             near_scale, 1.0f, controller->config.near_scale_max);
         controller->output.flags |= BALL_VELOCITY_CONTROL_NEAR_DAMPING;
     }
     controller->output.effective_kv_deg_per_mm =
         controller->config.velocity_kv_deg_per_mmps * near_scale;
-    controller->output.velocity_error_mps =
-        input->velocity_mps - controller->output.target_velocity_mps;
 
     if (controller->config.vehicle_feedforward_position_cutoff_m > 0.0f)
     {

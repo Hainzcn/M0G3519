@@ -115,6 +115,10 @@ static void simple_apply_control_mode(void)
         simple_controller.config.near_gain = STOP_TEST_NEAR_GAIN;
         simple_controller.config.near_scale_max =
             STOP_TEST_NEAR_SCALE_MAX;
+        simple_controller.config.max_target_beam_angle_deg =
+            STOP_TEST_MAX_BEAM_ANGLE_DEG;
+        simple_controller.config.max_beam_velocity_deg_s =
+            STOP_TEST_MAX_BEAM_VELOCITY_DEG_S;
         simple_status.flags |= BALANCE_SIMPLE_FLAG_STOP_TEST_TUNING;
     }
     else
@@ -134,6 +138,10 @@ static void simple_apply_control_mode(void)
         simple_controller.config.near_gain = BALANCE_SIMPLE_NEAR_GAIN;
         simple_controller.config.near_scale_max =
             BALANCE_SIMPLE_NEAR_SCALE_MAX;
+        simple_controller.config.max_target_beam_angle_deg =
+            BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG;
+        simple_controller.config.max_beam_velocity_deg_s =
+            BALANCE_SIMPLE_MAX_BEAM_VELOCITY_DEG_S;
         simple_status.flags &=
             (uint16)(~BALANCE_SIMPLE_FLAG_STOP_TEST_TUNING);
     }
