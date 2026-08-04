@@ -1,6 +1,11 @@
 #include "button_app.h"
-#include "balance_app.h"
 #include "control_config.h"
+#if (BALANCE_CONTROL_ENABLE != 0u)
+#include "balance_app.h"
+#endif
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+#include "balance_simple_app.h"
+#endif
 #if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
 #include "drive_balance_demo_app.h"
 #endif
@@ -56,6 +61,11 @@ int main(void)
 #else
     heartbeat_hw_uart_send_string(" balance=0");
 #endif
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" balance-simple=1");
+#else
+    heartbeat_hw_uart_send_string(" balance-simple=0");
+#endif
 #if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
     heartbeat_hw_uart_send_string(" drive-balance=1");
 #else
@@ -76,6 +86,9 @@ int main(void)
     heartbeat_hw_uart_flush_blocking();
 #if (BALANCE_CONTROL_ENABLE != 0u)
     balance_app_init();
+#endif
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    balance_simple_app_init();
 #endif
 #if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
     drive_balance_demo_app_init();
@@ -101,6 +114,9 @@ int main(void)
         motor_app_process();
 #if (BALANCE_CONTROL_ENABLE != 0u)
         balance_app_process();
+#endif
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+        balance_simple_app_process();
 #endif
         uart3_maix_app_process();
         heartbeat_app_process();

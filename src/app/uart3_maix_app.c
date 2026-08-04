@@ -19,10 +19,50 @@
 #if (BALANCE_CONTROL_ENABLE != 0u)
 #include "balance_app.h"
 #endif
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+#include "balance_simple_app.h"
+#endif
 #if ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
      (EMM42_BALANCE_DEMO_ENABLE != 0u))
 #include "balance_linkage.h"
 #include "emm42_demo_app.h"
+#endif
+
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+static void balance_simple_send_diagnostic(void)
+{
+    char message[256];
+    const balance_simple_status_t *status =
+        balance_simple_app_get_status();
+    uint32 vision_age = (0xFFFFFFFFu == status->vision_age_ms) ?
+        999999u : status->vision_age_ms;
+    uint32 motor_age = (0xFFFFFFFFu == status->motor_position_age_ms) ?
+        999999u : status->motor_position_age_ms;
+
+    snprintf(message, sizeof(message),
+        "[balance-simple] ctl=angle-pi-v2 st=%u fault=%u fl=%04X sat=%04X "
+        "seq=%u age=%lu x=%d xh=%d v=%d vr=%d tr=%d th=%d "
+        "the=%d om=%d rpm=%d mp=%d mage=%lu err=%u\r\n",
+        (unsigned int)status->state,
+        (unsigned int)status->fault,
+        (unsigned int)status->flags,
+        (unsigned int)status->saturation_flags,
+        (unsigned int)status->vision_sequence,
+        (unsigned long)vision_age,
+        (int)(status->raw_position_m * 10000.0f),
+        (int)(status->estimated_position_m * 10000.0f),
+        (int)(status->estimated_velocity_mps * 1000.0f),
+        (int)(status->target_velocity_mps * 1000.0f),
+        (int)(status->target_beam_angle_deg * 100.0f),
+        (int)(status->measured_beam_angle_deg * 100.0f),
+        (int)(status->beam_angle_error_deg * 100.0f),
+        (int)(status->omega_command_deg_s * 100.0f),
+        (int)status->motor_rpm_command,
+        (int)(status->motor_position_deg * 100.0f),
+        (unsigned long)motor_age,
+        (unsigned int)status->command_error_count);
+    heartbeat_hw_uart_send_string(message);
+}
 #endif
 
 #define UART3_MAIX_DIAGNOSTIC_PERIOD_MS       (1000u)
@@ -379,6 +419,92 @@ static void balance_telemetry_send(uint32 now_ms)
     /* This open-loop demo has no vision-derived state to report on UART3. */
     (void)now_ms;
 }
+#elif (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+#define BALANCE_TELEMETRY_FRAME_SIZE          (68u)
+
+static void balance_telemetry_send(uint32 now_ms)
+{
+    uint8 frame[BALANCE_TELEMETRY_FRAME_SIZE];
+    const balance_simple_status_t *status =
+        balance_simple_app_get_status();
+    uint16 vision_age;
+    uint16 motor_age;
+    uint16 motor_velocity_age;
+    uint16 crc;
+
+    vision_age = (0xFFFFFFFFu == status->vision_age_ms) ? 0xFFFFu :
+        (uint16)((status->vision_age_ms > 65534u) ?
+                 65534u : status->vision_age_ms);
+    motor_age = (0xFFFFFFFFu == status->motor_position_age_ms) ? 0xFFFFu :
+        (uint16)((status->motor_position_age_ms > 65534u) ?
+                 65534u : status->motor_position_age_ms);
+    motor_velocity_age =
+        (0xFFFFFFFFu == status->motor_velocity_age_ms) ? 0xFFFFu :
+        (uint16)((status->motor_velocity_age_ms > 65534u) ?
+                 65534u : status->motor_velocity_age_ms);
+    frame[0] = 0xA5u;
+    frame[1] = 0x5Au;
+    frame[2] = 0x07u;
+    frame[3] = 0x82u;
+    frame[4] = BALANCE_TELEMETRY_FRAME_SIZE;
+    frame[5] = (uint8)status->flags;
+    frame[6] = (uint8)status->state;
+    frame[7] = (uint8)status->fault;
+    telemetry_write_u16_le(&frame[8], balance_telemetry_sequence);
+    telemetry_write_u32_le(&frame[10], now_ms);
+    telemetry_write_u16_le(&frame[14], status->vision_sequence);
+    telemetry_write_u32_le(&frame[16], status->capture_ms);
+    telemetry_write_u16_le(&frame[20], vision_age);
+    telemetry_write_scaled_i16(&frame[22], status->raw_position_m, 10000.0f);
+    telemetry_write_scaled_i16(&frame[24],
+        status->estimated_position_m, 10000.0f);
+    telemetry_write_scaled_i16(&frame[26],
+        status->estimated_velocity_mps, 1000.0f);
+    telemetry_write_scaled_i16(&frame[28],
+        status->target_position_m, 10000.0f);
+    telemetry_write_scaled_i16(&frame[30],
+        status->position_error_m, 10000.0f);
+    telemetry_write_scaled_i16(&frame[32],
+        status->velocity_limit_mps, 1000.0f);
+    telemetry_write_scaled_i16(&frame[34],
+        status->target_velocity_mps, 1000.0f);
+    telemetry_write_scaled_i16(&frame[36],
+        status->effective_kv_deg_per_mm, 1000.0f);
+    telemetry_write_scaled_i16(&frame[38],
+        status->omega_command_deg_s, 100.0f);
+    telemetry_write_scaled_i16(&frame[40],
+        status->motor_rpm_requested, 100.0f);
+    telemetry_write_u16_le(&frame[42],
+        (uint16)status->motor_rpm_command);
+    telemetry_write_scaled_i16(&frame[44],
+        status->motor_position_deg, 100.0f);
+    telemetry_write_u16_le(&frame[46], motor_age);
+    telemetry_write_u16_le(&frame[48], status->saturation_flags);
+    telemetry_write_u16_le(&frame[50], status->command_error_count);
+    telemetry_write_u16_le(&frame[52], status->emm42_rx_overflow_count);
+    frame[54] = status->vision_confidence;
+    frame[55] = status->vision_flags;
+    telemetry_write_scaled_i16(&frame[56],
+        status->integral_velocity_mps, 1000.0f);
+    telemetry_write_scaled_i16(&frame[58],
+        status->filtered_ball_accel_mps2, 1000.0f);
+    telemetry_write_u16_le(&frame[60], status->flags);
+    if (0u != (status->flags &
+               BALANCE_SIMPLE_FLAG_MOTOR_VELOCITY_VALID))
+    {
+        telemetry_write_u16_le(&frame[62],
+                               (uint16)status->motor_rpm_actual);
+    }
+    else
+    {
+        telemetry_write_u16_le(&frame[62], 0x8000u);
+    }
+    telemetry_write_u16_le(&frame[64], motor_velocity_age);
+    crc = telemetry_crc16_ccitt_false(frame, 66u);
+    telemetry_write_u16_le(&frame[66], crc);
+    (void)uart3_maix_hw_write_atomic(frame, BALANCE_TELEMETRY_FRAME_SIZE);
+    balance_telemetry_sequence++;
+}
 #else
 #define BALANCE_TELEMETRY_FRAME_SIZE          (64u)
 
@@ -489,6 +615,9 @@ void uart3_maix_app_init(void)
 #elif (BALL_RETURN_DEMO_ENABLE != 0u)
     heartbeat_hw_uart_send_string(
         "[mode] uart3 ball return demo, telemetry disabled\r\n");
+#elif (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(
+        "[mode] uart3 balance simple telemetry V6, 0x82/100Hz\r\n");
 #else
     heartbeat_hw_uart_send_string(
         "[mode] uart3 balance control telemetry V4, 0x82/100Hz\r\n");
@@ -528,6 +657,9 @@ void uart3_maix_app_process(void)
         vision_link_send_diagnostic();
 #if (BALANCE_CONTROL_ENABLE != 0u)
         balance_send_diagnostic();
+#endif
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+        balance_simple_send_diagnostic();
 #endif
     }
 }

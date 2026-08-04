@@ -6,6 +6,7 @@
 #include "balance_linkage.h"
 #include "button.h"
 #include "control_config.h"
+#include "control_config_legacy.h"
 #include "emm42.h"
 
 static uint32 mock_now_ms;

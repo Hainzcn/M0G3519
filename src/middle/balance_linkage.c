@@ -5,7 +5,7 @@
 /* Physical protractor angle to signed Emm42 absolute position. */
 #define BALANCE_LINKAGE_FIT_QUADRATIC   (-0.154232927f)
 #define BALANCE_LINKAGE_FIT_LINEAR      (-3.641589613f)
-#define BALANCE_LINKAGE_FIT_OFFSET      (-18.922007248f)
+#define BALANCE_LINKAGE_FIT_OFFSET      (-18.6f)
 /* Mechanically approved envelope. The fit above +2.76 deg is extrapolated. */
 #define BALANCE_LINKAGE_MIN_LEVER_DEG   (-7.0f)
 #define BALANCE_LINKAGE_MAX_LEVER_DEG   (7.0f)

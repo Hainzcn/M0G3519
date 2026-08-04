@@ -1,157 +1,180 @@
 #ifndef CONTROL_CONFIG_H_
 #define CONTROL_CONFIG_H_
 
-/* 底盘控制公共配置，100 Hz 周期；请在实车上标定。 */
-#define CHASSIS_CONTROL_PERIOD_MS             (10u)
+/* 运行模式 */
+#define CHASSIS_CONTROL_PERIOD_MS                    (10u)    /* 底盘控制周期，单位：毫秒 */
+#define MOTOR_APP_AUTO_START_LINE_FOLLOW             (0u)     /* 上电自动启动循迹：0=关闭，1=开启 */
+#define MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO       (0u)     /* 上电自动启动右转圆周演示：0=关闭，1=开启 */
 
-/* 通信联调阶段上电保持底盘停机；与 RIGHT_CIRCLE_DEMO 二选一。 */
-#define MOTOR_APP_AUTO_START_LINE_FOLLOW      (0u)
-#define MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO (0u)
+#define UART3_MAIX_MODE_NORMAL                        (0u)     /* UART3 正常模式：仅接收视觉数据，发送端静默 */
+#define UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG       (1u)     /* UART3 底盘遥测调试模式 */
+#define UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG       (2u)     /* UART3 摆杆遥测调试模式 */
+#define UART3_MAIX_MODE                               (UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) /* UART3 当前工作模式 */
 
-/*
- * UART3 工作模式。正常模式只接收 Maix 视觉帧，TX 完全静默；另外两项仅用于
- * 100 Hz 台架遥测调试，不属于正常运行通信。
- */
-#define UART3_MAIX_MODE_NORMAL                    (0u)
-#define UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG   (1u)
-#define UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG   (2u)
-#define UART3_MAIX_MODE                            (UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
-
-/* Balance actuator modes are mutually exclusive. */
 #ifndef BALL_RETURN_DEMO_ENABLE
-#define BALL_RETURN_DEMO_ENABLE               (0u)
+#define BALL_RETURN_DEMO_ENABLE                       (0u)     /* 开环回球演示：0=关闭，1=开启 */
 #endif
 #ifndef EMM42_BALANCE_DEMO_ENABLE
-#define EMM42_BALANCE_DEMO_ENABLE              (0u)
+#define EMM42_BALANCE_DEMO_ENABLE                     (0u)     /* EMM42 标定演示：0=关闭，1=开启 */
 #endif
 #ifndef BALANCE_CONTROL_ENABLE
-#define BALANCE_CONTROL_ENABLE                 (1u)
+#define BALANCE_CONTROL_ENABLE                        (0u)     /* 旧版轨迹控制器：0=关闭，1=开启 */
+#endif
+#ifndef BALANCE_SIMPLE_CONTROL_ENABLE
+#if ((BALANCE_CONTROL_ENABLE == 0u) && \
+     (EMM42_BALANCE_DEMO_ENABLE == 0u) && \
+     (BALL_RETURN_DEMO_ENABLE == 0u))
+#define BALANCE_SIMPLE_CONTROL_ENABLE                 (1u)     /* 简化速度控制器：其他摆杆模式关闭时默认开启 */
+#else
+#define BALANCE_SIMPLE_CONTROL_ENABLE                 (0u)     /* 简化速度控制器：存在互斥模式时关闭 */
+#endif
 #endif
 #ifndef BALANCE_DRIVE_DEMO_ENABLE
-#define BALANCE_DRIVE_DEMO_ENABLE              (BALANCE_CONTROL_ENABLE)
+#define BALANCE_DRIVE_DEMO_ENABLE                     (BALANCE_CONTROL_ENABLE) /* 行驶平衡演示：跟随旧版轨迹控制器 */
 #endif
 
-/*
- * Open-loop ball-return timeline multiplier. ESTIMATE: tune on the rig.
- * Values above 1 shorten the run and command braking/leveling earlier;
- * values below 1 lengthen it. Actuator rate/acceleration limits stay real-time.
- */
-#ifndef BALL_RETURN_DEMO_SPEED_SCALE
-#define BALL_RETURN_DEMO_SPEED_SCALE           (1.3f)
-#endif
-
-/*
- * The linkage fit uses the lower mechanical stop as Emm42 absolute zero.
- * Keeping CALIBRATED at zero makes the firmware initialize UART7 but never
- * enable or move the balance actuator.
- */
+/* 摆杆执行器通用上电参数 */
 #ifndef BALANCE_STARTUP_CALIBRATED
-#define BALANCE_STARTUP_CALIBRATED             (1u)
+#define BALANCE_STARTUP_CALIBRATED                    (1u)     /* 机械零位已标定：0=禁止驱动，1=允许驱动 */
 #endif
+#define BALANCE_POWER_WAIT_MS                          (3000u)  /* 驱动器上电等待时间，单位：毫秒 */
+#define BALANCE_LOWER_STOP_SETTLE_MS                   (1500u)  /* 下机械限位稳定时间，单位：毫秒 */
+#define BALANCE_LEVEL_SETTLE_MS                        (200u)   /* 回位角稳定时间，单位：毫秒 */
+#define BALANCE_EMM42_MOVE_RPM                         (120u)   /* EMM42 位置模式移动速度，单位：RPM */
+#define BALANCE_EMM42_ACCELERATION                     (50u)    /* EMM42 位置模式加速度参数 */
+#define BALANCE_LEVEL_MOTOR_TOLERANCE_DEG              (1.0f)   /* 上电回位允许误差，单位：度 */
 
-#define BALANCE_ESTIMATOR_PERIOD_MS            (5u)
-#define BALANCE_OUTER_CONTROL_PERIOD_MS        (20u)
-/* Compatibility name for the 200 Hz estimator/application tick. */
-#define BALANCE_CONTROL_PERIOD_MS              BALANCE_ESTIMATOR_PERIOD_MS
-#define BALANCE_COMMAND_PERIOD_MS              (20u)
-#define BALANCE_POSITION_QUERY_PERIOD_MS       (100u)
-#define BALANCE_POWER_WAIT_MS                  (3000u)
-#define BALANCE_LOWER_STOP_SETTLE_MS            (1500u)
-#define BALANCE_COMMAND_TIMEOUT_MS             (50u)
-#define BALANCE_MOVE_LEVEL_TIMEOUT_MS          (2500u)
-#define BALANCE_LEVEL_SETTLE_MS                (200u)
-#define BALANCE_HARD_EDGE_TIMEOUT_MS           (200u)
-#define BALANCE_MAX_CONSECUTIVE_COMMAND_ERRORS (3u)
-#define BALANCE_MAX_CONSECUTIVE_POSITION_QUERY_ERRORS (10u)
-#define BALANCE_RECOVERY_VALID_FRAMES          (5u)
-#define BALANCE_MIN_VISION_CONFIDENCE          (50u)
+/* 当前简化速度控制器：任务与观测器 */
+#define BALANCE_SIMPLE_CONTROL_PERIOD_MS               (20u)    /* 控制周期，单位：毫秒 */
+#define BALANCE_SIMPLE_OBSERVER_ALPHA                  (0.85f)   /* 位置残差校正系数 */
+#define BALANCE_SIMPLE_OBSERVER_BETA                   (0.15f)   /* 速度残差校正系数 */
+#define BALANCE_SIMPLE_VISIBLE_LIMIT_M                 (0.130f)  /* 视觉可接受位置范围，单位：米 */
+#define BALANCE_SIMPLE_MAX_IMPLIED_SPEED_MPS           (0.80f)   /* 相邻视觉帧允许的最大推算速度，单位：米每秒 */
+#define BALANCE_SIMPLE_MAX_CAPTURE_INTERVAL_MS         (150u)     /* 相邻视觉采样最大间隔，单位：毫秒 */
+#define BALANCE_SIMPLE_VISION_TIMEOUT_MS               (250u)     /* 视觉观测超时时间，单位：毫秒 */
+#define BALANCE_SIMPLE_VISION_TRANSPORT_MS             (3u)      /* 视觉链路固定传输延迟，单位：毫秒 */
+#define BALANCE_SIMPLE_MAX_PREDICTION_MS                (50u)     /* 陈旧视觉状态最大外推时间，单位：毫秒 */
+#define BALANCE_SIMPLE_RECOVERY_FRAMES                 (2u)      /* 观测恢复所需连续有效帧数 */
+#define BALANCE_SIMPLE_MIN_CONFIDENCE                  (50u)     /* 视觉测量最低置信度 */
 
-/* All values marked ESTIMATE must be replaced after the pending calibration. */
-#define BALANCE_CALIBRATION_PROVISIONAL        (1u)
-#define BALANCE_POSITION_LOOP_GAIN_S_INV       (1.0f)
-#define BALANCE_VELOCITY_LOOP_GAIN_S_INV       (5.0f)
-#define BALANCE_MAX_BALL_VELOCITY_MPS          (0.020f)
-/* Joint fit of six fixed-angle releases, including the measured shallow U. */
-#define BALANCE_ROLLING_FACTOR                  (0.704013961f)
-#define BALANCE_ROLLING_FRICTION_ACCEL_MPS2    (0.081404074f)
-#define BALANCE_RAIL_CURVATURE_M_INV           (0.201072373f)
-/* ESTIMATE: braking capability and residual actuator timing. */
-#define BALANCE_BRAKE_ACCEL_MPS2                (0.20f)
-#define BALANCE_ACTUATOR_DELAY_MS               (20u)
-#define BALANCE_BRAKE_MARGIN_DELAY_MS           (160u)
-/* Latch pullback across noisy velocity/braking boundaries. */
-#define BALANCE_OVERSPEED_RELEASE_RATIO          (0.70f)
-#define BALANCE_OVERSPEED_MIN_HOLD_MS            (40u)
-/* ESTIMATE: capture and stiction boundaries. */
-#define BALANCE_CENTER_CAPTURE_POSITION_M      (0.004f)
-#define BALANCE_CENTER_DEAD_POSITION_M         (0.0015f)
-#define BALANCE_CAPTURE_VELOCITY_MPS           (0.008f)
-#define BALANCE_STICK_VELOCITY_MPS             (0.003f)
-#define BALANCE_CAPTURE_INTEGRAL_GAIN           (0.0f)
-#define BALANCE_CAPTURE_MAX_ACCEL_MPS2          (0.05f)
-/* ESTIMATE: asin(a_f / (k*g)) is about 0.68 deg. */
-#define BALANCE_STATIC_FRICTION_ANGLE_DEG       (0.68f)
-#define BALANCE_BREAKAWAY_ANGLE_DEG             (1.0f)
-#define BALANCE_BREAKAWAY_QUALIFY_MS            (100u)
-#define BALANCE_BREAKAWAY_PULSE_MS              (40u)
-#define BALANCE_BREAKAWAY_MOVEMENT_M             (0.0006f)
-#define BALANCE_ESTIMATOR_POSITION_GAIN        (0.65f)
-#define BALANCE_ESTIMATOR_VELOCITY_RESIDUAL_GAIN (0.20f)
-#define BALANCE_MAX_BALL_ACCEL_MPS2            (0.30f)
-#define BALANCE_MAX_LEVER_ANGLE_DEG            (3.0f)
-#define BALANCE_DEGRADED_LEVER_ANGLE_DEG       (2.0f)
-#define BALANCE_MAX_LEVER_RATE_DEG_S           (30.0f)
-#define BALANCE_MAX_LEVER_ACCEL_DEG_S2         (600.0f)
-#define BALANCE_LEVER_COMMAND_DEADBAND_DEG      (0.1f)
-#define BALANCE_EDGE_POSITION_M                (0.100f)
-#define BALANCE_HARD_EDGE_POSITION_M           (0.125f)
-#define BALANCE_EDGE_RECOVERY_ACCEL_MPS2       (0.22f)
-#define BALANCE_FRESH_MEASUREMENT_MS           (60u)
-#define BALANCE_VALID_MEASUREMENT_MS           (100u)
-#define BALANCE_RECOVERY_MAX_POSITION_STEP_M   (0.010f)
-#define BALANCE_VISION_TRANSPORT_LATENCY_MS     (3u)
-#define BALANCE_VISION_MAX_COMPENSATION_MS      (30u)
-/* Chassis IMU X points forward; offset identified from the static 2026-08-04 run. */
-#define BALANCE_CAR_IMU_ACCEL_OFFSET_MPS2        (0.200f)
-#define BALANCE_CAR_IMU_ACCEL_GAIN               (1.0f)
-#define BALANCE_CAR_IMU_ACCEL_SIGN               (1.0f)
-#define BALANCE_CAR_IMU_ACCEL_LIMIT_MPS2         (2.0f)
-#define BALANCE_CAR_IMU_MAX_AGE_MS               (25u)
-#define BALANCE_CAR_FEEDFORWARD_DEBUG_PERIOD_MS  (50u)
+/* 当前简化速度控制器：位置环与速度环 */
+#define BALANCE_SIMPLE_POSITION_ON_M                   (0.004f)  /* 启用位置回中控制的误差阈值，单位：米 */
+#define BALANCE_SIMPLE_POSITION_OFF_M                  (0.002f)  /* 关闭位置回中控制的误差阈值，单位：米 */
+#define BALANCE_SIMPLE_POSITION_KP_S_INV               (1.00f)   /* 位置比例增益，单位：每秒 */
+#define BALANCE_SIMPLE_POSITION_KI_S2_INV              (0.10f)   /* 慢位置积分，克服轨道静摩擦，单位：每平方秒 */
+#define BALANCE_SIMPLE_MAX_TARGET_VELOCITY_MPS         (0.060f)  /* 最大目标球速，单位：米每秒 */
+#define BALANCE_SIMPLE_BRAKING_ENVELOPE_MPS2           (0.10f)   /* 回中制动包络加速度，单位：米每平方秒 */
+#define BALANCE_SIMPLE_ACTUATOR_DELAY_S                (0.25f)   /* 含目标摆角爬升的等效执行延迟，单位：秒 */
+#define BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM          (0.05f)  /* 球速误差到目标摆角的增益，单位：度/(毫米/秒) */
+#define BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG       (2.5f)    /* 目标摆角绝对值上限，单位：度 */
+#define BALANCE_SIMPLE_TARGET_BEAM_ANGLE_SLEW_DEG_S    (12.0f)   /* 目标摆角变化率上限，单位：度每秒 */
+#define BALANCE_SIMPLE_BEAM_ANGLE_KP_S_INV             (6.0f)    /* 摆角误差到摆杆角速度的比例增益，单位：每秒 */
+#define BALANCE_SIMPLE_BEAM_ANGLE_DEADBAND_DEG         (0.08f)   /* 抑制整数 RPM 往返动作的摆角死区 */
+#define BALANCE_SIMPLE_MAX_BEAM_VELOCITY_DEG_S         (10.0f)   /* 最大摆杆角速度，单位：度每秒 */
+#define BALANCE_SIMPLE_NEAR_POSITION_M                 (0.020f)  /* 近中心增益区间，单位：米 */
+#define BALANCE_SIMPLE_NEAR_GAIN                       (0.0f)    /* 近中心附加增益，0 表示关闭 */
+#define BALANCE_SIMPLE_NEAR_SCALE_MAX                  (1.50f)   /* 近中心增益最大倍率 */
+#define BALANCE_SIMPLE_INTEGRAL_ZONE_M                 (0.050f)  /* 覆盖已观测停驻区的积分作用范围，单位：米 */
+#define BALANCE_SIMPLE_INTEGRAL_LIMIT_MPS              (0.010f)  /* 积分速度上限，对应最多约 0.25 度附加摆角 */
+#define BALANCE_SIMPLE_ACCELERATION_KA                 (0.0f)    /* 球加速度补偿增益，0 表示关闭 */
+#define BALANCE_SIMPLE_ACCELERATION_FILTER_ALPHA       (0.20f)   /* 球加速度低通滤波系数 */
 
-#define BALANCE_DRIVE_DEMO_LAP_ARM_DISTANCE_M    (4.5f)
-#define BALANCE_DRIVE_DEMO_MARKER_DEBOUNCE_MS    (20u)
-#define BALANCE_DRIVE_DEMO_TIMEOUT_MS             (30000u)
-#define BALANCE_DRIVE_DEMO_LINE_LOSS_TIMEOUT_MS   (500u)
-#define BALANCE_DRIVE_DEMO_IMU_LOSS_TIMEOUT_MS    (100u)
+/* 当前简化速度控制器：执行器 */
+#define BALANCE_SIMPLE_MOTOR_SIGN                      (-1.0f)  /* 摆杆正向角速度对应电机位置减小 */
+#define BALANCE_SIMPLE_TRANSMISSION_RATIO              (3.80f)  /* 摆杆与电机的标称传动比 */
+#define BALANCE_SIMPLE_RAISING_RATIO                   (3.80f)  /* 抬升方向传动比 */
+#define BALANCE_SIMPLE_LOWERING_RATIO                  (3.80f)  /* 下压方向传动比 */
+#define BALANCE_SIMPLE_MOTOR_MIN_HARD_DEG              (-35.0f) /* 电机最小硬限位，单位：度 */
+#define BALANCE_SIMPLE_MOTOR_MAX_HARD_DEG              (0.0f)   /* 电机最大硬限位，单位：度 */
+#define BALANCE_SIMPLE_MOTOR_MIN_SOFT_DEG              (-30.0f) /* 电机最小软限位，单位：度 */
+#define BALANCE_SIMPLE_MOTOR_MAX_SOFT_DEG              (-10.0f)   /* 电机最大软限位，单位：度 */
+#define BALANCE_SIMPLE_MAX_MOTOR_RPM                   (60)     /* 电机速度命令绝对值上限，单位：RPM */
+#define BALANCE_SIMPLE_MIN_ACTIVE_RPM                  (1)      /* 非零电机速度命令最小值，单位：RPM */
+#define BALANCE_SIMPLE_EMM42_ACCELERATION              (0u)    /* EMM42 速度模式加速度参数 */
+#define BALANCE_SIMPLE_POSITION_QUERY_MS               (20u)     /* 摆角闭环位置查询周期，单位：毫秒 */
+#define BALANCE_SIMPLE_VELOCITY_QUERY_MS               (100u)    /* 电机实际速度诊断查询周期，单位：毫秒 */
+#define BALANCE_SIMPLE_VELOCITY_KEEPALIVE_MS           (100u)   /* 电机速度命令保活周期，单位：毫秒 */
+#define BALANCE_SIMPLE_COMMAND_TIMEOUT_MS              (50u)    /* 电机命令应答超时，单位：毫秒 */
+#define BALANCE_SIMPLE_MOTOR_POSITION_MAX_AGE_MS       (80u)    /* 电机位置反馈最大有效年龄，单位：毫秒 */
+#define BALANCE_SIMPLE_MOTOR_VELOCITY_MAX_AGE_MS       (100u)   /* 电机速度反馈最大有效年龄，单位：毫秒 */
+#define BALANCE_SIMPLE_RUNTIME_MOTOR_SAFETY_ENABLE     (0u)     /* 命令应答错误锁存：0=调试关闭，1=开启 */
+#define BALANCE_SIMPLE_MAX_COMMAND_ERRORS              (3u)     /* 连续电机命令错误上限 */
+#define BALANCE_SIMPLE_STARTUP_TIMEOUT_MS              (10000u) /* 执行器上电流程总超时，单位：毫秒 */
 
-/* Jerk-limited nominal profile; values remain provisional. */
-#define BALANCE_PROFILE_DRIVE_ACCEL_MPS2       (0.08f)
-#define BALANCE_PROFILE_BRAKE_ACCEL_MPS2       (0.12f)
-#define BALANCE_PROFILE_MAX_VELOCITY_MPS       (0.020f)
-#define BALANCE_PROFILE_MAX_JERK_MPS3           (2.5f)
-#define BALANCE_PROFILE_FEEDFORWARD_LEAD_S      (0.020f)
-#define BALANCE_PROFILE_CAPTURE_POSITION_M      (0.004f)
-#define BALANCE_PROFILE_CAPTURE_VELOCITY_MPS    (0.008f)
-#define BALANCE_PROFILE_POSITION_TOLERANCE_M   (0.0005f)
-#define BALANCE_PROFILE_VELOCITY_TOLERANCE_MPS (0.002f)
-#define BALANCE_TARGET_POSITION_LIMIT_M        (0.090f)
-/* Conservative first closed-loop commissioning sequence. */
-#define BALANCE_SEQUENCE_POSITIVE_TARGET_M     (0.030f)
-#define BALANCE_SEQUENCE_NEGATIVE_TARGET_M     (-0.030f)
-#define BALANCE_SEQUENCE_POSITION_TOLERANCE_M  (0.006f)
-#define BALANCE_SEQUENCE_VELOCITY_TOLERANCE_MPS (0.030f)
-#define BALANCE_SEQUENCE_SETTLE_MS             (100u)
-#define BALANCE_SEQUENCE_TIMEOUT_MS            (4800u)
+/* 当前简化速度控制器：目标与安全策略 */
+#define BALANCE_SIMPLE_TARGET_LIMIT_M                  (0.090f) /* 外部目标位置绝对值上限，单位：米 */
+#define BALANCE_SIMPLE_BALL_SOFT_EDGE_M                (0.100f) /* 小球软边界位置，单位：米 */
+#define BALANCE_SIMPLE_BALL_HARD_EDGE_M                (0.125f) /* 小球硬边界位置，单位：米 */
+#define BALANCE_SIMPLE_SAFE_RETURN_DELAY_MS            (250u)   /* 进入安全回位前的等待时间，单位：毫秒 */
+#define BALANCE_SIMPLE_SAFE_RETURN_DEG_S               (6.0f)   /* 安全回位摆杆角速度，单位：度每秒 */
+#define BALANCE_SIMPLE_STATIC_LOCK_ENABLE              (0u)     /* 中心静止锁定：0=关闭，1=开启 */
+#define BALANCE_SIMPLE_STATIC_ENTER_POSITION_M         (0.002f) /* 进入静止锁定的位置阈值，单位：米 */
+#define BALANCE_SIMPLE_STATIC_ENTER_VELOCITY_MPS       (0.003f) /* 进入静止锁定的速度阈值，单位：米每秒 */
+#define BALANCE_SIMPLE_STATIC_ENTER_MS                 (500u)   /* 进入静止锁定所需稳定时间，单位：毫秒 */
+#define BALANCE_SIMPLE_STATIC_RELEASE_POSITION_M       (0.004f) /* 退出静止锁定的位置阈值，单位：米 */
+#define BALANCE_SIMPLE_STATIC_RELEASE_VELOCITY_MPS     (0.006f) /* 退出静止锁定的速度阈值，单位：米每秒 */
 
-#define BALANCE_EMM42_MOVE_RPM                 (120u)
-#define BALANCE_EMM42_ACCELERATION             (50u)
-/* Logical and calibrated physical lever angles currently use the same sign. */
-#define BALANCE_LOGICAL_TO_PHYSICAL_LEVER_SIGN (1)
-#define BALANCE_LEVEL_MOTOR_TOLERANCE_DEG      (1.0f)
-#define BALANCE_MOTOR_FOLLOW_ERROR_DEG         (5.0f)
-#define BALANCE_MOTOR_FOLLOW_ERROR_TIMEOUT_MS  (1000u)
+/* 底盘几何与电机接线 */
+#define CHASSIS_WHEEL_TRACK_M                          (0.195f) /* 左右轮距，单位：米 */
+#define CHASSIS_WHEEL_DIAMETER_M                       (0.065f) /* 车轮直径，单位：米 */
+#define RIGHT_CIRCLE_DIAMETER_M                        (1.000f) /* 右转圆周演示的中心轨迹直径，单位：米 */
+#define RIGHT_CIRCLE_DEMO_CENTER_RPM                   (120.0f) /* 右转圆周演示的中心轮速，单位：RPM */
+#define MOTOR_OUTPUT_SWAP_LEFT_RIGHT                   (0u)     /* 左右电机输出交换：0=不交换，1=交换 */
+#define MOTOR_LEFT_OUTPUT_POLARITY                     (-1)     /* 左电机输出极性：1=同向，-1=反向 */
+#define MOTOR_RIGHT_OUTPUT_POLARITY                    (-1)     /* 右电机输出极性：1=同向，-1=反向 */
+#define WHEEL_LEFT_ENCODER_SIGN                        (1.0f)   /* 左轮前进时编码器符号 */
+#define WHEEL_RIGHT_ENCODER_SIGN                       (-1.0f)  /* 右轮前进时编码器符号 */
 
+/* 轮速闭环 */
+#define WHEEL_LEFT_KP                                  (80.0f)  /* 左轮比例增益 */
+#define WHEEL_LEFT_KI                                  (8.0f)   /* 左轮积分增益 */
+#define WHEEL_LEFT_KD                                  (0.0f)   /* 左轮微分增益 */
+#define WHEEL_LEFT_KS                                  (0.0f)   /* 左轮静摩擦前馈 */
+#define WHEEL_LEFT_KV                                  (30.0f)  /* 左轮速度前馈 */
+#define WHEEL_LEFT_KA                                  (0.0f)   /* 左轮加速度前馈 */
+#define WHEEL_RIGHT_KP                                 (80.0f)  /* 右轮比例增益 */
+#define WHEEL_RIGHT_KI                                 (8.0f)   /* 右轮积分增益 */
+#define WHEEL_RIGHT_KD                                 (0.0f)   /* 右轮微分增益 */
+#define WHEEL_RIGHT_KS                                 (0.0f)   /* 右轮静摩擦前馈 */
+#define WHEEL_RIGHT_KV                                 (33.0f)  /* 右轮速度前馈 */
+#define WHEEL_RIGHT_KA                                 (0.0f)   /* 右轮加速度前馈 */
+#define WHEEL_PID_INTEGRAL_LIMIT                       (6000.0f)/* 轮速积分项绝对值上限 */
+#define WHEEL_PID_OUTPUT_LIMIT                         (10000.0f)/* 轮速控制输出绝对值上限 */
+#define WHEEL_TARGET_RPM_LIMIT                         (250.0f) /* 轮速目标绝对值上限，单位：RPM */
+#define WHEEL_FEEDFORWARD_ACCEL_RPM_S_LIMIT            (600.0f) /* 前馈目标加速度上限，单位：RPM 每秒 */
+#define WHEEL_LEFT_PWM_MAP_SCALE                       (1.00f)  /* 左电机控制量到 PWM 的映射比例 */
+#define WHEEL_RIGHT_PWM_MAP_SCALE                      (0.92f)  /* 右电机控制量到 PWM 的映射比例 */
+#define WHEEL_PWM_SLEW_DUTY_PER_S                      (30000.0f)/* PWM 占空比变化率上限，单位：每秒 */
+#define WHEEL_ACCEL_FILTER_ALPHA                       (0.20f)  /* 编码器加速度低通滤波系数 */
+#define WHEEL_MEASURED_ACCEL_MPS2_LIMIT                (20.0f)  /* 编码器测得加速度绝对值上限，单位：米每平方秒 */
+
+/* 黑线查表循迹 */
+#define LINE_BLACK_ACTIVE_LEVEL                        (1u)     /* 黑线传感器有效电平 */
+#define LINE_SENSOR_MARKER_MIN_COUNT                   (6u)     /* 赛道标记判定所需最少有效传感器数 */
+#define LINE_LOOKUP_CORRECTION_SIGN                    (1.0f)   /* 转向修正方向 */
+#define LINE_LOOKUP_INITIAL_PHASE                      (0u)     /* 初始赛段：0=直线，1=右弧 */
+#define LINE_LOOKUP_STRAIGHT_LENGTH_M                  (1.500f) /* 单段直线长度，单位：米 */
+#define LINE_LOOKUP_ARC_RADIUS_M                       (0.500f) /* 弧线半径，单位：米 */
+#define LINE_LOOKUP_ARC_LENGTH_M                       (1.57079633f) /* 单段弧线长度，单位：米 */
+#define LINE_LOOKUP_TRANSITION_HALF_LENGTH_M           (0.150f) /* 赛段切换过渡半长，单位：米 */
+#define LINE_LOOKUP_SPEED_REFERENCE_RPM                (120.0f) /* 查表反馈标定基准轮速，单位：RPM */
+#define LINE_LOOKUP_STRAIGHT_BASE_RPM                  (170.0f) /* 直线基础轮速，单位：RPM */
+#define LINE_LOOKUP_SPEED_MIN_RPM                      (60.0f)  /* 运行轮速下限，单位：RPM */
+#define LINE_LOOKUP_SPEED_MAX_RPM                      (180.0f) /* 运行轮速上限，单位：RPM */
+#define LINE_LOOKUP_FEEDBACK_SCALE_MAX                 (1.00f)  /* 反馈修正最大缩放比例 */
+#define LINE_LOOKUP_LEVEL_1_TURN_RPM                   (8.0f)   /* 一级偏差转向差速，单位：RPM */
+#define LINE_LOOKUP_LEVEL_2_TURN_RPM                   (16.0f)  /* 二级偏差转向差速，单位：RPM */
+#define LINE_LOOKUP_LEVEL_3_TURN_RPM                   (28.0f)  /* 三级偏差转向差速，单位：RPM */
+#define LINE_LOOKUP_LEVEL_4_TURN_RPM                   (42.0f)  /* 四级偏差转向差速，单位：RPM */
+#define LINE_LOOKUP_TURN_RPM_LIMIT                     (55.0f)  /* 转向差速绝对值上限，单位：RPM */
+#define LINE_LOOKUP_BASE_START_SLEW_RPM_PER_S          (300.0f) /* 基础轮速启动变化率，单位：RPM 每秒 */
+#define LINE_LOOKUP_TURN_SLEW_RPM_PER_S                (240.0f) /* 转向差速变化率，单位：RPM 每秒 */
+#define LINE_LOOKUP_REVERSE_HOLD_MS                    (40u)    /* 转向反向前保持时间，单位：毫秒 */
+#define LINE_LOOKUP_LOST_HOLD_MS                       (80u)    /* 丢线后保持原指令时间，单位：毫秒 */
+#define LINE_LOOKUP_SEARCH_TIMEOUT_MS                  (250u)   /* 丢线搜索超时时间，单位：毫秒 */
+#define LINE_LOOKUP_SEARCH_TURN_RPM                    (35.0f)  /* 丢线搜索转向差速，单位：RPM */
+
+/* 配置合法性检查 */
 #if ((MOTOR_APP_AUTO_START_LINE_FOLLOW != 0u) && \
      (MOTOR_APP_AUTO_START_RIGHT_CIRCLE_DEMO != 0u))
 #error "Only one motor app auto-start mode may be enabled"
@@ -161,8 +184,7 @@
      (UART3_MAIX_MODE != UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG))
 #error "UART3_MAIX_MODE is invalid"
 #endif
-#if ((EMM42_BALANCE_DEMO_ENABLE != 0u) && \
-     (EMM42_BALANCE_DEMO_ENABLE != 1u))
+#if ((EMM42_BALANCE_DEMO_ENABLE != 0u) && (EMM42_BALANCE_DEMO_ENABLE != 1u))
 #error "EMM42_BALANCE_DEMO_ENABLE must be 0 or 1"
 #endif
 #if ((BALL_RETURN_DEMO_ENABLE != 0u) && (BALL_RETURN_DEMO_ENABLE != 1u))
@@ -171,130 +193,45 @@
 #if ((BALANCE_CONTROL_ENABLE != 0u) && (BALANCE_CONTROL_ENABLE != 1u))
 #error "BALANCE_CONTROL_ENABLE must be 0 or 1"
 #endif
-#if ((BALANCE_DRIVE_DEMO_ENABLE != 0u) && \
-     (BALANCE_DRIVE_DEMO_ENABLE != 1u))
+#if ((BALANCE_SIMPLE_CONTROL_ENABLE != 0u) && (BALANCE_SIMPLE_CONTROL_ENABLE != 1u))
+#error "BALANCE_SIMPLE_CONTROL_ENABLE must be 0 or 1"
+#endif
+#if ((BALANCE_DRIVE_DEMO_ENABLE != 0u) && (BALANCE_DRIVE_DEMO_ENABLE != 1u))
 #error "BALANCE_DRIVE_DEMO_ENABLE must be 0 or 1"
 #endif
-#if ((BALANCE_DRIVE_DEMO_ENABLE != 0u) && \
-     (BALANCE_CONTROL_ENABLE == 0u))
+#if ((BALANCE_DRIVE_DEMO_ENABLE != 0u) && (BALANCE_CONTROL_ENABLE == 0u))
 #error "Balance drive demo requires balance control"
 #endif
-#if ((BALANCE_STARTUP_CALIBRATED != 0u) && \
-     (BALANCE_STARTUP_CALIBRATED != 1u))
+#if ((BALANCE_STARTUP_CALIBRATED != 0u) && (BALANCE_STARTUP_CALIBRATED != 1u))
 #error "BALANCE_STARTUP_CALIBRATED must be 0 or 1"
 #endif
-#if ((BALANCE_LOGICAL_TO_PHYSICAL_LEVER_SIGN != 1) && \
-     (BALANCE_LOGICAL_TO_PHYSICAL_LEVER_SIGN != -1))
-#error "BALANCE_LOGICAL_TO_PHYSICAL_LEVER_SIGN must be 1 or -1"
+#if ((BALANCE_SIMPLE_RUNTIME_MOTOR_SAFETY_ENABLE != 0u) && \
+     (BALANCE_SIMPLE_RUNTIME_MOTOR_SAFETY_ENABLE != 1u))
+#error "BALANCE_SIMPLE_RUNTIME_MOTOR_SAFETY_ENABLE must be 0 or 1"
 #endif
-#if ((BALANCE_CONTROL_ENABLE + EMM42_BALANCE_DEMO_ENABLE + \
-      BALL_RETURN_DEMO_ENABLE) > 1u)
+#if ((BALANCE_CONTROL_ENABLE + BALANCE_SIMPLE_CONTROL_ENABLE + \
+      EMM42_BALANCE_DEMO_ENABLE + BALL_RETURN_DEMO_ENABLE) > 1u)
 #error "Balance controller and actuator demos are mutually exclusive"
 #endif
 #if ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
-     (BALANCE_CONTROL_ENABLE == 0u) && (EMM42_BALANCE_DEMO_ENABLE == 0u))
-#if (BALL_RETURN_DEMO_ENABLE == 0u)
+     (BALANCE_CONTROL_ENABLE == 0u) && (EMM42_BALANCE_DEMO_ENABLE == 0u) && \
+     (BALL_RETURN_DEMO_ENABLE == 0u) && (BALANCE_SIMPLE_CONTROL_ENABLE == 0u))
 #error "Balance telemetry mode requires balance control or an actuator demo"
 #endif
-#endif
-
-/* 实测车体几何参数，以及顺时针 1 m 直径圆的中心轨迹。 */
-#define CHASSIS_WHEEL_TRACK_M                  (0.195f)
-#define CHASSIS_WHEEL_DIAMETER_M               (0.065f)
-#define RIGHT_CIRCLE_DIAMETER_M                (1.000f)
-#define RIGHT_CIRCLE_DEMO_CENTER_RPM           (120.0f)
-
-/*
- * 逻辑轮速命令与 TB6612 接线的标定。
- * 仅当 PWMA/PWMB 仍驱动相反物理轮时，将 SWAP 设为 1。
- * 若正命令使该轮反向旋转，则将该轮极性设为 -1。
- */
-#define MOTOR_OUTPUT_SWAP_LEFT_RIGHT          (0u)
-#define MOTOR_LEFT_OUTPUT_POLARITY            (-1)
-#define MOTOR_RIGHT_OUTPUT_POLARITY           (-1)
-
-#if ((MOTOR_OUTPUT_SWAP_LEFT_RIGHT != 0u) && \
-     (MOTOR_OUTPUT_SWAP_LEFT_RIGHT != 1u))
+#if ((MOTOR_OUTPUT_SWAP_LEFT_RIGHT != 0u) && (MOTOR_OUTPUT_SWAP_LEFT_RIGHT != 1u))
 #error "MOTOR_OUTPUT_SWAP_LEFT_RIGHT must be 0 or 1"
 #endif
-#if ((MOTOR_LEFT_OUTPUT_POLARITY != 1) && \
-     (MOTOR_LEFT_OUTPUT_POLARITY != -1))
+#if ((MOTOR_LEFT_OUTPUT_POLARITY != 1) && (MOTOR_LEFT_OUTPUT_POLARITY != -1))
 #error "MOTOR_LEFT_OUTPUT_POLARITY must be 1 or -1"
 #endif
-#if ((MOTOR_RIGHT_OUTPUT_POLARITY != 1) && \
-     (MOTOR_RIGHT_OUTPUT_POLARITY != -1))
+#if ((MOTOR_RIGHT_OUTPUT_POLARITY != 1) && (MOTOR_RIGHT_OUTPUT_POLARITY != -1))
 #error "MOTOR_RIGHT_OUTPUT_POLARITY must be 1 or -1"
 #endif
-
-/* 编码器符号：前进时车轮转速应上报为正 RPM。 */
-#define WHEEL_LEFT_ENCODER_SIGN               (1.0f)
-#define WHEEL_RIGHT_ENCODER_SIGN              (-1.0f)
-
-/* 轮速环初始增益：PWM 占空比与 RPM 域量之间的比例。 */
-#define WHEEL_LEFT_KP                         (80.0f)
-#define WHEEL_LEFT_KI                         (8.0f)
-#define WHEEL_LEFT_KD                         (0.0f)
-#define WHEEL_LEFT_KS                         (0.0f)
-#define WHEEL_LEFT_KV                         (30.0f)
-#define WHEEL_LEFT_KA                         (0.0f)
-
-#define WHEEL_RIGHT_KP                        (80.0f)
-#define WHEEL_RIGHT_KI                        (8.0f)
-#define WHEEL_RIGHT_KD                        (0.0f)
-#define WHEEL_RIGHT_KS                        (0.0f)
-#define WHEEL_RIGHT_KV                        (33.0f)
-#define WHEEL_RIGHT_KA                        (0.0f)
-
-#define WHEEL_PID_INTEGRAL_LIMIT              (6000.0f)
-#define WHEEL_PID_OUTPUT_LIMIT                (10000.0f)
-/* 电机空载额定最高转速；软件目标应低于此值。 */
-#define MOTOR_RATED_MAX_RPM                   (320.0f)
-#define WHEEL_LEFT_MEASURED_MAX_RPM           (305.0f)
-#define WHEEL_RIGHT_MEASURED_MAX_RPM          (330.0f)
-#define WHEEL_TARGET_RPM_LIMIT                (250.0f)
-#define WHEEL_FEEDFORWARD_ACCEL_RPM_S_LIMIT   (600.0f)
-/* 控制器输出到各电机的映射；右轮 10000 对应 PWM 9200。 */
-#define WHEEL_LEFT_PWM_MAP_SCALE              (1.00f)
-#define WHEEL_RIGHT_PWM_MAP_SCALE             (0.92f)
-#define WHEEL_PWM_SLEW_DUTY_PER_S             (30000.0f)
-/* 编码器差分前进加速度低通和异常值限幅。 */
-#define WHEEL_ACCEL_FILTER_ALPHA               (0.20f)
-#define WHEEL_MEASURED_ACCEL_MPS2_LIMIT        (20.0f)
-
-/* Digital black-line lookup controller for the clockwise capsule track. */
-#define LINE_BLACK_ACTIVE_LEVEL               (1u)
-#define LINE_SENSOR_MARKER_MIN_COUNT          (6u)
-#define LINE_LOOKUP_CORRECTION_SIGN           (1.0f)
-#define LINE_LOOKUP_INITIAL_PHASE             (0u)       /* 0=straight, 1=right arc */
-
-#define LINE_LOOKUP_STRAIGHT_LENGTH_M         (1.500f)
-#define LINE_LOOKUP_ARC_RADIUS_M              (0.500f)
-#define LINE_LOOKUP_ARC_LENGTH_M              (1.57079633f)
-#define LINE_LOOKUP_TRANSITION_HALF_LENGTH_M  (0.150f)
-
-/* 120 RPM 是查表反馈标定基准；运行中中心速度保持恒定。 */
-#define LINE_LOOKUP_SPEED_REFERENCE_RPM       (120.0f)
-#define LINE_LOOKUP_STRAIGHT_BASE_RPM         (170.0f)
-#define LINE_LOOKUP_SPEED_MIN_RPM             (60.0f)
-#define LINE_LOOKUP_SPEED_MAX_RPM             (180.0f)
-#define LINE_LOOKUP_FEEDBACK_SCALE_MAX        (1.00f)
-#define LINE_LOOKUP_LEVEL_1_TURN_RPM          (8.0f)
-#define LINE_LOOKUP_LEVEL_2_TURN_RPM          (16.0f)
-#define LINE_LOOKUP_LEVEL_3_TURN_RPM          (28.0f)
-#define LINE_LOOKUP_LEVEL_4_TURN_RPM          (42.0f)
-#define LINE_LOOKUP_TURN_RPM_LIMIT            (55.0f)
-#define LINE_LOOKUP_BASE_START_SLEW_RPM_PER_S (300.0f)
-#define LINE_LOOKUP_TURN_SLEW_RPM_PER_S       (240.0f)
-#define LINE_LOOKUP_REVERSE_HOLD_MS           (40u)
-
-#define LINE_LOOKUP_LOST_HOLD_MS              (80u)
-#define LINE_LOOKUP_SEARCH_TIMEOUT_MS         (250u)
-#define LINE_LOOKUP_SEARCH_TURN_RPM           (35.0f)
-
 #if (LINE_LOOKUP_INITIAL_PHASE > 1u)
 #error "LINE_LOOKUP_INITIAL_PHASE must be 0 or 1"
 #endif
 #if (LINE_LOOKUP_LOST_HOLD_MS >= LINE_LOOKUP_SEARCH_TIMEOUT_MS)
 #error "Line lost hold time must be shorter than search timeout"
 #endif
+
 #endif

@@ -5,6 +5,7 @@
 #include "balance_app.h"
 #include "button.h"
 #include "control_config.h"
+#include "control_config_legacy.h"
 #include "drive_balance_demo_app.h"
 #include "encoder.h"
 #include "line_control.h"

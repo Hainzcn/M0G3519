@@ -45,6 +45,12 @@ virtualFolder:
         - path: ../src/middle/balance_actuator_trajectory.h
         - path: ../src/middle/balance_control.c
         - path: ../src/middle/balance_control.h
+        - path: ../src/middle/ball_state_observer.c
+        - path: ../src/middle/ball_state_observer.h
+        - path: ../src/middle/ball_velocity_controller.c
+        - path: ../src/middle/ball_velocity_controller.h
+        - path: ../src/middle/balance_velocity_actuator.c
+        - path: ../src/middle/balance_velocity_actuator.h
         - path: ../src/middle/balance_linkage.c
         - path: ../src/middle/balance_linkage.h
         - path: ../src/middle/ball_motion_profile.c
@@ -81,6 +87,8 @@ virtualFolder:
         - path: ../src/app/ball_return_demo_app.h
         - path: ../src/app/balance_app.c
         - path: ../src/app/balance_app.h
+        - path: ../src/app/balance_simple_app.c
+        - path: ../src/app/balance_simple_app.h
         - path: ../src/app/drive_balance_demo_app.c
         - path: ../src/app/drive_balance_demo_app.h
         - path: ../src/app/uart3_maix_app.c

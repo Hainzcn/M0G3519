@@ -6,6 +6,7 @@
 #include "balance_app.h"
 #include "balance_linkage.h"
 #include "control_config.h"
+#include "control_config_legacy.h"
 #include "emm42.h"
 #include "imu.h"
 #include "motor_app.h"
