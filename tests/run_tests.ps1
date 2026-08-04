@@ -37,6 +37,16 @@ try {
         "tests/test_balance_closed_loop.c", "src/middle/balance_control.c",
         "src/middle/ball_motion_profile.c",
         "src/middle/balance_actuator_trajectory.c")
+    Invoke-CTest "test_balance_simple_startup" @(
+        "tests/test_balance_simple_startup.c",
+        "src/app/balance_simple_app.c",
+        "src/middle/ball_state_observer.c",
+        "src/middle/ball_velocity_controller.c",
+        "src/middle/balance_velocity_actuator.c",
+        "src/middle/balance_linkage.c")
+    Invoke-CTest "test_ball_velocity_controller" @(
+        "tests/test_ball_velocity_controller.c",
+        "src/middle/ball_velocity_controller.c")
     Invoke-CTest "test_balance_app" @(
         "tests/test_balance_app.c", "src/app/balance_app.c",
         "src/middle/balance_control.c", "src/middle/ball_motion_profile.c",
@@ -45,6 +55,25 @@ try {
     Invoke-CTest "test_drive_balance_demo_app" @(
         "tests/test_drive_balance_demo_app.c",
         "src/app/drive_balance_demo_app.c")
+    Invoke-CTest "test_no_load_lap_app" @(
+        "tests/test_no_load_lap_app.c",
+        "src/app/no_load_lap_app.c")
+    Invoke-CTest "test_ab_run_app" @(
+        "tests/test_ab_run_app.c",
+        "src/app/ab_run_app.c")
+    Invoke-CTest "test_stop_test_app" @(
+        "tests/test_stop_test_app.c",
+        "src/app/stop_test_app.c")
+    Invoke-CTest "test_button_app" @(
+        "-DBALANCE_CONTROL_ENABLE=1",
+        "-DBALANCE_DRIVE_DEMO_ENABLE=1",
+        "-DBALANCE_SIMPLE_CONTROL_ENABLE=0",
+        "tests/test_button_app.c", "src/app/button_app.c")
+    Invoke-CTest "test_button_simple_app" @(
+        "-DBALANCE_CONTROL_ENABLE=0",
+        "-DBALANCE_DRIVE_DEMO_ENABLE=1",
+        "-DBALANCE_SIMPLE_CONTROL_ENABLE=1",
+        "tests/test_button_app.c", "src/app/button_app.c")
     Invoke-CTest "test_emm42_demo_app" @(
         "tests/test_emm42_demo_app.c", "src/app/emm42_demo_app.c",
         "src/middle/balance_linkage.c")
@@ -78,10 +107,19 @@ try {
             Defines = @("-DBALL_RETURN_DEMO_ENABLE=0",
                         "-DEMM42_BALANCE_DEMO_ENABLE=0",
                         "-DBALANCE_CONTROL_ENABLE=1")
+        },
+        @{
+            Name = "balance_simple"
+            Defines = @("-DBALL_RETURN_DEMO_ENABLE=0",
+                        "-DEMM42_BALANCE_DEMO_ENABLE=0",
+                        "-DBALANCE_CONTROL_ENABLE=0",
+                        "-DBALANCE_SIMPLE_CONTROL_ENABLE=1")
         }
     )
     foreach ($Mode in $ModeBuilds) {
         foreach ($Source in @("src/main.c", "src/app/button_app.c",
+                              "src/app/drive_balance_demo_app.c",
+                              "src/app/stop_test_app.c",
                               "src/app/uart3_maix_app.c")) {
             $SourceName = [System.IO.Path]::GetFileNameWithoutExtension($Source)
             $Object = Join-Path $TestBuildDir "$($SourceName)_$($Mode.Name).o"

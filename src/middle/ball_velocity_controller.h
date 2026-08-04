@@ -34,6 +34,7 @@ typedef struct
     float near_gain;
     float near_scale_max;
     float acceleration_filter_alpha;
+    float vehicle_feedforward_position_cutoff_m;
 } ball_velocity_controller_config_t;
 
 typedef struct
@@ -44,6 +45,7 @@ typedef struct
     float measurement_dt_s;
     float control_dt_s;
     float measured_beam_angle_deg;
+    float vehicle_feedforward_angle_deg;
     uint8 new_measurement;
     uint8 observer_valid;
     uint8 output_saturated;
@@ -62,6 +64,8 @@ typedef struct
     float beam_velocity_deg_s;
     float integral_velocity_mps;
     float filtered_acceleration_mps2;
+    float vehicle_feedforward_scale;
+    float vehicle_feedforward_angle_deg;
     uint16 flags;
 } ball_velocity_controller_output_t;
 

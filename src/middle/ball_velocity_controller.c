@@ -50,6 +50,7 @@ void ball_velocity_controller_step(
     float unsigned_velocity_limit_mps;
     float braking_delay_velocity_mps;
     float near_scale = 1.0f;
+    float feedforward_scale = 0.0f;
     float acceleration_mps2;
     float unrestricted_beam_angle_deg;
     float desired_beam_angle_deg;
@@ -160,6 +161,17 @@ void ball_velocity_controller_step(
     controller->output.velocity_error_mps =
         input->velocity_mps - controller->output.target_velocity_mps;
 
+    if (controller->config.vehicle_feedforward_position_cutoff_m > 0.0f)
+    {
+        feedforward_scale = velocity_clamp(
+            1.0f - velocity_abs(error_m) /
+                controller->config.vehicle_feedforward_position_cutoff_m,
+            0.0f, 1.0f);
+    }
+    controller->output.vehicle_feedforward_scale = feedforward_scale;
+    controller->output.vehicle_feedforward_angle_deg =
+        input->vehicle_feedforward_angle_deg * feedforward_scale;
+
     if ((0u != input->new_measurement) &&
         (input->measurement_dt_s > 0.0f))
     {
@@ -181,7 +193,8 @@ void ball_velocity_controller_step(
             controller->output.velocity_error_mps * 1000.0f +
         controller->config.acceleration_ka_deg_per_mps2 *
             controller->output.filtered_acceleration_mps2 +
-        controller->config.fixed_beam_bias_deg;
+        controller->config.fixed_beam_bias_deg +
+        controller->output.vehicle_feedforward_angle_deg;
     desired_beam_angle_deg = velocity_clamp(
         unrestricted_beam_angle_deg,
         -controller->config.max_target_beam_angle_deg,

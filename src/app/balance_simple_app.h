@@ -63,6 +63,12 @@ typedef struct
     uint32 motor_velocity_age_ms;
     float integral_velocity_mps;
     float filtered_ball_accel_mps2;
+    float car_accel_mps2;
+    float car_filtered_accel_mps2;
+    float car_feedforward_angle_deg;
+    float car_feedforward_scale;
+    uint8 car_accel_valid;
+    uint8 car_feedforward_active;
     balance_simple_state_enum state;
     balance_simple_fault_enum fault;
     uint16 flags;
@@ -73,7 +79,9 @@ typedef struct
 
 void balance_simple_app_init(void);
 void balance_simple_app_process(void);
+uint8 balance_simple_app_start(void);
 uint8 balance_simple_app_set_target_position_m(float target_position_m);
+void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid);
 void balance_simple_app_disable(void);
 const balance_simple_status_t *balance_simple_app_get_status(void);
 

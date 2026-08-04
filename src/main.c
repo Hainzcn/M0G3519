@@ -1,4 +1,5 @@
 #include "button_app.h"
+#include "ab_run_app.h"
 #include "control_config.h"
 #if (BALANCE_CONTROL_ENABLE != 0u)
 #include "balance_app.h"
@@ -24,6 +25,8 @@
 #endif
 #include "motor.h"
 #include "motor_app.h"
+#include "no_load_lap_app.h"
+#include "stop_test_app.h"
 #include "oled_app.h"
 #include "zf_common_clock.h"
 #include "vision_link.h"
@@ -35,6 +38,9 @@ int main(void)
     heartbeat_app_init();
     grayscale_app_init();
     motor_app_init();
+    ab_run_app_init();
+    no_load_lap_app_init();
+    stop_test_app_init();
 #if (EMM42_BALANCE_DEMO_ENABLE == 0u)
     imu_app_init();
 #endif
@@ -112,18 +118,21 @@ int main(void)
         grayscale_app_process();
         vision_link_process();
         motor_app_process();
+        no_load_lap_app_process();
+        ab_run_app_process();
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+        drive_balance_demo_app_process();
+#endif
 #if (BALANCE_CONTROL_ENABLE != 0u)
         balance_app_process();
 #endif
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
         balance_simple_app_process();
 #endif
+        stop_test_app_process();
         uart3_maix_app_process();
         heartbeat_app_process();
         button_app_process();
-#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
-        drive_balance_demo_app_process();
-#endif
         oled_app_process();
 #if (EMM42_BALANCE_DEMO_ENABLE != 0u)
         emm42_demo_app_process();

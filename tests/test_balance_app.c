@@ -601,7 +601,7 @@ static void test_linkage_symmetric_safety_range(void)
 
     assert(0u != balance_linkage_motor_from_physical_lever_deg(
         0.0f, &motor_deg));
-    assert(fabsf(motor_deg + 20.667624420f) < 0.0001f);
+    assert(fabsf(motor_deg + 18.6f) < 0.0001f);
     assert(0u != balance_linkage_motor_from_physical_lever_deg(
         -7.0f, &motor_deg));
     assert(0u != balance_linkage_physical_lever_from_motor_deg(

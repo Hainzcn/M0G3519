@@ -40,9 +40,9 @@ static void balance_simple_send_diagnostic(void)
         999999u : status->motor_position_age_ms;
 
     snprintf(message, sizeof(message),
-        "[balance-simple] ctl=angle-pi-bias-v5 fb=50 st=%u fault=%u fl=%04X sat=%04X "
+        "[balance-simple] ctl=angle-pi-car-ff-v7 fb=50 st=%u fault=%u fl=%04X sat=%04X "
         "seq=%u age=%lu x=%d xh=%d v=%d vr=%d tr=%d th=%d "
-        "the=%d om=%d rpm=%d mp=%d mage=%lu err=%u\r\n",
+        "the=%d om=%d rpm=%d mp=%d mage=%lu ca=%d cff=%d cfs=%u err=%u\r\n",
         (unsigned int)status->state,
         (unsigned int)status->fault,
         (unsigned int)status->flags,
@@ -60,6 +60,9 @@ static void balance_simple_send_diagnostic(void)
         (int)status->motor_rpm_command,
         (int)(status->motor_position_deg * 100.0f),
         (unsigned long)motor_age,
+        (int)(status->car_accel_mps2 * 1000.0f),
+        (int)(status->car_feedforward_angle_deg * 100.0f),
+        (unsigned int)(status->car_feedforward_scale * 100.0f),
         (unsigned int)status->command_error_count);
     heartbeat_hw_uart_send_string(message);
 }

@@ -89,6 +89,8 @@ virtualFolder:
         - path: ../src/app/balance_app.h
         - path: ../src/app/balance_simple_app.c
         - path: ../src/app/balance_simple_app.h
+        - path: ../src/app/ab_run_app.c
+        - path: ../src/app/ab_run_app.h
         - path: ../src/app/drive_balance_demo_app.c
         - path: ../src/app/drive_balance_demo_app.h
         - path: ../src/app/uart3_maix_app.c
@@ -99,6 +101,10 @@ virtualFolder:
         - path: ../src/app/grayscale_app.h
         - path: ../src/app/motor_app.c
         - path: ../src/app/motor_app.h
+        - path: ../src/app/no_load_lap_app.c
+        - path: ../src/app/no_load_lap_app.h
+        - path: ../src/app/stop_test_app.c
+        - path: ../src/app/stop_test_app.h
         - path: ../src/app/heartbeat_app.c
         - path: ../src/app/heartbeat_app.h
         - path: ../src/app/button_app.c
