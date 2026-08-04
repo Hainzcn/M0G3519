@@ -52,7 +52,6 @@ void ball_velocity_controller_step(
     float near_scale = 1.0f;
     float position_error_ratio;
     float velocity_error_ratio;
-    float feedforward_scale = 0.0f;
     float acceleration_mps2;
     float unrestricted_beam_angle_deg;
     float desired_beam_angle_deg;
@@ -170,16 +169,9 @@ void ball_velocity_controller_step(
     controller->output.effective_kv_deg_per_mm =
         controller->config.velocity_kv_deg_per_mmps * near_scale;
 
-    if (controller->config.vehicle_feedforward_position_cutoff_m > 0.0f)
-    {
-        feedforward_scale = velocity_clamp(
-            1.0f - velocity_abs(error_m) /
-                controller->config.vehicle_feedforward_position_cutoff_m,
-            0.0f, 1.0f);
-    }
-    controller->output.vehicle_feedforward_scale = feedforward_scale;
+    controller->output.vehicle_feedforward_scale = 1.0f;
     controller->output.vehicle_feedforward_angle_deg =
-        input->vehicle_feedforward_angle_deg * feedforward_scale;
+        input->vehicle_feedforward_angle_deg;
 
     if ((0u != input->new_measurement) &&
         (input->measurement_dt_s > 0.0f))

@@ -5,7 +5,7 @@
 
 #include "ball_velocity_controller.h"
 
-static void test_vehicle_feedforward_is_position_weighted(void)
+static void test_vehicle_feedforward_is_not_position_weighted(void)
 {
     ball_velocity_controller_t controller;
     ball_velocity_controller_config_t config;
@@ -17,7 +17,6 @@ static void test_vehicle_feedforward_is_position_weighted(void)
     config.target_beam_angle_slew_deg_s = 1000.0f;
     config.beam_angle_kp_s_inv = 1.0f;
     config.max_beam_velocity_deg_s = 20.0f;
-    config.vehicle_feedforward_position_cutoff_m = 0.040f;
     ball_velocity_controller_init(&controller, &config);
 
     memset(&input, 0, sizeof(input));
@@ -31,13 +30,13 @@ static void test_vehicle_feedforward_is_position_weighted(void)
 
     input.position_m = 0.020f;
     ball_velocity_controller_step(&controller, &input);
-    assert(fabsf(output->vehicle_feedforward_scale - 0.5f) < 0.0001f);
-    assert(fabsf(output->target_beam_angle_deg + 1.0f) < 0.0001f);
+    assert(fabsf(output->vehicle_feedforward_scale - 1.0f) < 0.0001f);
+    assert(fabsf(output->target_beam_angle_deg + 2.0f) < 0.0001f);
 
     input.position_m = 0.040f;
     ball_velocity_controller_step(&controller, &input);
-    assert(output->vehicle_feedforward_scale == 0.0f);
-    assert(fabsf(output->target_beam_angle_deg) < 0.0001f);
+    assert(fabsf(output->vehicle_feedforward_scale - 1.0f) < 0.0001f);
+    assert(fabsf(output->target_beam_angle_deg + 2.0f) < 0.0001f);
 }
 
 static void test_near_damping_tracks_position_and_velocity_error(void)
@@ -92,7 +91,7 @@ static void test_near_damping_tracks_position_and_velocity_error(void)
 
 int main(void)
 {
-    test_vehicle_feedforward_is_position_weighted();
+    test_vehicle_feedforward_is_not_position_weighted();
     test_near_damping_tracks_position_and_velocity_error();
     puts("ball velocity controller tests passed");
     return 0;

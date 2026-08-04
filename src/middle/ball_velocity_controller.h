@@ -34,7 +34,6 @@ typedef struct
     float near_gain;
     float near_scale_max;
     float acceleration_filter_alpha;
-    float vehicle_feedforward_position_cutoff_m;
 } ball_velocity_controller_config_t;
 
 typedef struct

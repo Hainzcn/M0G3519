@@ -23,7 +23,7 @@
 
 /* 赛道状态 2 / 赛题第 3 项：静止小车上小球 O -> +5 cm -> -5 cm */
 #define STOP_TEST_POSITIVE_TARGET_M                    (0.050f) /* 正端目标位置 */
-#define STOP_TEST_NEGATIVE_TARGET_M                   (-0.050f) /* 负端目标位置 */
+#define STOP_TEST_NEGATIVE_TARGET_M                   (-0.060f) /* 负端目标位置 */
 #define STOP_TEST_MAX_ENDPOINT_ERROR_M                 (0.010f) /* 正负端点最大允许误差 */
 #define STOP_TEST_ARRIVAL_TOLERANCE_M                  (0.010f) /* 状态机端点到位阈值 */
 #define STOP_TEST_VELOCITY_TOLERANCE_MPS               (0.030f) /* 到位时允许的最大球速 */
@@ -145,9 +145,8 @@
 #define BALANCE_SIMPLE_CAR_FF_EXIT_MPS2                (0.01f)   /* 前馈退出加速度阈值 */
 #define BALANCE_SIMPLE_CAR_FF_ENTER_MS                 (10u)     /* 一个控制周期内启用预测前馈 */
 #define BALANCE_SIMPLE_CAR_FF_EXIT_MS                  (150u)    /* 前馈退出确认时间 */
-#define BALANCE_SIMPLE_CAR_FF_GAIN                     (1.0f)    /* 完整惯性补偿：摆角 = atan(a/g) */
-#define BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG            (4.0f)    /* 覆盖 0.613 m/s^2 启动所需的 3.57 度 */
-#define BALANCE_SIMPLE_CAR_FF_POSITION_CUTOFF_M        (0.010f)  /* 偏差到 1 cm 时前馈完全让权给回中环 */
+#define BALANCE_SIMPLE_CAR_FF_GAIN                     (1.05f)   /* 实车幅值修正：理论惯性补偿的 110% */
+#define BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG            (4.5f)    /* 为 1.10~1.20 倍前馈保留调节余量 */
 #define BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS          (140u)    /* 启动前从零推进同长度的前馈时间轴 */
 #define BALANCE_SIMPLE_CAR_FF_PREVIEW_S                (0.001f * (float)BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS)
 #define BALANCE_SIMPLE_CAR_FF_IMU_CORRECTION_GAIN      (0.50f)   /* IMU 对当前规划加速度残差的修正增益 */

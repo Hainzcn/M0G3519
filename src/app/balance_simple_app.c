@@ -1148,8 +1148,6 @@ void balance_simple_app_init(void)
     controller_config.near_scale_max = BALANCE_SIMPLE_NEAR_SCALE_MAX;
     controller_config.acceleration_filter_alpha =
         BALANCE_SIMPLE_ACCELERATION_FILTER_ALPHA;
-    controller_config.vehicle_feedforward_position_cutoff_m =
-        BALANCE_SIMPLE_CAR_FF_POSITION_CUTOFF_M;
     ball_velocity_controller_init(&simple_controller, &controller_config);
 
     actuator_config.motor_sign = BALANCE_SIMPLE_MOTOR_SIGN;

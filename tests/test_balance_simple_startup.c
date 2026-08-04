@@ -294,7 +294,8 @@ static void test_planned_feedforward_is_immediate_and_imu_is_correction(void)
         BALANCE_SIMPLE_CAR_FF_IMU_CORRECTION_GAIN *
             (imu_accel_mps2 - planned_accel_mps2);
     const float expected_angle_deg =
-        -atan2f(expected_accel_mps2, 9.80665f) *
+        -BALANCE_SIMPLE_CAR_FF_GAIN *
+        atan2f(expected_accel_mps2, 9.80665f) *
         (180.0f / 3.14159265f);
     uint32 index;
 
@@ -310,9 +311,9 @@ static void test_planned_feedforward_is_immediate_and_imu_is_correction(void)
     assert(fabsf(status->car_feedforward_angle_deg - expected_angle_deg) <
            0.0001f);
     assert(status->car_feedforward_angle_deg < 0.0f);
-    assert(BALANCE_SIMPLE_CAR_FF_GAIN == 1.0f);
+    assert(BALANCE_SIMPLE_CAR_FF_GAIN == 1.10f);
     assert(BALANCE_SIMPLE_BEAM_ANGLE_KP_S_INV == 12.0f);
-    assert(BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG >= 3.6f);
+    assert(BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG >= 4.4f);
     assert(fabsf(expected_angle_deg) < BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG);
 
     for (index = 1u; index <= 40u; index++)

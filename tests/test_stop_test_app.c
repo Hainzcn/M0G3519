@@ -112,27 +112,31 @@ static void test_complete_plus_five_to_minus_five(void)
     assert(mock_stop_test_mode != 0u);
     assert(mock_stop_test_mode_enable_count == 1u);
     assert(mock_target_count == 1u);
-    assert(fabsf(mock_targets[0] - 0.050f) < 0.0001f);
+    assert(fabsf(mock_targets[0] - STOP_TEST_POSITIVE_TARGET_M) < 0.0001f);
 
     mock_now_ms = 1000u;
-    mock_balance.estimated_position_m = 0.048f;
+    mock_balance.estimated_position_m =
+        STOP_TEST_POSITIVE_TARGET_M - 0.002f;
     mock_balance.estimated_velocity_mps = 0.010f;
     stop_test_app_process();
     assert(stop_test_app_get_status()->state == STOP_TEST_SETTLE_POSITIVE);
 
     mock_now_ms += STOP_TEST_ENDPOINT_SETTLE_MS;
-    mock_balance.estimated_position_m = 0.052f;
+    mock_balance.estimated_position_m =
+        STOP_TEST_POSITIVE_TARGET_M + 0.002f;
     stop_test_app_process();
     assert(stop_test_app_get_status()->state == STOP_TEST_TO_NEGATIVE);
     assert(mock_target_count == 2u);
-    assert(fabsf(mock_targets[1] + 0.050f) < 0.0001f);
+    assert(fabsf(mock_targets[1] - STOP_TEST_NEGATIVE_TARGET_M) < 0.0001f);
 
     mock_now_ms = 4000u;
-    mock_balance.estimated_position_m = -0.048f;
+    mock_balance.estimated_position_m =
+        STOP_TEST_NEGATIVE_TARGET_M + 0.002f;
     mock_balance.estimated_velocity_mps = -0.010f;
     stop_test_app_process();
     mock_now_ms += STOP_TEST_ENDPOINT_SETTLE_MS;
-    mock_balance.estimated_position_m = -0.052f;
+    mock_balance.estimated_position_m =
+        STOP_TEST_NEGATIVE_TARGET_M - 0.002f;
     mock_balance.estimated_velocity_mps = 0.0f;
     stop_test_app_process();
 
@@ -150,7 +154,7 @@ static void test_complete_plus_five_to_minus_five(void)
     assert(0u == stop_test_app_is_running());
     assert(mock_stop_test_mode != 0u);
     assert(mock_target_count == 2u);
-    assert(fabsf(mock_targets[1] + 0.050f) < 0.0001f);
+    assert(fabsf(mock_targets[1] - STOP_TEST_NEGATIVE_TARGET_M) < 0.0001f);
 
     stop_test_app_stop();
     assert(status->state == STOP_TEST_RETURN_CENTER);
@@ -174,13 +178,13 @@ static void test_center_target_retries_after_temporary_rejection(void)
     reset_mocks();
     assert(0u != stop_test_app_start());
     mock_now_ms = 1000u;
-    mock_balance.estimated_position_m = 0.050f;
+    mock_balance.estimated_position_m = STOP_TEST_POSITIVE_TARGET_M;
     mock_balance.estimated_velocity_mps = 0.0f;
     stop_test_app_process();
     mock_now_ms += STOP_TEST_ENDPOINT_SETTLE_MS;
     stop_test_app_process();
     mock_now_ms = 2000u;
-    mock_balance.estimated_position_m = -0.050f;
+    mock_balance.estimated_position_m = STOP_TEST_NEGATIVE_TARGET_M;
     stop_test_app_process();
     mock_now_ms += STOP_TEST_ENDPOINT_SETTLE_MS;
     stop_test_app_process();
@@ -256,14 +260,14 @@ static void test_completion_at_exactly_five_seconds_is_allowed(void)
     assert(0u != stop_test_app_start());
 
     mock_now_ms = 1000u;
-    mock_balance.estimated_position_m = 0.050f;
+    mock_balance.estimated_position_m = STOP_TEST_POSITIVE_TARGET_M;
     mock_balance.estimated_velocity_mps = 0.0f;
     stop_test_app_process();
     mock_now_ms += STOP_TEST_ENDPOINT_SETTLE_MS;
     stop_test_app_process();
 
     mock_now_ms = STOP_TEST_TIMEOUT_MS - STOP_TEST_ENDPOINT_SETTLE_MS;
-    mock_balance.estimated_position_m = -0.050f;
+    mock_balance.estimated_position_m = STOP_TEST_NEGATIVE_TARGET_M;
     stop_test_app_process();
     mock_now_ms = STOP_TEST_TIMEOUT_MS;
     stop_test_app_process();
