@@ -1,5 +1,6 @@
 #include "vision_link.h"
 
+#include "control_config.h"
 #include "uart3_maix_hw.h"
 #include "heartbeat.h"
 
@@ -41,6 +42,8 @@ static uint32 vision_link_backward_frames;
 static uint32 vision_link_sequence_gap_frames;
 static uint32 vision_link_boot_changes;
 static uint32 vision_link_resync_dropped_bytes;
+static float vision_link_position_offset_m =
+    BALANCE_VISION_POSITION_OFFSET_M;
 
 static uint16 vision_link_read_u16_le(const uint8 *data)
 {
@@ -406,6 +409,30 @@ uint8 vision_link_take_new_valid_measurement(vision_link_snapshot_t *snapshot)
     } while (generation_before != generation_after);
     vision_link_measurement_taken_generation = generation_after;
     return 1u;
+}
+
+void vision_link_set_position_offset_m(float offset_m)
+{
+    if (offset_m > VISION_LINK_POSITION_OFFSET_LIMIT_M)
+    {
+        offset_m = VISION_LINK_POSITION_OFFSET_LIMIT_M;
+    }
+    else if (offset_m < -VISION_LINK_POSITION_OFFSET_LIMIT_M)
+    {
+        offset_m = -VISION_LINK_POSITION_OFFSET_LIMIT_M;
+    }
+    vision_link_position_offset_m = offset_m;
+}
+
+float vision_link_get_position_offset_m(void)
+{
+    return vision_link_position_offset_m;
+}
+
+float vision_link_correct_position_m(int16 position_dmm)
+{
+    return (float)position_dmm * 0.0001f +
+        vision_link_position_offset_m;
 }
 
 void vision_link_get_status(vision_link_status_t *status)

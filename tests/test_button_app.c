@@ -16,6 +16,7 @@
 #include "vision_link.h"
 
 static button_id_t mock_button;
+static uint32 mock_now_ms;
 static uint8 mock_oled_ready;
 static uint8 mock_balance_start_result;
 static uint8 mock_balance_simple_start_result;
@@ -54,6 +55,15 @@ static uint32 mock_stop_test_stop_count;
 static uint8 mock_vision_online;
 static uint8 mock_oled_vision_off;
 static uint8 mock_oled_post_marker;
+static float mock_fixed_beam_bias_deg;
+static float mock_vision_position_offset_m;
+static uint8 mock_vision_has_snapshot;
+static vision_link_snapshot_t mock_vision_snapshot;
+
+uint32 heartbeat_get_ms(void)
+{
+    return mock_now_ms;
+}
 
 void button_init(void)
 {
@@ -110,6 +120,34 @@ void vision_link_get_status(vision_link_status_t *status)
 {
     memset(status, 0, sizeof(*status));
     status->link_online = mock_vision_online;
+}
+
+uint8 vision_link_get_latest_snapshot(vision_link_snapshot_t *snapshot)
+{
+    if (0u == mock_vision_has_snapshot)
+    {
+        return 0u;
+    }
+    *snapshot = mock_vision_snapshot;
+    return 1u;
+}
+
+void vision_link_set_position_offset_m(float offset_m)
+{
+    if (offset_m > VISION_LINK_POSITION_OFFSET_LIMIT_M)
+    {
+        offset_m = VISION_LINK_POSITION_OFFSET_LIMIT_M;
+    }
+    else if (offset_m < -VISION_LINK_POSITION_OFFSET_LIMIT_M)
+    {
+        offset_m = -VISION_LINK_POSITION_OFFSET_LIMIT_M;
+    }
+    mock_vision_position_offset_m = offset_m;
+}
+
+float vision_link_get_position_offset_m(void)
+{
+    return mock_vision_position_offset_m;
 }
 
 void oled_show_uint(uint8 x, uint8 page, uint32 value, uint8 font)
@@ -186,6 +224,24 @@ uint8 drive_balance_demo_app_start_captured(void)
     mock_drive_running = (0u != mock_drive_capture_ready) ?
         mock_drive_start_result : 0u;
     return mock_drive_running;
+}
+
+void balance_simple_app_set_fixed_beam_bias_deg(float bias_deg)
+{
+    if (bias_deg > BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG)
+    {
+        bias_deg = BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG;
+    }
+    if (bias_deg < -BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG)
+    {
+        bias_deg = -BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG;
+    }
+    mock_fixed_beam_bias_deg = bias_deg;
+}
+
+float balance_simple_app_get_fixed_beam_bias_deg(void)
+{
+    return mock_fixed_beam_bias_deg;
 }
 
 void drive_balance_demo_app_stop(void)
@@ -296,6 +352,7 @@ const ab_run_status_t *ab_run_app_get_status(void)
 static void reset_mocks(void)
 {
     mock_button = BUTTON_ID_NONE;
+    mock_now_ms = 0u;
     mock_oled_ready = 1u;
     mock_balance_start_result = 1u;
     mock_balance_simple_start_result = 1u;
@@ -336,6 +393,10 @@ static void reset_mocks(void)
     mock_vision_online = 1u;
     mock_oled_vision_off = 0u;
     mock_oled_post_marker = 0u;
+    mock_fixed_beam_bias_deg = BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG;
+    mock_vision_position_offset_m = BALANCE_VISION_POSITION_OFFSET_M;
+    mock_vision_has_snapshot = 0u;
+    memset(&mock_vision_snapshot, 0, sizeof(mock_vision_snapshot));
     button_app_init();
     button_app_process();
 }
@@ -452,6 +513,58 @@ static void test_stop_test_start_completion_and_stop(void)
     assert(mock_stop_test_stop_count == 2u);
 }
 
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+static void test_long_sw1_opens_and_adjusts_bias(void)
+{
+    reset_mocks();
+    mock_button = BUTTON_ID_SW1;
+    button_app_process();
+    mock_now_ms = BUTTON_APP_TUNING_LONG_PRESS_MS;
+    button_app_process();
+    assert(0 == strcmp(mock_oled_title, "BEAM BIAS TUNE"));
+    assert(button_app_get_selected_mode() == BUTTON_APP_MODE_NO_LOAD);
+
+    mock_button = BUTTON_ID_NONE;
+    button_app_process();
+    press_button(BUTTON_ID_SW1);
+    assert(mock_fixed_beam_bias_deg ==
+           BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG - 0.2f);
+    press_button(BUTTON_ID_SW2);
+    press_button(BUTTON_ID_SW2);
+    assert(mock_fixed_beam_bias_deg ==
+           BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG + 0.2f);
+
+    press_button(BUTTON_ID_SW4);
+    assert(0 == strcmp(mock_oled_title, "TRACK MODE SELECT"));
+}
+#endif
+
+static void test_long_sw2_opens_and_adjusts_vision_offset(void)
+{
+    reset_mocks();
+    mock_vision_has_snapshot = 1u;
+    mock_vision_snapshot.position_dmm = 80;
+    mock_button = BUTTON_ID_SW2;
+    button_app_process();
+    mock_now_ms = BUTTON_APP_TUNING_LONG_PRESS_MS;
+    button_app_process();
+    assert(0 == strcmp(mock_oled_title, "VISION POS OFFSET"));
+    assert(button_app_get_selected_mode() == BUTTON_APP_MODE_NO_LOAD);
+
+    mock_button = BUTTON_ID_NONE;
+    button_app_process();
+    press_button(BUTTON_ID_SW1);
+    assert(mock_vision_position_offset_m ==
+           BALANCE_VISION_POSITION_OFFSET_M - 0.002f);
+    press_button(BUTTON_ID_SW2);
+    press_button(BUTTON_ID_SW2);
+    assert(mock_vision_position_offset_m ==
+           BALANCE_VISION_POSITION_OFFSET_M + 0.002f);
+
+    press_button(BUTTON_ID_SW4);
+    assert(0 == strcmp(mock_oled_title, "TRACK MODE SELECT"));
+}
+
 static void test_no_load_marker_state_refreshes_running_page(void)
 {
     uint32 refresh_count;
@@ -525,6 +638,10 @@ static void test_drive_mode_completion_shows_result(void)
 int main(void)
 {
     test_navigation_wraps();
+    test_long_sw2_opens_and_adjusts_vision_offset();
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    test_long_sw1_opens_and_adjusts_bias();
+#endif
     test_no_load_start_and_stop();
     test_no_load_completion_holds_result_page();
     test_no_load_marker_state_refreshes_running_page();

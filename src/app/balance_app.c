@@ -398,8 +398,8 @@ static uint8 balance_app_recovery_measurement_consistent(
     {
         return 1u;
     }
-    position_m = (float)measurement->position_dmm * 0.0001f +
-        BALANCE_VISION_POSITION_OFFSET_M;
+    position_m = vision_link_correct_position_m(
+        measurement->position_dmm);
     if (0u == balance_recovery_candidate_valid)
     {
         balance_recovery_candidate_position_m = position_m;
@@ -530,8 +530,7 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
         ((0u != balance_has_accepted_measurement) &&
          (measurement_age <= BALANCE_VALID_MEASUREMENT_MS)) ? 1u : 0u;
     input.measured_position_m = (0u != new_measurement) ?
-        (float)measurement.position_dmm * 0.0001f +
-        BALANCE_VISION_POSITION_OFFSET_M +
+        vision_link_correct_position_m(measurement.position_dmm) +
         (float)measurement.velocity_mm_s * 0.001f *
             (float)balance_last_measurement_latency_ms * 0.001f : 0.0f;
     input.measured_velocity_mps = (0u != new_measurement) ?

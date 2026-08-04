@@ -95,6 +95,8 @@ void balance_simple_app_set_vehicle_accel_components_mps2(
     float planned_accel_mps2, float preview_accel_mps2,
     float imu_accel_mps2, uint8 valid);
 void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid);
+void balance_simple_app_set_fixed_beam_bias_deg(float bias_deg);
+float balance_simple_app_get_fixed_beam_bias_deg(void);
 void balance_simple_app_disable(void);
 const balance_simple_status_t *balance_simple_app_get_status(void);
 

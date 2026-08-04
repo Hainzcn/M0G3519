@@ -584,6 +584,12 @@ static void test_unchanged_target_is_not_resent_during_feedback_queries(void)
     balance_app_process();
     assert(balance_app_get_status()->state != BALANCE_APP_FAULT);
 }
+
+float vision_link_correct_position_m(int16 position_dmm)
+{
+    return (float)position_dmm * 0.0001f +
+        BALANCE_VISION_POSITION_OFFSET_M;
+}
 #else
 static void test_unconfigured_mode_queries_without_motion(void)
 {

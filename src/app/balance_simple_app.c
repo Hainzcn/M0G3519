@@ -93,6 +93,8 @@ static uint8 simple_vehicle_ff_active;
 static uint8 simple_stop_test_mode;
 static uint8 simple_feedforward_only;
 static uint8 simple_capture_hold;
+static float simple_fixed_beam_bias_deg =
+    BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG;
 
 static float simple_abs(float value)
 {
@@ -461,8 +463,8 @@ static void simple_take_vision_measurement(void)
     simple_status.vision_flags = measurement.flags;
     simple_status.raw_position_m =
         (float)measurement.position_dmm * 0.0001f;
-    corrected_position_m = simple_status.raw_position_m +
-        BALANCE_VISION_POSITION_OFFSET_M;
+    corrected_position_m =
+        vision_link_correct_position_m(measurement.position_dmm);
     if (0u == simple_measurement_acceptable(&measurement))
     {
         return;
@@ -1135,7 +1137,7 @@ void balance_simple_app_init(void)
     controller_config.beam_angle_deadband_deg =
         BALANCE_SIMPLE_BEAM_ANGLE_DEADBAND_DEG;
     controller_config.fixed_beam_bias_deg =
-        BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG;
+        simple_fixed_beam_bias_deg;
     controller_config.max_beam_velocity_deg_s =
         BALANCE_SIMPLE_MAX_BEAM_VELOCITY_DEG_S;
     controller_config.integral_zone_m = BALANCE_SIMPLE_INTEGRAL_ZONE_M;
@@ -1578,6 +1580,26 @@ void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid)
 {
     balance_simple_app_set_vehicle_accel_components_mps2(
         accel_mps2, accel_mps2, accel_mps2, valid);
+}
+
+void balance_simple_app_set_fixed_beam_bias_deg(float bias_deg)
+{
+    if (bias_deg > BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG)
+    {
+        bias_deg = BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG;
+    }
+    else if (bias_deg < -BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG)
+    {
+        bias_deg = -BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG;
+    }
+
+    simple_fixed_beam_bias_deg = bias_deg;
+    simple_controller.config.fixed_beam_bias_deg = bias_deg;
+}
+
+float balance_simple_app_get_fixed_beam_bias_deg(void)
+{
+    return simple_fixed_beam_bias_deg;
 }
 
 void balance_simple_app_disable(void)

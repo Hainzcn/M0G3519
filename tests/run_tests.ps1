@@ -30,6 +30,8 @@ try {
         "tests/test_motor_app.c", "src/app/motor_app.c")
     Invoke-CTest "test_line_control" @(
         "tests/test_line_control.c", "src/middle/line_control.c")
+    Invoke-CTest "test_vision_position_offset" @(
+        "tests/test_vision_position_offset.c", "src/middle/vision_link.c")
     Invoke-CTest "test_ball_motion_profile" @(
         "tests/test_ball_motion_profile.c", "src/middle/ball_motion_profile.c")
     Invoke-CTest "test_balance_actuator_trajectory" @(

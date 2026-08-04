@@ -3,6 +3,8 @@
 
 #include "zf_common_typedef.h"
 
+#define BUTTON_APP_TUNING_LONG_PRESS_MS    (1000u)
+
 typedef enum
 {
     BUTTON_APP_MODE_NO_LOAD = 0,
