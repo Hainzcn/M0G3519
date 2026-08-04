@@ -613,6 +613,7 @@ static void test_drive_mode_completion_shows_result(void)
     assert(0 == strcmp(mock_oled_title, "BALL LAP OK"));
 
     press_button(BUTTON_ID_SW4);
+    assert(mock_motor_stop_count == 1u);
 
     press_button(BUTTON_ID_SW1);
     mock_drive_capture_ready = 0u;

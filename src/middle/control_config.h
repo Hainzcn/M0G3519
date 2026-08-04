@@ -154,7 +154,7 @@
 /* 赛题 MODE_5：带球顺时针循迹一圈并通过 A 点 */
 #define BALANCE_DRIVE_DEMO_APPROACH_RPM                (75.0f)   /* 接近 A 点时的基础轮速 */
 #define BALANCE_DRIVE_DEMO_APPROACH_DISTANCE_M         (5.6f)    /* 进站减速里程 */
-#define BALANCE_DRIVE_DEMO_BRAKE_HOLD_MS               (600u)    /* 过 A 后保持前馈覆盖制动 */
+#define BALANCE_DRIVE_DEMO_POST_MARKER_DISTANCE_M      (0.230f)  /* 识别启停线后匀速循迹距离 */
 #define BALANCE_DRIVE_DEMO_MAX_ERROR_M                 (0.010f)  /* 全程最大允许中心误差 */
 
 /* 当前简化速度控制器：执行器 */

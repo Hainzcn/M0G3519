@@ -742,7 +742,12 @@ static void button_app_handle_press(button_id_t pressed)
     else if ((BUTTON_APP_VIEW_RESULT == button_app_view) &&
              (BUTTON_ID_SW4 == pressed))
     {
-        if (BUTTON_APP_MODE_NO_LOAD == button_app_running_mode)
+        if ((BUTTON_APP_MODE_NO_LOAD == button_app_running_mode)
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+            || (BUTTON_APP_MODE_BALL_LAP == button_app_running_mode)
+            || (BUTTON_APP_MODE_ARBITRARY == button_app_running_mode)
+#endif
+           )
         {
             motor_app_stop();
         }

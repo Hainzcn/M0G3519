@@ -21,6 +21,7 @@ static motor_app_mode_enum mock_motor_mode;
 static int32 mock_left_count;
 static int32 mock_right_count;
 static uint32 mock_stop_count;
+static uint32 mock_brake_count;
 static float mock_target;
 static uint8 mock_target_accepted;
 static uint8 mock_grayscale_online;
@@ -39,6 +40,8 @@ static float mock_line_accel_rpm_s;
 static float mock_line_preview_accel_rpm_s;
 static float mock_line_preview_s;
 static uint32 mock_line_start_count;
+static uint8 mock_rapid_brake_enabled;
+static uint32 mock_base_rpm_immediate_count;
 
 uint32 heartbeat_get_ms(void)
 {
@@ -137,15 +140,37 @@ void motor_app_set_base_rpm(float rpm)
     mock_base_rpm = rpm;
 }
 
+void motor_app_set_base_rpm_immediate(float rpm)
+{
+    mock_base_rpm = rpm;
+    mock_base_rpm_immediate_count++;
+}
+
+void motor_app_set_rapid_brake_enabled(uint8 enabled)
+{
+    mock_rapid_brake_enabled = enabled;
+}
+
 void motor_app_stop(void)
 {
     mock_motor_mode = MOTOR_APP_MODE_DISABLED;
     mock_stop_count++;
 }
 
+void motor_app_brake(void)
+{
+    mock_motor_mode = MOTOR_APP_MODE_DISABLED;
+    mock_brake_count++;
+}
+
 const line_control_output_t *line_control_get_output(void)
 {
     return &mock_line;
+}
+
+float line_control_get_base_rpm(void)
+{
+    return mock_base_rpm;
 }
 
 float line_control_get_base_accel_rpm_s(void)
@@ -180,11 +205,12 @@ static void reset_mocks(void)
     mock_imu.accel.ax = BALANCE_SIMPLE_CAR_ACCEL_OFFSET_MPS2;
     mock_imu.accel_time_ms = mock_now_ms;
     mock_line.line_lost = 0u;
-    mock_line.marker_detected = 0u;
+    mock_line.active_count = 0u;
     mock_motor_mode = MOTOR_APP_MODE_DISABLED;
     mock_left_count = 0;
     mock_right_count = 0;
     mock_stop_count = 0u;
+    mock_brake_count = 0u;
     mock_target = 99.0f;
     mock_target_accepted = 1u;
     mock_grayscale_online = 1u;
@@ -204,6 +230,8 @@ static void reset_mocks(void)
     mock_line_preview_accel_rpm_s = 0.0f;
     mock_line_preview_s = 0.0f;
     mock_line_start_count = 0u;
+    mock_rapid_brake_enabled = 0u;
+    mock_base_rpm_immediate_count = 0u;
     drive_balance_demo_app_init();
 }
 
@@ -232,7 +260,7 @@ static void test_center_lap_ignores_start_marker(void)
     const drive_balance_demo_status_t *status;
 
     reset_mocks();
-    mock_line.marker_detected = 1u;
+    mock_line.active_count = NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT;
     assert(0u != drive_balance_demo_app_start_center());
     status = drive_balance_demo_app_get_status();
     assert(status->state == DRIVE_BALANCE_DEMO_RUNNING_CENTER);
@@ -242,33 +270,53 @@ static void test_center_lap_ignores_start_marker(void)
     assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
     complete_prestart();
 
-    set_distance(4.6f);
+    set_distance(1.0f);
+    mock_now_ms += 10u;
+    mock_imu.accel_time_ms = mock_now_ms;
+    drive_balance_demo_app_process();
+    assert(status->state == DRIVE_BALANCE_DEMO_RUNNING_CENTER);
+    assert(0u == status->finish_armed);
+
+    mock_line.active_count = 0u;
+    set_distance(NO_LOAD_LAP_MARKER_MIN_DISTANCE_M + 0.01f);
     mock_now_ms += 10u;
     mock_imu.accel_time_ms = mock_now_ms;
     drive_balance_demo_app_process();
     assert(0u != status->finish_armed);
     assert(fabsf(mock_base_rpm - TRACK_MODE_4_LINE_FOLLOW_RPM) < 0.001f);
     assert(status->state == DRIVE_BALANCE_DEMO_RUNNING_CENTER);
-    mock_now_ms += 19u;
-    mock_imu.accel_time_ms = mock_now_ms;
-    drive_balance_demo_app_process();
-    assert(status->state == DRIVE_BALANCE_DEMO_RUNNING_CENTER);
-    mock_now_ms += 1u;
+
+    mock_line.active_count = NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT;
+    mock_now_ms += 10u;
     mock_imu.accel_time_ms = mock_now_ms;
     drive_balance_demo_app_process();
     assert(status->state == DRIVE_BALANCE_DEMO_BRAKING);
     assert(status->passed_a != 0u);
     assert(mock_stop_count == 0u);
     assert(mock_motor_mode == MOTOR_APP_MODE_LINE_FOLLOW);
-    assert(mock_base_rpm == 0.0f);
-    assert(status->distance_m > 4.5f);
+    assert(fabsf(mock_base_rpm - TRACK_MODE_4_LINE_FOLLOW_RPM) < 0.001f);
+    assert(mock_rapid_brake_enabled != 0u);
+    assert(mock_base_rpm_immediate_count == 1u);
+    assert(status->distance_m > NO_LOAD_LAP_MARKER_MIN_DISTANCE_M);
     assert(mock_feedforward_valid != 0u);
-    mock_now_ms += BALANCE_DRIVE_DEMO_BRAKE_HOLD_MS;
+
+    set_distance(status->distance_m +
+                 BALANCE_DRIVE_DEMO_POST_MARKER_DISTANCE_M - 0.01f);
+    mock_now_ms += 500u;
+    mock_imu.accel_time_ms = mock_now_ms;
+    drive_balance_demo_app_process();
+    assert(status->state == DRIVE_BALANCE_DEMO_BRAKING);
+    assert(mock_brake_count == 0u);
+    assert(mock_motor_mode == MOTOR_APP_MODE_LINE_FOLLOW);
+
+    set_distance(status->distance_m + 0.02f);
+    mock_now_ms += 10u;
     mock_imu.accel_time_ms = mock_now_ms;
     drive_balance_demo_app_process();
     assert(status->state == DRIVE_BALANCE_DEMO_COMPLETE);
     assert(status->stop_reason == DRIVE_BALANCE_STOP_LAP_COMPLETE);
-    assert(mock_stop_count == 1u);
+    assert(mock_stop_count == 0u);
+    assert(mock_brake_count == 1u);
     assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
     assert(mock_feedforward_valid == 0u);
 }
@@ -300,6 +348,34 @@ static void test_planned_acceleration_is_previewed_and_imu_corrects_residual(voi
     assert(fabsf(mock_preview_accel_mps2 - 0.8f) < 0.0001f);
     assert(fabsf(mock_imu_accel_mps2 - 0.2f) < 0.0001f);
     assert(fabsf(mock_feedforward_accel_mps2 - 0.6f) < 0.0001f);
+}
+
+static void test_captured_lap_finishes_after_post_marker_distance(void)
+{
+    const drive_balance_demo_status_t *status;
+
+    reset_mocks();
+    mock_balance.estimated_position_m = 0.043f;
+    assert(0u != drive_balance_demo_app_prepare_captured());
+    assert(0u != drive_balance_demo_app_start_captured());
+    complete_prestart();
+    status = drive_balance_demo_app_get_status();
+
+    set_distance(NO_LOAD_LAP_MARKER_MIN_DISTANCE_M + 0.01f);
+    mock_line.active_count = NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT;
+    mock_now_ms += 1000u;
+    mock_imu.accel_time_ms = mock_now_ms;
+    drive_balance_demo_app_process();
+    assert(status->state == DRIVE_BALANCE_DEMO_BRAKING);
+    assert(fabsf(mock_base_rpm - TRACK_MODE_5_LINE_FOLLOW_RPM) < 0.001f);
+
+    set_distance(status->distance_m +
+                 BALANCE_DRIVE_DEMO_POST_MARKER_DISTANCE_M + 0.01f);
+    mock_now_ms += 1000u;
+    mock_imu.accel_time_ms = mock_now_ms;
+    drive_balance_demo_app_process();
+    assert(status->state == DRIVE_BALANCE_DEMO_COMPLETE);
+    assert(mock_brake_count == 1u);
 }
 
 static void test_capture_current_and_user_stop(void)
@@ -443,14 +519,13 @@ static void test_approach_speed_and_error_requirement(void)
     assert(fabsf(mock_base_rpm - BALANCE_DRIVE_DEMO_APPROACH_RPM) < 0.001f);
     assert(status->error_requirement_met == 0u);
 
-    mock_line.marker_detected = 1u;
+    mock_line.active_count = NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT;
     mock_now_ms += 1u;
     mock_imu.accel_time_ms = mock_now_ms;
     drive_balance_demo_app_process();
-    mock_now_ms += BALANCE_DRIVE_DEMO_MARKER_DEBOUNCE_MS;
-    mock_imu.accel_time_ms = mock_now_ms;
-    drive_balance_demo_app_process();
     assert(status->state == DRIVE_BALANCE_DEMO_BRAKING);
+    assert(mock_base_rpm == BALANCE_DRIVE_DEMO_APPROACH_RPM);
+    assert(mock_rapid_brake_enabled != 0u);
     assert(status->error_requirement_met == 0u);
 }
 
@@ -458,6 +533,7 @@ int main(void)
 {
     test_center_lap_ignores_start_marker();
     test_planned_acceleration_is_previewed_and_imu_corrects_residual();
+    test_captured_lap_finishes_after_post_marker_distance();
     test_capture_current_and_user_stop();
     test_start_rejection_and_timeout();
     test_vision_off_only_starts_center_mode_feedforward_only();

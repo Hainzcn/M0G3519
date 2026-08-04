@@ -22,13 +22,11 @@
 
 static drive_balance_demo_status_t drive_demo_status;
 static uint32 drive_demo_start_ms;
-static uint32 drive_demo_brake_start_ms;
 static int32 drive_demo_previous_left_count;
 static int32 drive_demo_previous_right_count;
-static uint32 drive_demo_marker_start_ms;
+static float drive_demo_marker_distance_m;
 static uint32 drive_demo_line_loss_start_ms;
 static uint32 drive_demo_imu_loss_start_ms;
-static uint8 drive_demo_marker_active;
 static uint8 drive_demo_line_loss_active;
 static uint8 drive_demo_imu_loss_active;
 
@@ -212,7 +210,14 @@ static void drive_demo_stop(drive_balance_demo_state_enum state,
                             drive_balance_demo_stop_reason_enum reason,
                             uint32 now_ms)
 {
-    motor_app_stop();
+    if (DRIVE_BALANCE_DEMO_COMPLETE == state)
+    {
+        motor_app_brake();
+    }
+    else
+    {
+        motor_app_stop();
+    }
     drive_demo_clear_feedforward();
     (void)drive_demo_set_target(0.0f);
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
@@ -231,7 +236,6 @@ static void drive_demo_stop(drive_balance_demo_state_enum state,
     drive_demo_status.error_requirement_met =
         (drive_demo_status.max_abs_error_m <=
          BALANCE_DRIVE_DEMO_MAX_ERROR_M) ? 1u : 0u;
-    drive_demo_marker_active = 0u;
     drive_demo_line_loss_active = 0u;
     drive_demo_imu_loss_active = 0u;
     drive_demo_prestart_active = 0u;
@@ -300,10 +304,10 @@ static uint8 drive_demo_start(uint8 capture_current, float line_follow_rpm,
         (drive_demo_status.max_abs_error_m <=
          BALANCE_DRIVE_DEMO_MAX_ERROR_M) ? 1u : 0u;
     drive_demo_status.distance_m = 0.0f;
+    drive_demo_marker_distance_m = 0.0f;
     drive_demo_start_ms = now_ms;
     drive_demo_previous_left_count = encoder_get_left_total_count();
     drive_demo_previous_right_count = encoder_get_right_total_count();
-    drive_demo_marker_active = 0u;
     drive_demo_line_loss_active = 0u;
     drive_demo_imu_loss_active = 0u;
     motor_app_set_base_rpm(line_follow_rpm);
@@ -387,29 +391,6 @@ static void drive_demo_process_running(uint32 now_ms)
             "[drive-balance] chassis launch\r\n");
         return;
     }
-    if (DRIVE_BALANCE_DEMO_BRAKING == drive_demo_status.state)
-    {
-        if ((0u == balance.vision_ready) &&
-            !((0u != drive_demo_feedforward_only) &&
-              (0u != balance.feedforward_only_ready)))
-        {
-            drive_demo_stop(DRIVE_BALANCE_DEMO_FAULT_STOP,
-                            DRIVE_BALANCE_STOP_BALANCE, now_ms);
-        }
-        else if (0u == balance.imu_valid)
-        {
-            drive_demo_stop(DRIVE_BALANCE_DEMO_FAULT_STOP,
-                            DRIVE_BALANCE_STOP_IMU, now_ms);
-        }
-        else if ((now_ms - drive_demo_brake_start_ms) >=
-                 BALANCE_DRIVE_DEMO_BRAKE_HOLD_MS)
-        {
-            drive_demo_stop(DRIVE_BALANCE_DEMO_COMPLETE,
-                            DRIVE_BALANCE_STOP_LAP_COMPLETE, now_ms);
-        }
-        return;
-    }
-
     drive_demo_status.elapsed_ms = now_ms - drive_demo_start_ms;
     drive_demo_update_distance();
     error = drive_demo_abs(drive_demo_status.target_position_m -
@@ -452,6 +433,17 @@ static void drive_demo_process_running(uint32 now_ms)
                         DRIVE_BALANCE_STOP_IMU, now_ms);
         return;
     }
+    if (DRIVE_BALANCE_DEMO_BRAKING == drive_demo_status.state)
+    {
+        if ((drive_demo_status.distance_m -
+             drive_demo_marker_distance_m) >=
+            BALANCE_DRIVE_DEMO_POST_MARKER_DISTANCE_M)
+        {
+            drive_demo_stop(DRIVE_BALANCE_DEMO_COMPLETE,
+                            DRIVE_BALANCE_STOP_LAP_COMPLETE, now_ms);
+        }
+        return;
+    }
     if (drive_demo_status.elapsed_ms > BALANCE_DRIVE_DEMO_TIMEOUT_MS)
     {
         drive_demo_stop(DRIVE_BALANCE_DEMO_TIMEOUT,
@@ -459,7 +451,7 @@ static void drive_demo_process_running(uint32 now_ms)
         return;
     }
     if (drive_demo_status.distance_m >=
-        BALANCE_DRIVE_DEMO_LAP_ARM_DISTANCE_M)
+        NO_LOAD_LAP_MARKER_MIN_DISTANCE_M)
     {
         drive_demo_status.finish_armed = 1u;
     }
@@ -472,30 +464,20 @@ static void drive_demo_process_running(uint32 now_ms)
         heartbeat_hw_uart_send_string("[drive-balance] approach A\r\n");
     }
     if ((0u != drive_demo_status.finish_armed) &&
-        (0u != line->marker_detected))
+        (line->active_count >= NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT))
     {
-        if (0u == drive_demo_marker_active)
-        {
-            drive_demo_marker_active = 1u;
-            drive_demo_marker_start_ms = now_ms;
-        }
-        else if ((now_ms - drive_demo_marker_start_ms) >=
-                 BALANCE_DRIVE_DEMO_MARKER_DEBOUNCE_MS)
-        {
-            drive_demo_status.passed_a = 1u;
-            drive_demo_status.error_requirement_met =
-                (drive_demo_status.max_abs_error_m <=
-                 BALANCE_DRIVE_DEMO_MAX_ERROR_M) ? 1u : 0u;
-            drive_demo_status.elapsed_ms = now_ms - drive_demo_start_ms;
-            drive_demo_status.state = DRIVE_BALANCE_DEMO_BRAKING;
-            drive_demo_brake_start_ms = now_ms;
-            motor_app_set_base_rpm(0.0f);
-            drive_demo_read_balance(now_ms, &balance);
-        }
-    }
-    else
-    {
-        drive_demo_marker_active = 0u;
+        drive_demo_status.passed_a = 1u;
+        drive_demo_status.error_requirement_met =
+            (drive_demo_status.max_abs_error_m <=
+             BALANCE_DRIVE_DEMO_MAX_ERROR_M) ? 1u : 0u;
+        drive_demo_status.state = DRIVE_BALANCE_DEMO_BRAKING;
+        drive_demo_marker_distance_m = drive_demo_status.distance_m;
+        motor_app_set_rapid_brake_enabled(1u);
+        motor_app_set_base_rpm_immediate(
+            line_control_get_base_rpm());
+        drive_demo_read_balance(now_ms, &balance);
+        heartbeat_hw_uart_send_string(
+            "[drive-balance] marker latched; post=230mm\r\n");
     }
 }
 
@@ -512,10 +494,9 @@ void drive_balance_demo_app_init(void)
     drive_demo_status.max_abs_error_m = 0.0f;
     drive_demo_status.distance_m = 0.0f;
     drive_demo_start_ms = heartbeat_get_ms();
-    drive_demo_brake_start_ms = drive_demo_start_ms;
+    drive_demo_marker_distance_m = 0.0f;
     drive_demo_previous_left_count = encoder_get_left_total_count();
     drive_demo_previous_right_count = encoder_get_right_total_count();
-    drive_demo_marker_active = 0u;
     drive_demo_line_loss_active = 0u;
     drive_demo_imu_loss_active = 0u;
     drive_demo_feedforward_only = 0u;
