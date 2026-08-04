@@ -75,8 +75,6 @@ void ball_velocity_controller_step(
     if (0u == input->observer_valid)
     {
         controller->position_active = 0u;
-        controller->angle_trim_deg = 0.0f;
-        controller->output.angle_trim_deg = 0.0f;
         controller->output.integral_velocity_mps = 0.0f;
         controller->has_previous_velocity = 0u;
         return;
@@ -91,6 +89,7 @@ void ball_velocity_controller_step(
              (velocity_abs(error_m) <= controller->config.position_off_m))
     {
         controller->position_active = 0u;
+        controller->output.integral_velocity_mps = 0.0f;
     }
     used_error_m = (0u != controller->position_active) ? error_m : 0.0f;
     if (0u != controller->position_active)
@@ -113,37 +112,27 @@ void ball_velocity_controller_step(
     }
     controller->output.velocity_limit_mps = unsigned_velocity_limit_mps;
 
-    if ((controller->config.angle_trim_ki_deg_per_m_s != 0.0f) &&
+    if ((controller->config.position_ki_s2_inv != 0.0f) &&
         (0u != input->new_measurement) &&
         (0u != controller->position_active) &&
         (0u == input->output_saturated) &&
-        (0u == input->freeze_angle_trim) &&
-        (velocity_abs(error_m) < controller->config.angle_trim_zone_m) &&
+        (0u == input->freeze_integral) &&
+        (velocity_abs(error_m) < controller->config.integral_zone_m) &&
         (input->measurement_dt_s > 0.0f))
     {
-        controller->angle_trim_deg +=
-            controller->config.angle_trim_ki_deg_per_m_s * error_m *
+        controller->output.integral_velocity_mps +=
+            controller->config.position_ki_s2_inv * error_m *
             input->measurement_dt_s;
-        controller->angle_trim_deg = velocity_clamp(
-            controller->angle_trim_deg,
-            -controller->config.angle_trim_limit_deg,
-            controller->config.angle_trim_limit_deg);
-        controller->output.flags |= BALL_VELOCITY_CONTROL_TRIM_ACTIVE;
-    }
-    controller->output.angle_trim_deg = controller->angle_trim_deg;
-    if (controller->config.velocity_kv_deg_per_mmps != 0.0f)
-    {
         controller->output.integral_velocity_mps =
-            controller->angle_trim_deg /
-            (controller->config.velocity_kv_deg_per_mmps * 1000.0f);
-    }
-    else
-    {
-        controller->output.integral_velocity_mps = 0.0f;
+            velocity_clamp(controller->output.integral_velocity_mps,
+                -controller->config.integral_velocity_limit_mps,
+                controller->config.integral_velocity_limit_mps);
+        controller->output.flags |= BALL_VELOCITY_CONTROL_INTEGRAL_ACTIVE;
     }
 
     proportional_velocity_mps =
-        controller->config.position_kp_s_inv * used_error_m;
+        controller->config.position_kp_s_inv * used_error_m +
+        controller->output.integral_velocity_mps;
     controller->output.target_velocity_mps = -velocity_clamp(
         proportional_velocity_mps,
         -unsigned_velocity_limit_mps,
@@ -192,8 +181,7 @@ void ball_velocity_controller_step(
             controller->output.velocity_error_mps * 1000.0f +
         controller->config.acceleration_ka_deg_per_mps2 *
             controller->output.filtered_acceleration_mps2 +
-        controller->config.fixed_beam_bias_deg +
-        controller->angle_trim_deg;
+        controller->config.fixed_beam_bias_deg;
     desired_beam_angle_deg = velocity_clamp(
         unrestricted_beam_angle_deg,
         -controller->config.max_target_beam_angle_deg,

@@ -40,9 +40,9 @@ static void balance_simple_send_diagnostic(void)
         999999u : status->motor_position_age_ms;
 
     snprintf(message, sizeof(message),
-        "[balance-simple] ctl=angle-bias-v4 fb=25 st=%u fault=%u fl=%04X sat=%04X "
+        "[balance-simple] ctl=angle-pi-bias-v5 fb=50 st=%u fault=%u fl=%04X sat=%04X "
         "seq=%u age=%lu x=%d xh=%d v=%d vr=%d tr=%d th=%d "
-        "the=%d ti=%d om=%d rpm=%d mp=%d mage=%lu err=%u\r\n",
+        "the=%d om=%d rpm=%d mp=%d mage=%lu err=%u\r\n",
         (unsigned int)status->state,
         (unsigned int)status->fault,
         (unsigned int)status->flags,
@@ -56,7 +56,6 @@ static void balance_simple_send_diagnostic(void)
         (int)(status->target_beam_angle_deg * 100.0f),
         (int)(status->measured_beam_angle_deg * 100.0f),
         (int)(status->beam_angle_error_deg * 100.0f),
-        (int)(status->angle_trim_deg * 100.0f),
         (int)(status->omega_command_deg_s * 100.0f),
         (int)status->motor_rpm_command,
         (int)(status->motor_position_deg * 100.0f),

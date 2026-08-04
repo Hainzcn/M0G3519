@@ -61,6 +61,7 @@
 #define BALANCE_SIMPLE_POSITION_ON_M                   (0.004f)  /* 启用位置回中控制的误差阈值，单位：米 */
 #define BALANCE_SIMPLE_POSITION_OFF_M                  (0.002f)  /* 关闭位置回中控制的误差阈值，单位：米 */
 #define BALANCE_SIMPLE_POSITION_KP_S_INV               (1.00f)   /* 位置比例增益，单位：每秒 */
+#define BALANCE_SIMPLE_POSITION_KI_S2_INV              (0.20f)   /* 位置积分增益，单位：每平方秒 */
 #define BALANCE_SIMPLE_MAX_TARGET_VELOCITY_MPS         (0.060f)  /* 最大目标球速，单位：米每秒 */
 #define BALANCE_SIMPLE_BRAKING_ENVELOPE_MPS2           (0.10f)   /* 回中制动包络加速度，单位：米每平方秒 */
 #define BALANCE_SIMPLE_ACTUATOR_DELAY_S                (0.25f)   /* 含目标摆角爬升的等效执行延迟，单位：秒 */
@@ -73,9 +74,8 @@
 #define BALANCE_SIMPLE_NEAR_POSITION_M                 (0.020f)  /* 近中心增益区间，单位：米 */
 #define BALANCE_SIMPLE_NEAR_GAIN                       (0.0f)    /* 近中心附加增益，0 表示关闭 */
 #define BALANCE_SIMPLE_NEAR_SCALE_MAX                  (1.50f)   /* 近中心增益最大倍率 */
-#define BALANCE_SIMPLE_ANGLE_TRIM_KI_DEG_PER_M_S       (0.0f)    /* 积分摆角偏置关闭 */
-#define BALANCE_SIMPLE_ANGLE_TRIM_ZONE_M               (0.06f)  /* 覆盖已观测停驻区的偏置学习范围，单位：米 */
-#define BALANCE_SIMPLE_ANGLE_TRIM_LIMIT_DEG            (0.0f)    /* 积分摆角偏置权限关闭，单位：度 */
+#define BALANCE_SIMPLE_INTEGRAL_ZONE_M                 (0.050f)  /* 位置积分生效范围，单位：米 */
+#define BALANCE_SIMPLE_INTEGRAL_LIMIT_MPS              (0.010f)  /* 位置积分对应目标球速上限，单位：米每秒 */
 #define BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG             (0.50f)   /* 球状态到目标摆角的固定正向偏置，单位：度 */
 #define BALANCE_SIMPLE_ACCELERATION_KA                 (0.0f)    /* 球加速度补偿增益，0 表示关闭 */
 #define BALANCE_SIMPLE_ACCELERATION_FILTER_ALPHA       (0.20f)   /* 球加速度低通滤波系数 */
