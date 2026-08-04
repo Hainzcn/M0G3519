@@ -3,6 +3,9 @@
 #include <stdio.h>
 
 #include "control_config.h"
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+#include "balance_simple_app.h"
+#endif
 #include "encoder.h"
 #include "grayscale.h"
 #include "heartbeat.h"
@@ -20,6 +23,9 @@ static uint32 no_load_line_loss_start_ms;
 static uint32 no_load_sensor_offline_start_ms;
 static uint8 no_load_line_loss_active;
 static uint8 no_load_sensor_offline_active;
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+static uint8 no_load_restore_balance;
+#endif
 
 static uint8 no_load_is_active(void)
 {
@@ -126,6 +132,17 @@ static void no_load_finish(no_load_lap_state_enum state, uint32 now_ms)
     no_load_status.state = state;
     no_load_line_loss_active = 0u;
     no_load_sensor_offline_active = 0u;
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    if (0u != no_load_restore_balance)
+    {
+        no_load_restore_balance = 0u;
+        if (0u == balance_simple_app_start())
+        {
+            heartbeat_hw_uart_send_string(
+                "[no-load] balance restart rejected\r\n");
+        }
+    }
+#endif
     no_load_log_result();
 }
 
@@ -146,6 +163,9 @@ void no_load_lap_app_init(void)
     no_load_sensor_offline_start_ms = 0u;
     no_load_line_loss_active = 0u;
     no_load_sensor_offline_active = 0u;
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    no_load_restore_balance = 0u;
+#endif
 }
 
 uint8 no_load_lap_app_start(void)
@@ -156,6 +176,11 @@ uint8 no_load_lap_app_start(void)
     {
         return 0u;
     }
+
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    balance_simple_app_disable();
+    no_load_restore_balance = 1u;
+#endif
 
     no_load_status.state = NO_LOAD_LAP_RUNNING;
     no_load_status.finish_armed = 0u;

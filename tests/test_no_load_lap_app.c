@@ -4,6 +4,9 @@
 #include <string.h>
 
 #include "control_config.h"
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+#include "balance_simple_app.h"
+#endif
 #include "encoder.h"
 #include "grayscale.h"
 #include "line_control.h"
@@ -22,6 +25,23 @@ static uint32 mock_line_start_count;
 static uint32 mock_stop_count;
 static uint32 mock_brake_count;
 static uint8 mock_rapid_brake_enabled;
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+static uint32 mock_balance_disable_count;
+static uint32 mock_balance_start_count;
+#endif
+
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+void balance_simple_app_disable(void)
+{
+    mock_balance_disable_count++;
+}
+
+uint8 balance_simple_app_start(void)
+{
+    mock_balance_start_count++;
+    return 1u;
+}
+#endif
 
 uint32 heartbeat_get_ms(void)
 {
@@ -151,6 +171,10 @@ static void reset_mocks(void)
     mock_stop_count = 0u;
     mock_brake_count = 0u;
     mock_rapid_brake_enabled = 0u;
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    mock_balance_disable_count = 0u;
+    mock_balance_start_count = 0u;
+#endif
     no_load_lap_app_init();
 }
 
@@ -173,12 +197,20 @@ static void test_start_allows_sensor_warmup_but_requires_idle_chassis(void)
     reset_mocks();
     mock_motor_mode = MOTOR_APP_MODE_SPEED_TEST;
     assert(0u == no_load_lap_app_start());
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_disable_count == 0u);
+    assert(mock_balance_start_count == 0u);
+#endif
 
     reset_mocks();
     assert(0u != no_load_lap_app_start());
     assert(mock_motor_mode == MOTOR_APP_MODE_LINE_FOLLOW);
     assert(mock_line_start_count == 1u);
     assert(fabsf(mock_base_rpm - NO_LOAD_LAP_CRUISE_RPM) < 0.001f);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_disable_count == 1u);
+    assert(mock_balance_start_count == 0u);
+#endif
 }
 
 static void test_first_marker_after_5m_stops_21cm_later(void)
@@ -258,6 +290,11 @@ static void test_first_marker_after_5m_stops_21cm_later(void)
     assert(mock_stop_count == 0u);
     assert(mock_brake_count == 1u);
     assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+    no_load_lap_app_stop();
+    assert(mock_balance_start_count == 1u);
+#endif
 }
 
 static void test_timeout_line_loss_and_sensor_failure_stop(void)
@@ -271,6 +308,9 @@ static void test_timeout_line_loss_and_sensor_failure_stop(void)
     status = no_load_lap_app_get_status();
     assert(status->state == NO_LOAD_LAP_TIMEOUT);
     assert(mock_stop_count == 1u);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+#endif
 
     reset_mocks();
     assert(0u != no_load_lap_app_start());
@@ -281,6 +321,9 @@ static void test_timeout_line_loss_and_sensor_failure_stop(void)
     no_load_lap_app_process();
     assert(status->state == NO_LOAD_LAP_LINE_LOST);
     assert(mock_stop_count == 1u);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+#endif
 
     reset_mocks();
     assert(0u != no_load_lap_app_start());
@@ -292,6 +335,9 @@ static void test_timeout_line_loss_and_sensor_failure_stop(void)
     no_load_lap_app_process();
     assert(status->state == NO_LOAD_LAP_SENSOR_OFFLINE);
     assert(mock_stop_count == 1u);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+#endif
 }
 
 static void test_user_stop(void)
@@ -306,6 +352,26 @@ static void test_user_stop(void)
     assert(status->state == NO_LOAD_LAP_USER_STOP);
     assert(status->elapsed_ms == 1234u);
     assert(mock_stop_count == 1u);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+#endif
+}
+
+static void test_chassis_stop_restores_balance(void)
+{
+    const no_load_lap_status_t *status;
+
+    reset_mocks();
+    assert(0u != no_load_lap_app_start());
+    mock_motor_mode = MOTOR_APP_MODE_DISABLED;
+    mock_now_ms = 25u;
+    no_load_lap_app_process();
+    status = no_load_lap_app_get_status();
+    assert(status->state == NO_LOAD_LAP_CHASSIS_STOPPED);
+    assert(mock_stop_count == 1u);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+#endif
 }
 
 int main(void)
@@ -314,6 +380,7 @@ int main(void)
     test_first_marker_after_5m_stops_21cm_later();
     test_timeout_line_loss_and_sensor_failure_stop();
     test_user_stop();
+    test_chassis_stop_restores_balance();
     puts("no-load lap app tests passed");
     return 0;
 }

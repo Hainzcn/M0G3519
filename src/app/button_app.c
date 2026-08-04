@@ -27,6 +27,7 @@ typedef enum
 {
     BUTTON_APP_VIEW_MENU = 0,
     BUTTON_APP_VIEW_CONFIRM,
+    BUTTON_APP_VIEW_CAPTURE,
     BUTTON_APP_VIEW_RUNNING,
     BUTTON_APP_VIEW_REJECTED,
     BUTTON_APP_VIEW_RESULT,
@@ -49,6 +50,7 @@ static uint8 button_app_force_render;
 static uint8 button_app_last_vision_online;
 static no_load_lap_state_enum button_app_last_no_load_state;
 static uint32 button_app_last_post_distance_step;
+static uint8 button_app_last_capture_ready;
 
 static uint8 button_app_mode_uses_vision(button_app_mode_enum mode)
 {
@@ -131,6 +133,31 @@ static void button_app_render_running(void)
     oled_show_string(0u, 5u, "SW4 STOP / BACK", OLED_FONT_6X8);
 }
 
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+static void button_app_render_capture(void)
+{
+    vision_link_status_t vision_status;
+
+    oled_clear();
+    oled_show_string(0u, 0u, "SET BALL POSITION", OLED_FONT_6X8);
+    button_app_show_mode(2u, BUTTON_APP_MODE_ARBITRARY, 1u);
+    vision_link_get_status(&vision_status);
+    if (0u == vision_status.link_online)
+    {
+        oled_show_string(0u, 4u, "VISION OFF", OLED_FONT_6X8);
+    }
+    else if (0u != drive_balance_demo_app_capture_ready())
+    {
+        oled_show_string(0u, 4u, "SW3 CAPTURE + RUN", OLED_FONT_6X8);
+    }
+    else
+    {
+        oled_show_string(0u, 4u, "LEVELING / WAIT", OLED_FONT_6X8);
+    }
+    oled_show_string(0u, 6u, "SW4 BACK", OLED_FONT_6X8);
+}
+#endif
+
 static void button_app_check_vision_status(void)
 {
     vision_link_status_t vision_status;
@@ -181,6 +208,25 @@ static void button_app_check_no_load_status(void)
         button_app_last_post_distance_step = post_distance_step;
         button_app_force_render = 1u;
     }
+}
+
+static void button_app_check_capture_status(void)
+{
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+    uint8 capture_ready;
+
+    if (BUTTON_APP_VIEW_CAPTURE != button_app_view)
+    {
+        button_app_last_capture_ready = 2u;
+        return;
+    }
+    capture_ready = drive_balance_demo_app_capture_ready();
+    if (button_app_last_capture_ready != capture_ready)
+    {
+        button_app_last_capture_ready = capture_ready;
+        button_app_force_render = 1u;
+    }
+#endif
 }
 
 static void button_app_render_no_load_result(void)
@@ -326,6 +372,12 @@ static void button_app_render(void)
     {
         button_app_render_dialog("CONFIRM MODE", "Run this mode?");
     }
+    else if (BUTTON_APP_VIEW_CAPTURE == button_app_view)
+    {
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+        button_app_render_capture();
+#endif
+    }
     else if (BUTTON_APP_VIEW_RUNNING == button_app_view)
     {
         button_app_render_running();
@@ -359,9 +411,6 @@ static uint8 button_app_start_selected_mode(void)
 #if (BALANCE_CONTROL_ENABLE != 0u)
             balance_app_cancel_motion();
 #endif
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-            balance_simple_app_disable();
-#endif
             return no_load_lap_app_start();
 
         case BUTTON_APP_MODE_STOP_TEST:
@@ -376,7 +425,7 @@ static uint8 button_app_start_selected_mode(void)
 
         case BUTTON_APP_MODE_ARBITRARY:
 #if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
-            return drive_balance_demo_app_start_captured();
+            return drive_balance_demo_app_prepare_captured();
 #else
             return 0u;
 #endif
@@ -454,8 +503,18 @@ static void button_app_handle_press(button_id_t pressed)
             if (0u != button_app_start_selected_mode())
             {
                 button_app_running_mode = button_app_selected_mode;
-                button_app_view = BUTTON_APP_VIEW_RUNNING;
-                heartbeat_hw_uart_send_string("[mode] started\r\n");
+                if (BUTTON_APP_MODE_ARBITRARY ==
+                    button_app_selected_mode)
+                {
+                    button_app_view = BUTTON_APP_VIEW_CAPTURE;
+                    heartbeat_hw_uart_send_string(
+                        "[mode] mode 5 waiting capture\r\n");
+                }
+                else
+                {
+                    button_app_view = BUTTON_APP_VIEW_RUNNING;
+                    heartbeat_hw_uart_send_string("[mode] started\r\n");
+                }
             }
             else
             {
@@ -470,6 +529,34 @@ static void button_app_handle_press(button_id_t pressed)
             button_app_view = BUTTON_APP_VIEW_MENU;
             view_changed = 1u;
         }
+    }
+    else if (BUTTON_APP_VIEW_CAPTURE == button_app_view)
+    {
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+        if (BUTTON_ID_SW3 == pressed)
+        {
+            if (0u != drive_balance_demo_app_start_captured())
+            {
+                button_app_view = BUTTON_APP_VIEW_RUNNING;
+                heartbeat_hw_uart_send_string(
+                    "[mode] mode 5 target captured; started\r\n");
+            }
+            else
+            {
+                heartbeat_hw_uart_send_string(
+                    "[mode] mode 5 capture not ready\r\n");
+            }
+            view_changed = 1u;
+        }
+        else if (BUTTON_ID_SW4 == pressed)
+        {
+            drive_balance_demo_app_stop();
+            button_app_view = BUTTON_APP_VIEW_MENU;
+            heartbeat_hw_uart_send_string(
+                "[mode] mode 5 capture canceled\r\n");
+            view_changed = 1u;
+        }
+#endif
     }
     else if ((BUTTON_APP_VIEW_RUNNING == button_app_view) &&
              (BUTTON_ID_SW4 == pressed))
@@ -553,6 +640,7 @@ void button_app_init(void)
     button_app_last_vision_online = 2u;
     button_app_last_no_load_state = NO_LOAD_LAP_IDLE;
     button_app_last_post_distance_step = 0u;
+    button_app_last_capture_ready = 2u;
     oled_app_set_dashboard_enabled(0u);
 }
 
@@ -569,6 +657,7 @@ void button_app_process(void)
     button_app_previous = active;
     button_app_check_mode_completion();
     button_app_check_no_load_status();
+    button_app_check_capture_status();
     button_app_check_vision_status();
 
     if (0u == oled_is_ready())

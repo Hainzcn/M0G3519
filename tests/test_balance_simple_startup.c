@@ -15,6 +15,8 @@ static uint32 mock_move_count;
 static uint32 mock_position_query_count;
 static uint32 mock_fallback_log_count;
 static uint32 mock_open_loop_level_log_count;
+static uint32 mock_stop_count;
+static uint32 mock_velocity_command_count;
 static float mock_move_angle_deg;
 
 uint32 heartbeat_get_ms(void)
@@ -98,6 +100,7 @@ uint8 emm42_run_velocity(uint8 address, int16 rpm, uint8 acceleration,
     (void)rpm;
     (void)acceleration;
     (void)synchronized;
+    mock_velocity_command_count++;
     return 1u;
 }
 
@@ -105,6 +108,7 @@ uint8 emm42_stop(uint8 address, uint8 synchronized)
 {
     (void)address;
     (void)synchronized;
+    mock_stop_count++;
     return 1u;
 }
 
@@ -162,6 +166,8 @@ static void reset_mocks(void)
     mock_position_query_count = 0u;
     mock_fallback_log_count = 0u;
     mock_open_loop_level_log_count = 0u;
+    mock_stop_count = 0u;
+    mock_velocity_command_count = 0u;
     mock_move_angle_deg = 0.0f;
 }
 
@@ -228,41 +234,86 @@ static void test_disable_waits_for_startup_level(void)
     assert(1u == mock_move_count);
 }
 
-static void test_vehicle_feedforward_filters_and_uses_hysteresis(void)
+static void test_capture_level_stops_before_absolute_move_and_holds_position(void)
+{
+    const balance_simple_status_t *status;
+    uint32 capture_start_ms;
+
+    reset_mocks();
+    balance_simple_app_init();
+    run_startup_without_uart_responses();
+    status = balance_simple_app_get_status();
+    assert(BALANCE_SIMPLE_WAIT_VISION == status->state);
+    assert(0u != balance_simple_app_set_target_position_m(0.040f));
+
+    mock_stop_count = 0u;
+    mock_velocity_command_count = 0u;
+    capture_start_ms = mock_now_ms;
+    assert(0u != balance_simple_app_prepare_capture());
+    assert(BALANCE_SIMPLE_STARTUP_LEVEL == status->state);
+    assert(mock_stop_count == 0u);
+
+    process_at(capture_start_ms + 1u);
+    assert(mock_stop_count == 1u);
+    assert(mock_move_count == 1u);
+
+    process_at(capture_start_ms + 1u +
+               BALANCE_SIMPLE_COMMAND_TIMEOUT_MS);
+    assert(mock_move_count == 2u);
+    assert((mock_move_angle_deg > -18.61f) &&
+           (mock_move_angle_deg < -18.59f));
+
+    process_at(capture_start_ms + 1u +
+               2u * BALANCE_SIMPLE_COMMAND_TIMEOUT_MS);
+    process_at(capture_start_ms + 1u +
+               2u * BALANCE_SIMPLE_COMMAND_TIMEOUT_MS +
+               BALANCE_SIMPLE_STARTUP_OPEN_LOOP_LEVEL_MS);
+    assert(BALANCE_SIMPLE_WAIT_VISION == status->state);
+    assert(mock_velocity_command_count == 0u);
+
+    balance_simple_app_cancel_capture();
+    assert(status->target_position_m == 0.0f);
+    assert(mock_stop_count == 2u);
+}
+
+static void test_planned_feedforward_is_immediate_and_imu_is_correction(void)
 {
     const balance_simple_status_t *status;
     const float planned_accel_mps2 =
         LINE_LOOKUP_BASE_START_SLEW_RPM_PER_S * 3.14159265f *
         CHASSIS_WHEEL_DIAMETER_M / 60.0f;
+    const float preview_accel_mps2 = planned_accel_mps2;
+    const float imu_accel_mps2 = 0.0f;
+    const float expected_accel_mps2 = preview_accel_mps2 +
+        BALANCE_SIMPLE_CAR_FF_IMU_CORRECTION_GAIN *
+            (imu_accel_mps2 - planned_accel_mps2);
     const float expected_angle_deg =
-        -atan2f(planned_accel_mps2, 9.80665f) *
+        -atan2f(expected_accel_mps2, 9.80665f) *
         (180.0f / 3.14159265f);
     uint32 index;
 
     reset_mocks();
     balance_simple_app_init();
     status = balance_simple_app_get_status();
-    balance_simple_app_set_vehicle_accel_mps2(planned_accel_mps2, 1u);
-    assert(fabsf(status->car_filtered_accel_mps2 - planned_accel_mps2) <
-           0.0001f);
-    for (index = 1u; index <= 6u; index++)
-    {
-        mock_now_ms = index * BALANCE_SIMPLE_CONTROL_PERIOD_MS;
-        balance_simple_app_set_vehicle_accel_mps2(planned_accel_mps2, 1u);
-    }
+    balance_simple_app_set_vehicle_accel_components_mps2(
+        planned_accel_mps2, preview_accel_mps2, imu_accel_mps2, 1u);
     assert(status->car_accel_valid != 0u);
-    assert(status->car_filtered_accel_mps2 > 0.0f);
+    assert(status->car_filtered_accel_mps2 == imu_accel_mps2);
     assert(status->car_feedforward_active != 0u);
-    assert(BALANCE_SIMPLE_CAR_FF_ENTER_MS <=
-           BALANCE_SIMPLE_CONTROL_PERIOD_MS);
+    assert(fabsf(status->car_accel_mps2 - expected_accel_mps2) < 0.0001f);
+    assert(fabsf(status->car_feedforward_angle_deg - expected_angle_deg) <
+           0.0001f);
+    assert(status->car_feedforward_angle_deg < 0.0f);
     assert(BALANCE_SIMPLE_CAR_FF_GAIN == 1.0f);
+    assert(BALANCE_SIMPLE_BEAM_ANGLE_KP_S_INV == 12.0f);
     assert(BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG >= 3.6f);
     assert(fabsf(expected_angle_deg) < BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG);
 
     for (index = 1u; index <= 40u; index++)
     {
         mock_now_ms += BALANCE_SIMPLE_CONTROL_PERIOD_MS;
-        balance_simple_app_set_vehicle_accel_mps2(0.0f, 1u);
+        balance_simple_app_set_vehicle_accel_components_mps2(
+            0.0f, 0.0f, 0.0f, 1u);
     }
     assert(status->car_feedforward_active == 0u);
     assert(status->car_feedforward_angle_deg == 0.0f);
@@ -291,7 +342,8 @@ int main(void)
 {
     test_startup_continues_without_uart_responses();
     test_disable_waits_for_startup_level();
-    test_vehicle_feedforward_filters_and_uses_hysteresis();
+    test_capture_level_stops_before_absolute_move_and_holds_position();
+    test_planned_feedforward_is_immediate_and_imu_is_correction();
     test_wait_vision_accepts_feedforward_only_mode();
     puts("balance simple startup fallback tests passed");
     return 0;

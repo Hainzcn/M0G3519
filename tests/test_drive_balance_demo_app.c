@@ -26,9 +26,17 @@ static uint8 mock_target_accepted;
 static uint8 mock_grayscale_online;
 static uint8 mock_feedforward_valid;
 static float mock_feedforward_accel_mps2;
+static float mock_planned_accel_mps2;
+static float mock_preview_accel_mps2;
+static float mock_imu_accel_mps2;
 static float mock_base_rpm;
 static wheel_speed_control_status_t mock_wheel;
 static uint8 mock_feedforward_only;
+static uint8 mock_capture_prepare_result;
+static uint8 mock_capture_ready;
+static uint32 mock_capture_cancel_count;
+static float mock_line_accel_rpm_s;
+static float mock_line_preview_accel_rpm_s;
 
 uint32 heartbeat_get_ms(void)
 {
@@ -57,10 +65,39 @@ void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid)
     mock_feedforward_valid = valid;
 }
 
+void balance_simple_app_set_vehicle_accel_components_mps2(
+    float planned_accel_mps2, float preview_accel_mps2,
+    float imu_accel_mps2, uint8 valid)
+{
+    mock_planned_accel_mps2 = planned_accel_mps2;
+    mock_preview_accel_mps2 = preview_accel_mps2;
+    mock_imu_accel_mps2 = imu_accel_mps2;
+    mock_feedforward_accel_mps2 = preview_accel_mps2 +
+        BALANCE_SIMPLE_CAR_FF_IMU_CORRECTION_GAIN *
+            (imu_accel_mps2 - planned_accel_mps2);
+    mock_feedforward_valid = valid;
+}
+
 uint8 balance_simple_app_set_feedforward_only(uint8 enabled)
 {
     mock_feedforward_only = enabled;
     return 1u;
+}
+
+uint8 balance_simple_app_prepare_capture(void)
+{
+    return mock_capture_prepare_result;
+}
+
+uint8 balance_simple_app_capture_ready(void)
+{
+    return mock_capture_ready;
+}
+
+void balance_simple_app_cancel_capture(void)
+{
+    mock_capture_cancel_count++;
+    mock_capture_ready = 0u;
 }
 
 const wheel_speed_control_status_t *wheel_speed_control_get_status(void)
@@ -105,6 +142,17 @@ const line_control_output_t *line_control_get_output(void)
     return &mock_line;
 }
 
+float line_control_get_base_accel_rpm_s(void)
+{
+    return mock_line_accel_rpm_s;
+}
+
+float line_control_get_base_accel_preview_rpm_s(float preview_s)
+{
+    assert(preview_s == BALANCE_SIMPLE_CAR_FF_PREVIEW_S);
+    return mock_line_preview_accel_rpm_s;
+}
+
 int32 encoder_get_left_total_count(void)
 {
     return mock_left_count;
@@ -136,10 +184,18 @@ static void reset_mocks(void)
     mock_grayscale_online = 1u;
     mock_feedforward_valid = 0u;
     mock_feedforward_accel_mps2 = 0.0f;
+    mock_planned_accel_mps2 = 0.0f;
+    mock_preview_accel_mps2 = 0.0f;
+    mock_imu_accel_mps2 = 0.0f;
     mock_base_rpm = 0.0f;
     mock_wheel.kinematics_valid = 0u;
     mock_wheel.planned_accel_mps2 = 0.0f;
     mock_feedforward_only = 0u;
+    mock_capture_prepare_result = 1u;
+    mock_capture_ready = 1u;
+    mock_capture_cancel_count = 0u;
+    mock_line_accel_rpm_s = 0.0f;
+    mock_line_preview_accel_rpm_s = 0.0f;
     drive_balance_demo_app_init();
 }
 
@@ -195,25 +251,26 @@ static void test_center_lap_ignores_start_marker(void)
     assert(mock_feedforward_valid == 0u);
 }
 
-static void test_planned_acceleration_is_blended_with_imu(void)
+static void test_planned_acceleration_is_previewed_and_imu_corrects_residual(void)
 {
-    float expected_accel;
+    const float rpm_s_to_mps2 =
+        3.14159265358979323846f * CHASSIS_WHEEL_DIAMETER_M / 60.0f;
 
     reset_mocks();
-    mock_wheel.kinematics_valid = 1u;
-    mock_wheel.planned_accel_mps2 = 0.6f;
     mock_imu.accel.ax = BALANCE_SIMPLE_CAR_ACCEL_OFFSET_MPS2 + 0.2f;
-    expected_accel =
-        BALANCE_SIMPLE_CAR_FF_PLAN_WEIGHT * 0.6f +
-        BALANCE_SIMPLE_CAR_FF_IMU_WEIGHT * 0.2f;
 
     assert(0u != drive_balance_demo_app_start_center());
+    mock_line_accel_rpm_s = 0.6f / rpm_s_to_mps2;
+    mock_line_preview_accel_rpm_s = 0.8f / rpm_s_to_mps2;
+    mock_now_ms += 10u;
+    mock_imu.accel_time_ms = mock_now_ms;
+    drive_balance_demo_app_process();
+
     assert(mock_feedforward_valid != 0u);
-    assert(BALANCE_SIMPLE_CAR_FF_PLAN_WEIGHT == 0.50f);
-    assert(BALANCE_SIMPLE_CAR_FF_IMU_WEIGHT == 0.50f);
-    assert(fabsf(BALANCE_SIMPLE_CAR_FF_PLAN_WEIGHT +
-                 BALANCE_SIMPLE_CAR_FF_IMU_WEIGHT - 1.0f) < 0.0001f);
-    assert(fabsf(mock_feedforward_accel_mps2 - expected_accel) < 0.0001f);
+    assert(fabsf(mock_planned_accel_mps2 - 0.6f) < 0.0001f);
+    assert(fabsf(mock_preview_accel_mps2 - 0.8f) < 0.0001f);
+    assert(fabsf(mock_imu_accel_mps2 - 0.2f) < 0.0001f);
+    assert(fabsf(mock_feedforward_accel_mps2 - 0.6f) < 0.0001f);
 }
 
 static void test_capture_current_and_user_stop(void)
@@ -222,6 +279,10 @@ static void test_capture_current_and_user_stop(void)
 
     reset_mocks();
     mock_balance.estimated_position_m = 0.043f;
+    assert(0u != drive_balance_demo_app_prepare_captured());
+    assert(drive_balance_demo_app_get_status()->state ==
+           DRIVE_BALANCE_DEMO_PREPARING_CAPTURE);
+    assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
     assert(0u != drive_balance_demo_app_start_captured());
     assert(fabsf(mock_base_rpm - TRACK_MODE_5_LINE_FOLLOW_RPM) < 0.001f);
     status = drive_balance_demo_app_get_status();
@@ -234,6 +295,7 @@ static void test_capture_current_and_user_stop(void)
     drive_balance_demo_app_stop();
     assert(status->state == DRIVE_BALANCE_DEMO_ABORTED);
     assert(status->stop_reason == DRIVE_BALANCE_STOP_USER);
+    assert(mock_target == 0.0f);
 }
 
 static void test_start_rejection_and_timeout(void)
@@ -250,8 +312,9 @@ static void test_start_rejection_and_timeout(void)
 
     reset_mocks();
     mock_balance.estimated_position_m = 0.100f;
+    assert(0u != drive_balance_demo_app_prepare_captured());
     assert(0u == drive_balance_demo_app_start_captured());
-    assert(status->state == DRIVE_BALANCE_DEMO_IDLE);
+    assert(status->state == DRIVE_BALANCE_DEMO_PREPARING_CAPTURE);
     assert(status->stop_reason == DRIVE_BALANCE_STOP_START_REJECTED);
 
     reset_mocks();
@@ -262,7 +325,7 @@ static void test_start_rejection_and_timeout(void)
     assert(status->stop_reason == DRIVE_BALANCE_STOP_TIMEOUT);
 }
 
-static void test_vision_off_starts_modes_4_and_5_feedforward_only(void)
+static void test_vision_off_only_starts_center_mode_feedforward_only(void)
 {
     const drive_balance_demo_status_t *status;
 
@@ -286,11 +349,16 @@ static void test_vision_off_starts_modes_4_and_5_feedforward_only(void)
     mock_balance.state = BALANCE_SIMPLE_WAIT_VISION;
     mock_balance.flags = BALANCE_SIMPLE_FLAG_MOTOR_POSITION_VALID;
     mock_balance.estimated_position_m = 0.043f;
-    assert(0u != drive_balance_demo_app_start_captured());
+    mock_capture_ready = 0u;
+    assert(0u != drive_balance_demo_app_prepare_captured());
+    assert(0u == drive_balance_demo_app_start_captured());
     status = drive_balance_demo_app_get_status();
-    assert(status->state == DRIVE_BALANCE_DEMO_RUNNING_CAPTURED);
-    assert(mock_feedforward_only != 0u);
-    assert(status->target_position_m == 0.0f);
+    assert(status->state == DRIVE_BALANCE_DEMO_PREPARING_CAPTURE);
+    assert(mock_feedforward_only == 0u);
+
+    drive_balance_demo_app_stop();
+    assert(mock_capture_cancel_count == 1u);
+    assert(status->state == DRIVE_BALANCE_DEMO_ABORTED);
 }
 
 static void test_line_and_balance_failures(void)
@@ -354,10 +422,10 @@ static void test_approach_speed_and_error_requirement(void)
 int main(void)
 {
     test_center_lap_ignores_start_marker();
-    test_planned_acceleration_is_blended_with_imu();
+    test_planned_acceleration_is_previewed_and_imu_corrects_residual();
     test_capture_current_and_user_stop();
     test_start_rejection_and_timeout();
-    test_vision_off_starts_modes_4_and_5_feedforward_only();
+    test_vision_off_only_starts_center_mode_feedforward_only();
     test_line_and_balance_failures();
     test_approach_speed_and_error_requirement();
     puts("drive balance demo tests passed");

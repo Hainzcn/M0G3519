@@ -18,7 +18,6 @@
 
 static ab_run_status_t ab_status;
 static uint32 ab_start_ms;
-static uint32 ab_brake_start_ms;
 static uint32 ab_line_loss_start_ms;
 static uint32 ab_imu_loss_start_ms;
 static int32 ab_previous_left_count;
@@ -26,6 +25,25 @@ static int32 ab_previous_right_count;
 static uint8 ab_line_loss_active;
 static uint8 ab_imu_loss_active;
 static uint8 ab_feedforward_only;
+static uint8 ab_force_straight_active;
+
+static void ab_get_planned_accel(float *planned_accel_mps2,
+                                 float *preview_accel_mps2)
+{
+    const float rpm_s_to_mps2 =
+        AB_RUN_PI_F * CHASSIS_WHEEL_DIAMETER_M / 60.0f;
+
+    *planned_accel_mps2 = 0.0f;
+    *preview_accel_mps2 = 0.0f;
+    if (MOTOR_APP_MODE_LINE_FOLLOW != motor_app_get_mode())
+    {
+        return;
+    }
+    *planned_accel_mps2 =
+        line_control_get_base_accel_rpm_s() * rpm_s_to_mps2;
+    *preview_accel_mps2 = line_control_get_base_accel_preview_rpm_s(
+        BALANCE_SIMPLE_CAR_FF_PREVIEW_S) * rpm_s_to_mps2;
+}
 
 static float ab_abs(float value)
 {
@@ -41,8 +59,7 @@ static float ab_clamp(float value, float low, float high)
 
 static uint8 ab_active(void)
 {
-    return ((AB_RUN_RUNNING == ab_status.state) ||
-            (AB_RUN_BRAKING == ab_status.state)) ? 1u : 0u;
+    return (AB_RUN_RUNNING == ab_status.state) ? 1u : 0u;
 }
 
 static void ab_update_distance(void)
@@ -68,10 +85,10 @@ static void ab_update_distance(void)
 
 static uint8 ab_update_feedforward(uint32 now_ms)
 {
-    const wheel_speed_control_status_t *wheel =
-        wheel_speed_control_get_status();
     imu_snapshot_t imu;
     float corrected;
+    float planned_accel_mps2;
+    float preview_accel_mps2;
     float feedforward;
 
     imu_get_snapshot(&imu);
@@ -81,14 +98,16 @@ static uint8 ab_update_feedforward(uint32 now_ms)
     ab_status.feedforward_accel_mps2 = 0.0f;
     if (0u == (imu.flags & IMU_FLAG_ACCEL))
     {
-        balance_simple_app_set_vehicle_accel_mps2(0.0f, 0u);
+        balance_simple_app_set_vehicle_accel_components_mps2(
+            0.0f, 0.0f, 0.0f, 0u);
         return 0u;
     }
 
     ab_status.imu_age_ms = now_ms - imu.accel_time_ms;
     if (ab_status.imu_age_ms > BALANCE_SIMPLE_CAR_IMU_MAX_AGE_MS)
     {
-        balance_simple_app_set_vehicle_accel_mps2(0.0f, 0u);
+        balance_simple_app_set_vehicle_accel_components_mps2(
+            0.0f, 0.0f, 0.0f, 0u);
         return 0u;
     }
     corrected = (imu.accel.ax - BALANCE_SIMPLE_CAR_ACCEL_OFFSET_MPS2) *
@@ -96,17 +115,17 @@ static uint8 ab_update_feedforward(uint32 now_ms)
     corrected = ab_clamp(corrected,
         -BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2,
         BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2);
-    feedforward = corrected;
-    if (0u != wheel->kinematics_valid)
-    {
-        feedforward =
-            BALANCE_SIMPLE_CAR_FF_PLAN_WEIGHT *
-                wheel->planned_accel_mps2 +
-            BALANCE_SIMPLE_CAR_FF_IMU_WEIGHT * corrected;
-    }
+    ab_get_planned_accel(&planned_accel_mps2, &preview_accel_mps2);
+    feedforward = preview_accel_mps2 +
+        BALANCE_SIMPLE_CAR_FF_IMU_CORRECTION_GAIN *
+            (corrected - planned_accel_mps2);
+    feedforward = ab_clamp(feedforward,
+        -BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2,
+        BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2);
     ab_status.feedforward_accel_mps2 = feedforward;
     ab_status.imu_valid = 1u;
-    balance_simple_app_set_vehicle_accel_mps2(feedforward, 1u);
+    balance_simple_app_set_vehicle_accel_components_mps2(
+        planned_accel_mps2, preview_accel_mps2, corrected, 1u);
     return 1u;
 }
 
@@ -127,10 +146,7 @@ static void ab_log_result(void)
 
 static void ab_finish(ab_run_state_enum state, uint32 now_ms)
 {
-    if (AB_RUN_BRAKING != ab_status.state)
-    {
-        motor_app_stop();
-    }
+    motor_app_stop();
     balance_simple_app_set_vehicle_accel_mps2(0.0f, 0u);
     if (0u != ab_feedforward_only)
     {
@@ -146,6 +162,7 @@ static void ab_finish(ab_run_state_enum state, uint32 now_ms)
         (ab_status.max_abs_error_m <= AB_RUN_MAX_ERROR_M) ? 1u : 0u;
     ab_line_loss_active = 0u;
     ab_imu_loss_active = 0u;
+    ab_force_straight_active = 0u;
     ab_log_result();
 }
 
@@ -180,7 +197,6 @@ void ab_run_app_init(void)
     ab_status.imu_accel_mps2 = 0.0f;
     ab_status.feedforward_accel_mps2 = 0.0f;
     ab_start_ms = heartbeat_get_ms();
-    ab_brake_start_ms = 0u;
     ab_line_loss_start_ms = 0u;
     ab_imu_loss_start_ms = 0u;
     ab_previous_left_count = encoder_get_left_total_count();
@@ -188,6 +204,7 @@ void ab_run_app_init(void)
     ab_line_loss_active = 0u;
     ab_imu_loss_active = 0u;
     ab_feedforward_only = 0u;
+    ab_force_straight_active = 0u;
 }
 
 uint8 ab_run_app_start(void)
@@ -238,8 +255,10 @@ uint8 ab_run_app_start(void)
     ab_previous_right_count = encoder_get_right_total_count();
     ab_line_loss_active = 0u;
     ab_imu_loss_active = 0u;
+    ab_force_straight_active = 0u;
     motor_app_set_base_rpm(TRACK_MODE_3_LINE_FOLLOW_RPM);
     motor_app_set_line_follow_enabled(1u);
+    (void)ab_update_feedforward(now_ms);
     heartbeat_hw_uart_send_string((0u != ab_feedforward_only) ?
         "[ab-run] start; vision off; feedforward only\r\n" :
         "[ab-run] start\r\n");
@@ -287,36 +306,38 @@ void ab_run_app_process(void)
         return;
     }
 
-    if (AB_RUN_BRAKING == ab_status.state)
-    {
-        if ((now_ms - ab_brake_start_ms) >= AB_RUN_BRAKE_HOLD_MS)
-        {
-            ab_finish(AB_RUN_COMPLETE, now_ms);
-        }
-        return;
-    }
-
     ab_status.elapsed_ms = now_ms - ab_start_ms;
-    line = line_control_get_output();
-    if (0u != ab_timed_out(line->line_lost, &ab_line_loss_active,
-            &ab_line_loss_start_ms, AB_RUN_LINE_LOSS_TIMEOUT_MS, now_ms))
-    {
-        ab_finish(AB_RUN_LINE_LOST, now_ms);
-        return;
-    }
-    if (ab_status.elapsed_ms >= AB_RUN_TIMEOUT_MS)
-    {
-        ab_finish(AB_RUN_TIMEOUT, now_ms);
-        return;
-    }
     if (ab_status.distance_m >= AB_RUN_TARGET_DISTANCE_M)
     {
         ab_status.passed_b = 1u;
         ab_status.error_requirement_met =
             (ab_status.max_abs_error_m <= AB_RUN_MAX_ERROR_M) ? 1u : 0u;
-        ab_status.state = AB_RUN_BRAKING;
-        ab_brake_start_ms = now_ms;
-        motor_app_stop();
+        ab_finish(AB_RUN_COMPLETE, now_ms);
+        return;
+    }
+    if ((0u == ab_force_straight_active) &&
+        (ab_status.distance_m >= AB_RUN_FORCE_STRAIGHT_DISTANCE_M))
+    {
+        /* This also rejects the right-shifting line beyond 1.50 m. */
+        motor_app_set_speed_test(TRACK_MODE_3_LINE_FOLLOW_RPM,
+                                 TRACK_MODE_3_LINE_FOLLOW_RPM);
+        ab_force_straight_active = 1u;
+        ab_line_loss_active = 0u;
+    }
+    if (0u == ab_force_straight_active)
+    {
+        line = line_control_get_output();
+        if (0u != ab_timed_out(line->line_lost, &ab_line_loss_active,
+                &ab_line_loss_start_ms, AB_RUN_LINE_LOSS_TIMEOUT_MS, now_ms))
+        {
+            ab_finish(AB_RUN_LINE_LOST, now_ms);
+            return;
+        }
+    }
+    if (ab_status.elapsed_ms >= AB_RUN_TIMEOUT_MS)
+    {
+        ab_finish(AB_RUN_TIMEOUT, now_ms);
+        return;
     }
 }
 

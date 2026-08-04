@@ -43,6 +43,7 @@ typedef enum
     SIMPLE_START_LOWER_SETTLE,
     SIMPLE_START_WAIT_ZERO,
     SIMPLE_START_WAIT_ENABLE,
+    SIMPLE_START_WAIT_CAPTURE_STOP,
     SIMPLE_START_WAIT_LEVEL_COMMAND,
     SIMPLE_START_WAIT_LEVEL,
 } simple_startup_stage_enum;
@@ -91,6 +92,7 @@ static uint8 simple_vehicle_ff_transition_active;
 static uint8 simple_vehicle_ff_active;
 static uint8 simple_stop_test_mode;
 static uint8 simple_feedforward_only;
+static uint8 simple_capture_hold;
 
 static float simple_abs(float value)
 {
@@ -296,6 +298,11 @@ static uint8 simple_advance_startup_command(uint8 command, uint32 now_ms)
     }
     else if ((SIMPLE_START_WAIT_ENABLE == simple_startup_stage) &&
              (SIMPLE_COMMAND_ENABLE == command))
+    {
+        simple_set_startup_stage(SIMPLE_START_WAIT_LEVEL_COMMAND, now_ms);
+    }
+    else if ((SIMPLE_START_WAIT_CAPTURE_STOP == simple_startup_stage) &&
+             (SIMPLE_COMMAND_STOP == command))
     {
         simple_set_startup_stage(SIMPLE_START_WAIT_LEVEL_COMMAND, now_ms);
     }
@@ -760,6 +767,7 @@ static void simple_control_step(uint32 now_ms)
     }
     if (((BALANCE_SIMPLE_WAIT_VISION == simple_status.state) ||
          (BALANCE_SIMPLE_SAFE_RETURN == simple_status.state)) &&
+        (0u == simple_capture_hold) &&
         (0u != observer_output.valid) &&
         (0u != simple_motor_feedback_is_fresh(now_ms)))
     {
@@ -861,6 +869,13 @@ static void simple_process_startup(uint32 now_ms)
             SIMPLE_COMMAND_ENABLE,
             emm42_set_enabled(SIMPLE_ADDRESS, 1u, 0u), now_ms);
     }
+    else if ((SIMPLE_START_WAIT_CAPTURE_STOP == simple_startup_stage) &&
+             (0u == simple_pending_command))
+    {
+        (void)simple_begin_command(
+            SIMPLE_COMMAND_STOP,
+            emm42_stop(SIMPLE_ADDRESS, 0u), now_ms);
+    }
     else if ((SIMPLE_START_WAIT_LEVEL_COMMAND == simple_startup_stage) &&
              (0u == simple_pending_command))
     {
@@ -942,6 +957,25 @@ static void simple_schedule_motor(uint32 now_ms)
         (BALANCE_SIMPLE_FAULT == simple_status.state) ||
         (BALANCE_SIMPLE_STARTUP_LEVEL == simple_status.state))
     {
+        return;
+    }
+    if ((0u != simple_capture_hold) &&
+        (BALANCE_SIMPLE_WAIT_VISION == simple_status.state))
+    {
+        if (0u != simple_pending_command)
+        {
+            return;
+        }
+        if ((now_ms - simple_last_position_query_ms) >=
+            BALANCE_SIMPLE_POSITION_QUERY_MS)
+        {
+            if (0u != simple_begin_command(
+                    SIMPLE_COMMAND_POSITION,
+                    emm42_query_position(SIMPLE_ADDRESS), now_ms))
+            {
+                simple_last_position_query_ms = now_ms;
+            }
+        }
         return;
     }
     command_changed = ((0u == simple_has_sent_rpm) ||
@@ -1157,6 +1191,7 @@ void balance_simple_app_init(void)
     simple_vehicle_ff_transition_active = 0u;
     simple_vehicle_ff_active = 0u;
     simple_feedforward_only = 0u;
+    simple_capture_hold = 0u;
     simple_last_capture_ms = 0u;
     simple_last_control_ms = now_ms;
     simple_last_position_query_ms = now_ms;
@@ -1188,9 +1223,113 @@ uint8 balance_simple_app_start(void)
     if (BALANCE_SIMPLE_STARTUP_LEVEL == simple_status.state)
     {
         simple_disable_after_startup = 0u;
+        simple_capture_hold = 0u;
         return 1u;
     }
     return 0u;
+}
+
+uint8 balance_simple_app_prepare_capture(void)
+{
+    uint32 now_ms = heartbeat_get_ms();
+
+    if (BALANCE_SIMPLE_FAULT == simple_status.state)
+    {
+        return 0u;
+    }
+    if (BALANCE_SIMPLE_DISABLED == simple_status.state)
+    {
+        balance_simple_app_init();
+        if (BALANCE_SIMPLE_FAULT == simple_status.state)
+        {
+            return 0u;
+        }
+        simple_capture_hold = 1u;
+        return 1u;
+    }
+    if (BALANCE_SIMPLE_STARTUP_LEVEL == simple_status.state)
+    {
+        simple_disable_after_startup = 0u;
+        simple_capture_hold = 1u;
+        return 1u;
+    }
+    if ((BALANCE_SIMPLE_WAIT_VISION != simple_status.state) &&
+        (BALANCE_SIMPLE_ACTIVE != simple_status.state) &&
+        (BALANCE_SIMPLE_STATIC_LOCK != simple_status.state) &&
+        (BALANCE_SIMPLE_SAFE_RETURN != simple_status.state))
+    {
+        return 0u;
+    }
+    if (0u == balance_linkage_motor_from_physical_lever_deg(
+            0.0f, &simple_level_motor_deg))
+    {
+        return 0u;
+    }
+
+    simple_zero_control_command();
+    simple_pending_command = 0u;
+    simple_rx_frame.length = 0u;
+    simple_status.flags &=
+        (uint16)(~(BALANCE_SIMPLE_FLAG_COMMAND_PENDING |
+                   BALANCE_SIMPLE_FLAG_FEEDFORWARD_ONLY));
+    simple_has_sent_rpm = 0u;
+    simple_last_sent_rpm = 0;
+    simple_level_stable = 0u;
+    simple_disable_after_startup = 0u;
+    simple_feedforward_only = 0u;
+    simple_capture_hold = 1u;
+    ball_state_observer_reset(&simple_observer);
+    ball_velocity_controller_reset(&simple_controller);
+    simple_new_measurement = 0u;
+    simple_last_capture_ms = 0u;
+    simple_status.estimated_position_m = 0.0f;
+    simple_status.estimated_velocity_mps = 0.0f;
+    simple_status.flags &=
+        (uint16)(~BALANCE_SIMPLE_FLAG_OBSERVER_VALID);
+    balance_simple_app_set_vehicle_accel_mps2(0.0f, 0u);
+    simple_set_state(BALANCE_SIMPLE_STARTUP_LEVEL, now_ms);
+    simple_set_startup_stage(SIMPLE_START_WAIT_CAPTURE_STOP, now_ms);
+    heartbeat_hw_uart_send_string(
+        "[balance-simple] arbitrary capture: level and hold\r\n");
+    return 1u;
+}
+
+uint8 balance_simple_app_capture_ready(void)
+{
+    uint32 now_ms = heartbeat_get_ms();
+
+    return ((0u != simple_capture_hold) &&
+            (BALANCE_SIMPLE_WAIT_VISION == simple_status.state) &&
+            (0u != (simple_status.flags &
+                    BALANCE_SIMPLE_FLAG_OBSERVER_VALID)) &&
+            (0u != simple_motor_feedback_is_fresh(now_ms))) ? 1u : 0u;
+}
+
+void balance_simple_app_cancel_capture(void)
+{
+    uint32 now_ms;
+
+    if (0u == simple_capture_hold)
+    {
+        return;
+    }
+    now_ms = heartbeat_get_ms();
+    simple_capture_hold = 0u;
+    simple_disable_after_startup = 0u;
+    simple_status.target_position_m = 0.0f;
+    simple_pending_command = 0u;
+    simple_rx_frame.length = 0u;
+    simple_status.flags &=
+        (uint16)(~BALANCE_SIMPLE_FLAG_COMMAND_PENDING);
+    simple_zero_control_command();
+    simple_has_sent_rpm = 0u;
+    ball_velocity_controller_reset(&simple_controller);
+    simple_set_state(BALANCE_SIMPLE_WAIT_VISION, now_ms);
+    (void)simple_begin_command(
+        SIMPLE_COMMAND_STOP,
+        emm42_stop(SIMPLE_ADDRESS, 0u), now_ms);
+    heartbeat_hw_uart_send_string(
+        "[balance-simple] arbitrary capture canceled\r\n");
 }
 
 void balance_simple_app_set_stop_test_mode(uint8 enabled)
@@ -1248,6 +1387,8 @@ void balance_simple_app_process(void)
 
 uint8 balance_simple_app_set_target_position_m(float target_position_m)
 {
+    uint8 capture_ready = balance_simple_app_capture_ready();
+
     if ((simple_abs(target_position_m) >
          BALANCE_SIMPLE_TARGET_LIMIT_M) ||
         ((BALANCE_SIMPLE_ACTIVE != simple_status.state) &&
@@ -1258,7 +1399,12 @@ uint8 balance_simple_app_set_target_position_m(float target_position_m)
     }
     simple_status.target_position_m = target_position_m;
     ball_velocity_controller_reset(&simple_controller);
-    if (BALANCE_SIMPLE_STATIC_LOCK == simple_status.state)
+    if (0u != capture_ready)
+    {
+        simple_capture_hold = 0u;
+        simple_set_state(BALANCE_SIMPLE_ACTIVE, heartbeat_get_ms());
+    }
+    else if (BALANCE_SIMPLE_STATIC_LOCK == simple_status.state)
     {
         simple_set_state(BALANCE_SIMPLE_ACTIVE, heartbeat_get_ms());
     }
@@ -1296,10 +1442,15 @@ uint8 balance_simple_app_set_feedforward_only(uint8 enabled)
     return 1u;
 }
 
-void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid)
+void balance_simple_app_set_vehicle_accel_components_mps2(
+    float planned_accel_mps2, float preview_accel_mps2,
+    float imu_accel_mps2, uint8 valid)
 {
     float angle_deg = 0.0f;
+    float imu_correction_mps2;
+    float effective_accel_mps2;
     float abs_accel;
+    uint8 plan_active;
     uint32 now_ms = heartbeat_get_ms();
 
     if (0u == valid)
@@ -1312,6 +1463,9 @@ void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid)
         simple_vehicle_filter_ms = now_ms;
         simple_status.car_accel_mps2 = 0.0f;
         simple_status.car_filtered_accel_mps2 = 0.0f;
+        simple_status.car_planned_accel_mps2 = 0.0f;
+        simple_status.car_preview_accel_mps2 = 0.0f;
+        simple_status.car_imu_accel_mps2 = 0.0f;
         simple_status.car_feedforward_angle_deg = 0.0f;
         simple_status.car_feedforward_scale = 0.0f;
         simple_status.car_accel_valid = 0u;
@@ -1319,13 +1473,21 @@ void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid)
         return;
     }
 
-    accel_mps2 = simple_clamp(
-        accel_mps2,
+    planned_accel_mps2 = simple_clamp(
+        planned_accel_mps2,
+        -BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2,
+        BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2);
+    preview_accel_mps2 = simple_clamp(
+        preview_accel_mps2,
+        -BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2,
+        BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2);
+    imu_accel_mps2 = simple_clamp(
+        imu_accel_mps2,
         -BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2,
         BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2);
     if (0u == simple_vehicle_filter_initialized)
     {
-        simple_vehicle_filtered_accel_mps2 = accel_mps2;
+        simple_vehicle_filtered_accel_mps2 = imu_accel_mps2;
         simple_vehicle_filter_ms = now_ms;
         simple_vehicle_filter_initialized = 1u;
     }
@@ -1334,11 +1496,24 @@ void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid)
     {
         simple_vehicle_filtered_accel_mps2 +=
             BALANCE_SIMPLE_CAR_ACCEL_FILTER_ALPHA *
-            (accel_mps2 - simple_vehicle_filtered_accel_mps2);
+            (imu_accel_mps2 - simple_vehicle_filtered_accel_mps2);
         simple_vehicle_filter_ms = now_ms;
     }
-    abs_accel = simple_abs(simple_vehicle_filtered_accel_mps2);
-    if (0u == simple_vehicle_ff_active)
+    imu_correction_mps2 = BALANCE_SIMPLE_CAR_FF_IMU_CORRECTION_GAIN *
+        (simple_vehicle_filtered_accel_mps2 - planned_accel_mps2);
+    effective_accel_mps2 = simple_clamp(
+        preview_accel_mps2 + imu_correction_mps2,
+        -BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2,
+        BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2);
+    abs_accel = simple_abs(effective_accel_mps2);
+    plan_active = ((simple_abs(planned_accel_mps2) > 0.0001f) ||
+                   (simple_abs(preview_accel_mps2) > 0.0001f)) ? 1u : 0u;
+    if (0u != plan_active)
+    {
+        simple_vehicle_ff_active = 1u;
+        simple_vehicle_ff_transition_active = 0u;
+    }
+    else if (0u == simple_vehicle_ff_active)
     {
         if (abs_accel >= BALANCE_SIMPLE_CAR_FF_ENTER_MPS2)
         {
@@ -1381,24 +1556,35 @@ void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid)
     if (0u != simple_vehicle_ff_active)
     {
         angle_deg = -BALANCE_SIMPLE_CAR_FF_GAIN *
-            atan2f(simple_vehicle_filtered_accel_mps2,
+            atan2f(effective_accel_mps2,
                    SIMPLE_GRAVITY_MPS2) * SIMPLE_RAD_TO_DEG;
         angle_deg = simple_clamp(angle_deg,
             -BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG,
             BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG);
     }
-    simple_status.car_accel_mps2 = accel_mps2;
+    simple_status.car_accel_mps2 = effective_accel_mps2;
     simple_status.car_filtered_accel_mps2 =
         simple_vehicle_filtered_accel_mps2;
+    simple_status.car_planned_accel_mps2 = planned_accel_mps2;
+    simple_status.car_preview_accel_mps2 = preview_accel_mps2;
+    simple_status.car_imu_accel_mps2 = imu_accel_mps2;
+    simple_status.car_feedforward_angle_deg = angle_deg;
     simple_status.car_accel_valid = 1u;
     simple_status.car_feedforward_active = simple_vehicle_ff_active;
     simple_vehicle_feedforward_angle_deg = angle_deg;
+}
+
+void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid)
+{
+    balance_simple_app_set_vehicle_accel_components_mps2(
+        accel_mps2, accel_mps2, accel_mps2, valid);
 }
 
 void balance_simple_app_disable(void)
 {
     uint32 now_ms = heartbeat_get_ms();
 
+    simple_capture_hold = 0u;
     if (BALANCE_SIMPLE_STARTUP_LEVEL == simple_status.state)
     {
         simple_disable_after_startup = 1u;

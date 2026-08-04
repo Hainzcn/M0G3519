@@ -40,6 +40,8 @@ void line_control_reset(void);
 void line_control_set_base_rpm(float base_rpm);
 void line_control_set_base_rpm_immediate(float base_rpm);
 float line_control_get_base_rpm(void);
+float line_control_get_base_accel_rpm_s(void);
+float line_control_get_base_accel_preview_rpm_s(float preview_s);
 void line_control_update(const uint8 values[GRAYSCALE_CHANNELS],
                          uint32 now_ms, float dt_s);
 const line_control_output_t *line_control_get_output(void);

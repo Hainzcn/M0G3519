@@ -12,8 +12,8 @@
 #define NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT            (5u)     /* 模式1启停线至少同时覆盖的探头数 */
 #define NO_LOAD_LAP_POST_MARKER_DISTANCE_M            (0.300f) /* 启停线后继续循迹的制动触发距离，单位：米 */
 #define NO_LOAD_LAP_POST_MARKER_MIN_RPM                (25.0f)  /* 到达停车点前保持循迹的最低轮速 */
-#define NO_LOAD_LAP_LINE_LOSS_TIMEOUT_MS              (500u)   /* 持续丢线后终止任务，单位：毫秒 */
-#define NO_LOAD_LAP_SENSOR_OFFLINE_TIMEOUT_MS         (500u)   /* 灰度持续离线后终止任务，单位：毫秒 */
+#define NO_LOAD_LAP_LINE_LOSS_TIMEOUT_MS             (1200u)   /* 持续丢线后终止任务，单位：毫秒 */
+#define NO_LOAD_LAP_SENSOR_OFFLINE_TIMEOUT_MS        (1200u)   /* 灰度持续离线后终止任务，单位：毫秒 */
 #define NO_LOAD_LAP_TIMEOUT_MS                        (20000u) /* 一圈任务硬超时，单位：毫秒 */
 
 /* 菜单赛道 3/4/5：独立循迹速度 */
@@ -45,12 +45,13 @@
 #define STOP_TEST_MAX_BEAM_ANGLE_DEG                   (4.0f)
 #define STOP_TEST_MAX_BEAM_VELOCITY_DEG_S              (80.0f)
 
-/* 赛题 MODE_4：A 点到 B 点，钢球保持中心 */
-#define AB_RUN_TARGET_DISTANCE_M                       (1.52f)  /* 略过 B 点的目标里程，单位：米 */
+/* 赛道模式 3：A 点到 B 点，钢球保持中心 */
+#define AB_RUN_FORCE_STRAIGHT_DISTANCE_M               (1.40f)  /* 此里程后忽略循迹并等速直行 */
+#define AB_RUN_IGNORE_RIGHT_SHIFT_DISTANCE_M           (1.50f)  /* 右移黑线干扰起始里程；已包含在直行段内 */
+#define AB_RUN_TARGET_DISTANCE_M                       (1.75f)  /* 本阶段结束里程，单位：米 */
 #define AB_RUN_TIMEOUT_MS                              (8000u)  /* A 到 B 最大允许时间，单位：毫秒 */
-#define AB_RUN_BRAKE_HOLD_MS                           (600u)   /* 过 B 后保留前馈覆盖制动的时间 */
-#define AB_RUN_LINE_LOSS_TIMEOUT_MS                    (300u)   /* 连续丢线故障时间，单位：毫秒 */
-#define AB_RUN_IMU_LOSS_TIMEOUT_MS                     (100u)   /* 连续无新鲜 IMU 的故障时间 */
+#define AB_RUN_LINE_LOSS_TIMEOUT_MS                    (800u)   /* 连续丢线故障时间，单位：毫秒 */
+#define AB_RUN_IMU_LOSS_TIMEOUT_MS                     (250u)   /* 连续无新鲜 IMU 的故障时间 */
 #define AB_RUN_MAX_ERROR_M                             (0.010f) /* 赛题钢球最大允许中心误差 */
 
 #define UART3_MAIX_MODE_NORMAL                        (0u)     /* UART3 正常模式：接收视觉数据并发送运行遥测 */
@@ -104,11 +105,11 @@
 #define BALANCE_SIMPLE_OBSERVER_ALPHA                  (0.85f)   /* 位置残差校正系数 */
 #define BALANCE_SIMPLE_OBSERVER_BETA                   (0.15f)   /* 速度残差校正系数 */
 #define BALANCE_SIMPLE_VISIBLE_LIMIT_M                 (0.130f)  /* 视觉可接受位置范围，单位：米 */
-#define BALANCE_SIMPLE_MAX_IMPLIED_SPEED_MPS           (0.80f)   /* 相邻视觉帧允许的最大推算速度，单位：米每秒 */
-#define BALANCE_SIMPLE_MAX_CAPTURE_INTERVAL_MS         (150u)     /* 相邻视觉采样最大间隔，单位：毫秒 */
-#define BALANCE_SIMPLE_VISION_TIMEOUT_MS               (250u)     /* 视觉观测超时时间，单位：毫秒 */
+#define BALANCE_SIMPLE_MAX_IMPLIED_SPEED_MPS           (2.50f)   /* 相邻视觉帧允许的最大推算速度，单位：米每秒 */
+#define BALANCE_SIMPLE_MAX_CAPTURE_INTERVAL_MS         (300u)     /* 相邻视觉采样最大间隔，单位：毫秒 */
+#define BALANCE_SIMPLE_VISION_TIMEOUT_MS               (600u)     /* 视觉观测超时时间，单位：毫秒 */
 #define BALANCE_SIMPLE_VISION_TRANSPORT_MS             (3u)      /* 视觉链路固定传输延迟，单位：毫秒 */
-#define BALANCE_SIMPLE_MAX_PREDICTION_MS                (50u)     /* 陈旧视觉状态最大外推时间，单位：毫秒 */
+#define BALANCE_SIMPLE_MAX_PREDICTION_MS               (100u)     /* 陈旧视觉状态最大外推时间，单位：毫秒 */
 #define BALANCE_SIMPLE_RECOVERY_FRAMES                 (2u)      /* 观测恢复所需连续有效帧数 */
 #define BALANCE_SIMPLE_MIN_CONFIDENCE                  (50u)     /* 视觉测量最低置信度 */
 
@@ -123,7 +124,7 @@
 #define BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM          (0.020f)  /* 球速误差到目标摆角的增益，单位：度/(毫米/秒) */
 #define BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG       (5.0f)    /* 含车辆前馈的目标摆角绝对值上限 */
 #define BALANCE_SIMPLE_TARGET_BEAM_ANGLE_SLEW_DEG_S    (30.0f)   /* 跟随底盘加速度包络，单位：度每秒 */
-#define BALANCE_SIMPLE_BEAM_ANGLE_KP_S_INV             (7.0f)    /* 摆角误差到摆杆角速度的比例增益，单位：每秒 */
+#define BALANCE_SIMPLE_BEAM_ANGLE_KP_S_INV             (12.0f)   /* 提高前馈姿态跟随带宽，单位：每秒 */
 #define BALANCE_SIMPLE_BEAM_ANGLE_DEADBAND_DEG         (0.05f)   /* 抑制整数 RPM 往返动作的摆角死区 */
 #define BALANCE_SIMPLE_MAX_BEAM_VELOCITY_DEG_S         (30.0f)   /* 最大摆杆角速度，单位：度每秒 */
 #define BALANCE_SIMPLE_NEAR_POSITION_M                 (0.012f)  /* 近中心增益区间，单位：米 */
@@ -138,7 +139,7 @@
 #define BALANCE_SIMPLE_CAR_ACCEL_GAIN                  (1.0f)    /* IMU 纵向加速度标定增益 */
 #define BALANCE_SIMPLE_CAR_ACCEL_SIGN                  (1.0f)    /* IMU X 轴与车头方向关系 */
 #define BALANCE_SIMPLE_CAR_ACCEL_LIMIT_MPS2            (2.0f)    /* 前馈加速度安全限幅 */
-#define BALANCE_SIMPLE_CAR_IMU_MAX_AGE_MS              (25u)     /* IMU 加速度最大有效年龄 */
+#define BALANCE_SIMPLE_CAR_IMU_MAX_AGE_MS              (100u)    /* IMU 加速度最大有效年龄 */
 #define BALANCE_SIMPLE_CAR_ACCEL_FILTER_ALPHA          (0.35f)   /* 低延迟 IMU 加速度一阶低通系数 */
 #define BALANCE_SIMPLE_CAR_FF_ENTER_MPS2               (0.02f)   /* 尽早跟随启动加速度包络 */
 #define BALANCE_SIMPLE_CAR_FF_EXIT_MPS2                (0.01f)   /* 前馈退出加速度阈值 */
@@ -147,8 +148,8 @@
 #define BALANCE_SIMPLE_CAR_FF_GAIN                     (1.0f)    /* 完整惯性补偿：摆角 = atan(a/g) */
 #define BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG            (4.0f)    /* 覆盖 0.613 m/s^2 启动所需的 3.57 度 */
 #define BALANCE_SIMPLE_CAR_FF_POSITION_CUTOFF_M        (0.010f)  /* 偏差到 1 cm 时前馈完全让权给回中环 */
-#define BALANCE_SIMPLE_CAR_FF_PLAN_WEIGHT              (0.50f)   /* 赛道 3/4/5 规划加速度预测权重 */
-#define BALANCE_SIMPLE_CAR_FF_IMU_WEIGHT               (0.50f)   /* 赛道 3/4/5 IMU 实测加速度权重 */
+#define BALANCE_SIMPLE_CAR_FF_PREVIEW_S                (0.10f)   /* S 曲线规划加速度预瞄时间 */
+#define BALANCE_SIMPLE_CAR_FF_IMU_CORRECTION_GAIN      (0.50f)   /* IMU 对当前规划加速度残差的修正增益 */
 
 /* 赛题 MODE_5：带球顺时针循迹一圈并通过 A 点 */
 #define BALANCE_DRIVE_DEMO_APPROACH_RPM                (75.0f)   /* 接近 A 点时的基础轮速 */
@@ -171,9 +172,9 @@
 #define BALANCE_SIMPLE_POSITION_QUERY_MS               (20u)     /* 摆角闭环位置查询周期，单位：毫秒 */
 #define BALANCE_SIMPLE_VELOCITY_QUERY_MS               (100u)    /* 电机实际速度诊断查询周期，单位：毫秒 */
 #define BALANCE_SIMPLE_VELOCITY_KEEPALIVE_MS           (100u)   /* 电机速度命令保活周期，单位：毫秒 */
-#define BALANCE_SIMPLE_COMMAND_TIMEOUT_MS              (50u)    /* 电机命令应答超时，单位：毫秒 */
-#define BALANCE_SIMPLE_MOTOR_POSITION_MAX_AGE_MS       (80u)    /* 电机位置反馈最大有效年龄，单位：毫秒 */
-#define BALANCE_SIMPLE_MOTOR_VELOCITY_MAX_AGE_MS       (100u)   /* 电机速度反馈最大有效年龄，单位：毫秒 */
+#define BALANCE_SIMPLE_COMMAND_TIMEOUT_MS              (100u)   /* 电机命令应答超时，单位：毫秒 */
+#define BALANCE_SIMPLE_MOTOR_POSITION_MAX_AGE_MS       (250u)   /* 电机位置反馈最大有效年龄，单位：毫秒 */
+#define BALANCE_SIMPLE_MOTOR_VELOCITY_MAX_AGE_MS       (300u)   /* 电机速度反馈最大有效年龄，单位：毫秒 */
 #ifndef BALANCE_SIMPLE_STARTUP_ACK_FALLBACK_ENABLE
 #define BALANCE_SIMPLE_STARTUP_ACK_FALLBACK_ENABLE     (1u)     /* 启动阶段无应答时按定时流程继续：兼容单向 UART 接口 */
 #endif
@@ -186,7 +187,7 @@
 #define BALANCE_SIMPLE_TARGET_LIMIT_M                  (0.090f) /* 外部目标位置绝对值上限，单位：米 */
 #define BALANCE_SIMPLE_BALL_SOFT_EDGE_M                (0.100f) /* 小球软边界位置，单位：米 */
 #define BALANCE_SIMPLE_BALL_HARD_EDGE_M                (0.125f) /* 小球硬边界位置，单位：米 */
-#define BALANCE_SIMPLE_SAFE_RETURN_DELAY_MS            (250u)   /* 进入安全回位前的等待时间，单位：毫秒 */
+#define BALANCE_SIMPLE_SAFE_RETURN_DELAY_MS            (600u)   /* 进入安全回位前的等待时间，单位：毫秒 */
 #define BALANCE_SIMPLE_SAFE_RETURN_DEG_S               (6.0f)   /* 安全回位摆杆角速度，单位：度每秒 */
 #define BALANCE_SIMPLE_STATIC_LOCK_ENABLE              (0u)     /* 中心静止锁定：0=关闭，1=开启 */
 #define BALANCE_SIMPLE_STATIC_ENTER_POSITION_M         (0.002f) /* 进入静止锁定的位置阈值，单位：米 */

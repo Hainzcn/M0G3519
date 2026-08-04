@@ -41,8 +41,10 @@ static uint32 mock_balance_cancel_count;
 static uint32 mock_balance_simple_start_count;
 static uint32 mock_balance_simple_disable_count;
 static uint32 mock_drive_center_start_count;
+static uint32 mock_drive_capture_prepare_count;
 static uint32 mock_drive_captured_start_count;
 static uint32 mock_drive_stop_count;
+static uint8 mock_drive_capture_ready;
 static uint32 mock_no_load_start_count;
 static uint32 mock_no_load_stop_count;
 static uint32 mock_ab_start_count;
@@ -181,8 +183,9 @@ uint8 drive_balance_demo_app_start_center(void)
 uint8 drive_balance_demo_app_start_captured(void)
 {
     mock_drive_captured_start_count++;
-    mock_drive_running = mock_drive_start_result;
-    return mock_drive_start_result;
+    mock_drive_running = (0u != mock_drive_capture_ready) ?
+        mock_drive_start_result : 0u;
+    return mock_drive_running;
 }
 
 void drive_balance_demo_app_stop(void)
@@ -225,6 +228,17 @@ uint8 no_load_lap_app_is_running(void)
 const no_load_lap_status_t *no_load_lap_app_get_status(void)
 {
     return &mock_no_load_status;
+}
+
+uint8 drive_balance_demo_app_prepare_captured(void)
+{
+    mock_drive_capture_prepare_count++;
+    return mock_drive_start_result;
+}
+
+uint8 drive_balance_demo_app_capture_ready(void)
+{
+    return mock_drive_capture_ready;
 }
 
 uint8 stop_test_app_start(void)
@@ -309,8 +323,10 @@ static void reset_mocks(void)
     mock_balance_simple_start_count = 0u;
     mock_balance_simple_disable_count = 0u;
     mock_drive_center_start_count = 0u;
+    mock_drive_capture_prepare_count = 0u;
     mock_drive_captured_start_count = 0u;
     mock_drive_stop_count = 0u;
+    mock_drive_capture_ready = 1u;
     mock_no_load_start_count = 0u;
     mock_no_load_stop_count = 0u;
     mock_ab_start_count = 0u;
@@ -359,7 +375,7 @@ static void test_no_load_start_and_stop(void)
     assert(mock_balance_cancel_count == 1u);
 #endif
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-    assert(mock_balance_simple_disable_count == 1u);
+    assert(mock_balance_simple_disable_count == 0u);
 #endif
     press_button(BUTTON_ID_SW4);
     assert(0u == button_app_is_running());
@@ -486,9 +502,19 @@ static void test_drive_mode_completion_shows_result(void)
     press_button(BUTTON_ID_SW4);
 
     press_button(BUTTON_ID_SW1);
+    mock_drive_capture_ready = 0u;
     confirm_selected_mode();
-    assert(0u != button_app_is_running());
+    assert(0u == button_app_is_running());
+    assert(mock_drive_capture_prepare_count == 1u);
+    assert(mock_drive_captured_start_count == 0u);
+    press_button(BUTTON_ID_SW3);
+    assert(0u == button_app_is_running());
     assert(mock_drive_captured_start_count == 1u);
+    mock_drive_capture_ready = 1u;
+    button_app_process();
+    press_button(BUTTON_ID_SW3);
+    assert(0u != button_app_is_running());
+    assert(mock_drive_captured_start_count == 2u);
     assert(mock_oled_vision_off != 0u);
     press_button(BUTTON_ID_SW4);
     assert(mock_drive_stop_count == 1u);

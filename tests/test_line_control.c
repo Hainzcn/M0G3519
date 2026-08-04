@@ -74,6 +74,33 @@ static void test_zero_target_is_not_clamped_to_minimum_speed(void)
     assert(line_control_get_base_rpm() == 0.0f);
 }
 
+static void test_base_acceleration_preview_does_not_advance_live_state(void)
+{
+    const float preview_s = BALANCE_SIMPLE_CAR_FF_PREVIEW_S;
+    float current_accel;
+    float preview_accel;
+
+    line_control_init();
+    line_control_set_base_rpm(TRACK_MODE_3_LINE_FOLLOW_RPM);
+    current_accel = line_control_get_base_accel_rpm_s();
+    preview_accel = line_control_get_base_accel_preview_rpm_s(preview_s);
+
+    assert(current_accel == 0.0f);
+    assert(line_control_get_base_accel_rpm_s() == current_accel);
+    assert(preview_accel > current_accel);
+    assert(preview_accel <= LINE_LOOKUP_BASE_START_SLEW_RPM_PER_S);
+    assert(fabsf(preview_accel -
+        LINE_LOOKUP_BASE_JERK_RPM_PER_S2 * preview_s) < 0.1f);
+
+    line_control_set_base_rpm_immediate(TRACK_MODE_4_LINE_FOLLOW_RPM);
+    line_control_set_base_rpm(0.0f);
+    current_accel = line_control_get_base_accel_rpm_s();
+    preview_accel = line_control_get_base_accel_preview_rpm_s(preview_s);
+    assert(current_accel == 0.0f);
+    assert(line_control_get_base_accel_rpm_s() == current_accel);
+    assert(preview_accel < 0.0f);
+}
+
 static void test_wide_letter_pattern_holds_last_valid_direction(void)
 {
     const float dt_s = 0.01f;
@@ -118,6 +145,7 @@ int main(void)
 {
     test_base_speed_uses_jerk_limited_envelope();
     test_zero_target_is_not_clamped_to_minimum_speed();
+    test_base_acceleration_preview_does_not_advance_live_state();
     test_wide_letter_pattern_holds_last_valid_direction();
     puts("line control acceleration envelope tests passed");
     return 0;

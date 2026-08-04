@@ -6,6 +6,7 @@
 typedef enum
 {
     DRIVE_BALANCE_DEMO_IDLE = 0,
+    DRIVE_BALANCE_DEMO_PREPARING_CAPTURE,
     DRIVE_BALANCE_DEMO_RUNNING_CENTER,
     DRIVE_BALANCE_DEMO_RUNNING_CAPTURED,
     DRIVE_BALANCE_DEMO_BRAKING,
@@ -44,6 +45,8 @@ typedef struct
 void drive_balance_demo_app_init(void);
 void drive_balance_demo_app_process(void);
 uint8 drive_balance_demo_app_start_center(void);
+uint8 drive_balance_demo_app_prepare_captured(void);
+uint8 drive_balance_demo_app_capture_ready(void);
 uint8 drive_balance_demo_app_start_captured(void);
 void drive_balance_demo_app_stop(void);
 uint8 drive_balance_demo_app_is_running(void);

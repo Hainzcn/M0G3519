@@ -67,6 +67,9 @@ typedef struct
     float filtered_ball_accel_mps2;
     float car_accel_mps2;
     float car_filtered_accel_mps2;
+    float car_planned_accel_mps2;
+    float car_preview_accel_mps2;
+    float car_imu_accel_mps2;
     float car_feedforward_angle_deg;
     float car_feedforward_scale;
     uint8 car_accel_valid;
@@ -82,9 +85,15 @@ typedef struct
 void balance_simple_app_init(void);
 void balance_simple_app_process(void);
 uint8 balance_simple_app_start(void);
+uint8 balance_simple_app_prepare_capture(void);
+uint8 balance_simple_app_capture_ready(void);
+void balance_simple_app_cancel_capture(void);
 void balance_simple_app_set_stop_test_mode(uint8 enabled);
 uint8 balance_simple_app_set_feedforward_only(uint8 enabled);
 uint8 balance_simple_app_set_target_position_m(float target_position_m);
+void balance_simple_app_set_vehicle_accel_components_mps2(
+    float planned_accel_mps2, float preview_accel_mps2,
+    float imu_accel_mps2, uint8 valid);
 void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid);
 void balance_simple_app_disable(void);
 const balance_simple_status_t *balance_simple_app_get_status(void);
