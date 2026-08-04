@@ -100,7 +100,8 @@ static void return_demo_drain_frames(void)
     }
 }
 
-static uint8 return_demo_send_lever(float lever_angle_deg, uint32 now_ms)
+static uint8 return_demo_send_lever(float lever_angle_deg, uint16 move_rpm,
+                                   uint32 now_ms)
 {
     float physical_angle =
         (float)BALANCE_LOGICAL_TO_PHYSICAL_LEVER_SIGN * lever_angle_deg;
@@ -108,7 +109,7 @@ static uint8 return_demo_send_lever(float lever_angle_deg, uint32 now_ms)
             physical_angle, &return_demo_motor_target_deg))
         return 0u;
     if (0u == emm42_move_angle(RETURN_DEMO_ADDRESS,
-            return_demo_motor_target_deg, BALANCE_EMM42_MOVE_RPM,
+            return_demo_motor_target_deg, move_rpm,
             BALANCE_EMM42_ACCELERATION, EMM42_POSITION_ABSOLUTE, 0u))
         return 0u;
     return_demo_last_command_ms = now_ms;
@@ -192,7 +193,8 @@ static void return_demo_run_control(uint32 now_ms)
           BALANCE_LEVER_COMMAND_DEADBAND_DEG) ||
          (0.0f == actuator->angle_deg)))
     {
-        if (0u == return_demo_send_lever(actuator->angle_deg, now_ms))
+        if (0u == return_demo_send_lever(
+                actuator->angle_deg, BALANCE_EMM42_MOVE_RPM, now_ms))
         {
             return_demo_fail(now_ms,
                 "[ball-return] actuator command failed\r\n");
@@ -221,7 +223,8 @@ static void return_demo_settle(uint32 now_ms)
     actuator = balance_actuator_trajectory_get_output(&return_demo_actuator);
     if ((now_ms - return_demo_last_command_ms) >= BALANCE_COMMAND_PERIOD_MS)
     {
-        if (0u == return_demo_send_lever(actuator->angle_deg, now_ms))
+        if (0u == return_demo_send_lever(
+                actuator->angle_deg, BALANCE_EMM42_MOVE_RPM, now_ms))
         {
             return_demo_fail(now_ms,
                 "[ball-return] level command failed\r\n");
@@ -329,7 +332,8 @@ void ball_return_demo_app_process(void)
         case BALL_RETURN_DEMO_MOVE_LEVEL:
             if ((0u == balance_linkage_motor_from_physical_lever_deg(
                     0.0f, &return_demo_level_motor_deg)) ||
-                (0u == return_demo_send_lever(0.0f, now_ms)))
+                (0u == return_demo_send_lever(
+                    0.0f, BALANCE_LEVEL_RETURN_RPM, now_ms)))
                 return_demo_fail(now_ms, "[ball-return] level move failed\r\n");
             else
             {

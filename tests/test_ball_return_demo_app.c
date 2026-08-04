@@ -14,6 +14,7 @@ static emm42_frame_t mock_frame;
 static uint8 mock_frame_ready;
 static float mock_position_deg;
 static float mock_last_move_deg;
+static uint16 mock_last_move_rpm;
 static uint32 mock_move_count;
 static uint32 mock_stop_count;
 static uint32 mock_query_count;
@@ -61,7 +62,7 @@ uint8 emm42_move_angle(uint8 address, float angle_deg, uint16 rpm,
                        uint8 synchronized)
 {
     (void)address;
-    (void)rpm;
+    mock_last_move_rpm = rpm;
     (void)acceleration;
     (void)mode;
     (void)synchronized;
@@ -134,6 +135,7 @@ static uint32 bring_demo_ready(void)
     mock_now_ms = 0u;
     mock_frame_ready = 0u;
     mock_move_count = 0u;
+    mock_last_move_rpm = 0u;
     mock_stop_count = 0u;
     mock_query_count = 0u;
     mock_zero_count = 0u;
@@ -158,6 +160,7 @@ static uint32 bring_demo_ready(void)
     assert(0u != balance_linkage_motor_from_physical_lever_deg(
         0.0f, &level_motor_deg));
     assert(fabsf(mock_last_move_deg - level_motor_deg) < 0.001f);
+    assert(mock_last_move_rpm == BALANCE_LEVEL_RETURN_RPM);
 
     process_at(3220u);
     assert(mock_query_count == 1u);

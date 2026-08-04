@@ -10,6 +10,7 @@
 
 #define EMM42_DEMO_ADDRESS                  (EMM42_DEFAULT_ADDRESS)
 #define EMM42_DEMO_RPM                      BALANCE_EMM42_MOVE_RPM
+#define EMM42_DEMO_LEVEL_RPM                BALANCE_LEVEL_RETURN_RPM
 #define EMM42_DEMO_ACCELERATION             BALANCE_EMM42_ACCELERATION
 #define EMM42_DEMO_POWER_WAIT_MS            (3000u)
 #define EMM42_DEMO_COMMAND_WAIT_MS          (100u)
@@ -56,6 +57,9 @@ static void emm42_demo_fail(uint32 now_ms, const char *message)
 
 static uint8 emm42_demo_move_to_current_angle(uint32 now_ms)
 {
+    uint16 move_rpm = (0u == emm42_demo_target_index) ?
+        EMM42_DEMO_LEVEL_RPM : EMM42_DEMO_RPM;
+
     emm42_demo_target_lever_deg =
         emm42_demo_target_angles_deg[emm42_demo_target_index];
     if (0u == balance_linkage_motor_from_physical_lever_deg(
@@ -65,7 +69,7 @@ static uint8 emm42_demo_move_to_current_angle(uint32 now_ms)
     }
     if (0u == emm42_move_angle(EMM42_DEMO_ADDRESS,
                                emm42_demo_target_motor_deg,
-                               EMM42_DEMO_RPM, EMM42_DEMO_ACCELERATION,
+                               move_rpm, EMM42_DEMO_ACCELERATION,
                                EMM42_POSITION_ABSOLUTE, 0u))
     {
         return 0u;

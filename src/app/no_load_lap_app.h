@@ -20,8 +20,10 @@ typedef struct
     no_load_lap_state_enum state;
     uint8 finish_armed;
     uint8 approach_active;
+    uint8 brake_active;
     uint32 elapsed_ms;
     float distance_m;
+    float brake_distance_m;
 } no_load_lap_status_t;
 
 void no_load_lap_app_init(void);

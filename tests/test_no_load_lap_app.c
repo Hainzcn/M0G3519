@@ -87,6 +87,16 @@ static void set_distance(float distance_m)
     mock_right_count = -(int32)counts;
 }
 
+static void advance_distance(float distance_m)
+{
+    int32 counts = (int32)(distance_m *
+        (float)ENCODER_COUNTS_PER_WHEEL_REV /
+        (3.14159265f * CHASSIS_WHEEL_DIAMETER_M));
+
+    mock_left_count += counts;
+    mock_right_count -= counts;
+}
+
 static void reset_mocks(void)
 {
     mock_now_ms = 0u;
@@ -129,7 +139,7 @@ static void test_start_allows_sensor_warmup_but_requires_idle_chassis(void)
     assert(fabsf(mock_base_rpm - NO_LOAD_LAP_CRUISE_RPM) < 0.001f);
 }
 
-static void test_start_marker_is_ignored_then_finish_stops(void)
+static void test_start_marker_is_ignored_then_stops_23cm_after_finish(void)
 {
     const no_load_lap_status_t *status;
 
@@ -156,8 +166,25 @@ static void test_start_marker_is_ignored_then_finish_stops(void)
     assert(status->state == NO_LOAD_LAP_RUNNING);
     mock_now_ms = 10010u + NO_LOAD_LAP_MARKER_DEBOUNCE_MS;
     no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_RUNNING);
+    assert(0u != status->brake_active);
+    assert(mock_stop_count == 0u);
+    assert(fabsf(mock_base_rpm - NO_LOAD_LAP_APPROACH_RPM) < 0.001f);
+
+    advance_distance(NO_LOAD_LAP_POST_MARKER_DISTANCE_M - 0.01f);
+    mock_line.marker_detected = 0u;
+    mock_now_ms += 10u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_RUNNING);
+    assert(status->brake_distance_m < NO_LOAD_LAP_POST_MARKER_DISTANCE_M);
+    assert(mock_stop_count == 0u);
+
+    advance_distance(0.02f);
+    mock_now_ms += 10u;
+    no_load_lap_app_process();
     assert(status->state == NO_LOAD_LAP_COMPLETE);
     assert(status->elapsed_ms == mock_now_ms);
+    assert(status->brake_distance_m >= NO_LOAD_LAP_POST_MARKER_DISTANCE_M);
     assert(mock_stop_count == 1u);
     assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
 }
@@ -213,7 +240,7 @@ static void test_user_stop(void)
 int main(void)
 {
     test_start_allows_sensor_warmup_but_requires_idle_chassis();
-    test_start_marker_is_ignored_then_finish_stops();
+    test_start_marker_is_ignored_then_stops_23cm_after_finish();
     test_timeout_line_loss_and_sensor_failure_stop();
     test_user_stop();
     puts("no-load lap app tests passed");

@@ -20,6 +20,7 @@ static uint32 mock_send_count;
 static uint32 mock_move_count;
 static uint32 mock_position_query_count;
 static float mock_last_move_deg;
+static uint16 mock_last_move_rpm;
 static uint8 mock_last_enabled;
 static uint32 mock_zero_count;
 static uint8 mock_last_command;
@@ -117,8 +118,8 @@ uint8 emm42_move_angle(uint8 address, float angle_deg, uint16 rpm,
 {
     (void)address;
     mock_last_move_deg = angle_deg;
+    mock_last_move_rpm = rpm;
     mock_last_command = 0xFDu;
-    (void)rpm;
     (void)acceleration;
     (void)mode;
     (void)synchronized;
@@ -213,6 +214,7 @@ static void reset_mocks(void)
     mock_move_count = 0u;
     mock_position_query_count = 0u;
     mock_last_move_deg = 0.0f;
+    mock_last_move_rpm = 0u;
     mock_last_enabled = 0xFFu;
     mock_zero_count = 0u;
     mock_last_command = 0u;
@@ -315,6 +317,7 @@ static void test_successful_startup(void)
     assert(balance_app_get_status()->state == BALANCE_APP_MOVE_LEVEL);
     assert((mock_last_move_deg - level_motor_position() < 0.01f) &&
            (level_motor_position() - mock_last_move_deg < 0.01f));
+    assert(mock_last_move_rpm == BALANCE_LEVEL_RETURN_RPM);
     assert(mock_position_query_count == 0u);
     queue_ack(0xFDu);
     balance_app_process();

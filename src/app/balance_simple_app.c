@@ -439,6 +439,7 @@ static uint8 simple_measurement_acceptable(
 static void simple_take_vision_measurement(void)
 {
     vision_link_snapshot_t measurement;
+    float corrected_position_m;
     uint8 result;
     uint32 capture_delta_ms;
 
@@ -452,6 +453,8 @@ static void simple_take_vision_measurement(void)
     simple_status.vision_flags = measurement.flags;
     simple_status.raw_position_m =
         (float)measurement.position_dmm * 0.0001f;
+    corrected_position_m = simple_status.raw_position_m +
+        BALANCE_VISION_POSITION_OFFSET_M;
     if (0u == simple_measurement_acceptable(&measurement))
     {
         return;
@@ -460,7 +463,7 @@ static void simple_take_vision_measurement(void)
     capture_delta_ms = measurement.capture_ms - simple_last_capture_ms;
     result = ball_state_observer_update(
         &simple_observer,
-        simple_status.raw_position_m,
+        corrected_position_m,
         measurement.capture_ms,
         measurement.received_ms,
         measurement.processing_ms,
@@ -795,7 +798,7 @@ static void simple_process_startup(uint32 now_ms)
         (void)simple_begin_command(
             SIMPLE_COMMAND_MOVE,
             emm42_move_angle(SIMPLE_ADDRESS, simple_level_motor_deg,
-                             BALANCE_EMM42_MOVE_RPM,
+                             BALANCE_LEVEL_RETURN_RPM,
                              BALANCE_SIMPLE_EMM42_ACCELERATION,
                              EMM42_POSITION_ABSOLUTE, 0u), now_ms);
     }

@@ -69,7 +69,7 @@ uint8 emm42_move_angle(uint8 address, float angle_deg, uint16 rpm,
                        uint8 synchronized)
 {
     assert(EMM42_DEFAULT_ADDRESS == address);
-    assert(BALANCE_EMM42_MOVE_RPM == rpm);
+    assert(BALANCE_LEVEL_RETURN_RPM == rpm);
     assert(BALANCE_SIMPLE_EMM42_ACCELERATION == acceleration);
     assert(EMM42_POSITION_ABSOLUTE == mode);
     assert(0u == synchronized);

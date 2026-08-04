@@ -12,6 +12,7 @@
 #define NO_LOAD_LAP_ARM_DISTANCE_M                    (4.5f)   /* 允许识别终点横线的最短里程，单位：米 */
 #define NO_LOAD_LAP_APPROACH_DISTANCE_M               (5.6f)   /* 开始低速进站的累计里程，单位：米 */
 #define NO_LOAD_LAP_MARKER_DEBOUNCE_MS                (10u)    /* A 点横线连续有效确认时间，单位：毫秒 */
+#define NO_LOAD_LAP_POST_MARKER_DISTANCE_M            (0.230f) /* 横线后继续低速循迹的停车距离，单位：米 */
 #define NO_LOAD_LAP_LINE_LOSS_TIMEOUT_MS              (500u)   /* 持续丢线后终止任务，单位：毫秒 */
 #define NO_LOAD_LAP_SENSOR_OFFLINE_TIMEOUT_MS         (500u)   /* 灰度持续离线后终止任务，单位：毫秒 */
 #define NO_LOAD_LAP_TIMEOUT_MS                        (20000u) /* 一圈任务硬超时，单位：毫秒 */
@@ -30,7 +31,7 @@
 
 /* STOP_TEST 独立滚球控制参数 */
 #define STOP_TEST_POSITION_KP_S_INV                    (1.50f)
-#define STOP_TEST_POSITION_KI_S2_INV                   (0.00f)
+#define STOP_TEST_POSITION_KI_S2_INV                   (0.50f)
 #define STOP_TEST_MAX_TARGET_VELOCITY_MPS              (0.100f)
 #define STOP_TEST_BRAKING_ENVELOPE_MPS2                (0.25f)
 #define STOP_TEST_VELOCITY_KV_DEG_PER_MM               (0.020f)
@@ -53,6 +54,11 @@
 #define UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG       (1u)     /* UART3 底盘遥测调试模式 */
 #define UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG       (2u)     /* UART3 摆杆遥测调试模式 */
 #define UART3_MAIX_MODE                               (UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) /* UART3 当前工作模式 */
+
+/* 视觉绝对位置校准：校正位置 = 视觉下发位置 + 本偏置 */
+#ifndef BALANCE_VISION_POSITION_OFFSET_M
+#define BALANCE_VISION_POSITION_OFFSET_M               (0.000f) /* 单位：米；正值将坐标向正方向平移 */
+#endif
 
 #ifndef BALL_RETURN_DEMO_ENABLE
 #define BALL_RETURN_DEMO_ENABLE                       (0u)     /* 开环回球演示：0=关闭，1=开启 */
@@ -85,6 +91,7 @@
 #define BALANCE_POWER_WAIT_MS                          (3000u)  /* 驱动器上电等待时间，单位：毫秒 */
 #define BALANCE_LOWER_STOP_SETTLE_MS                   (1500u)  /* 下机械限位稳定时间，单位：毫秒 */
 #define BALANCE_LEVEL_SETTLE_MS                        (200u)   /* 回位角稳定时间，单位：毫秒 */
+#define BALANCE_LEVEL_RETURN_RPM                       (20u)    /* 上电回位水平速度，单位：RPM */
 #define BALANCE_EMM42_MOVE_RPM                         (120u)   /* EMM42 位置模式移动速度，单位：RPM */
 #define BALANCE_EMM42_ACCELERATION                     (50u)    /* EMM42 位置模式加速度参数 */
 #define BALANCE_LEVEL_MOTOR_TOLERANCE_DEG              (1.0f)   /* 上电回位允许误差，单位：度 */

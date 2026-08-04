@@ -347,6 +347,7 @@ static void balance_app_drain_emm42(uint32 now_ms)
 }
 
 static uint8 balance_app_send_motor_target(float lever_angle_deg,
+                                           uint16 move_rpm,
                                            uint32 now_ms)
 {
     float motor_deg;
@@ -363,7 +364,7 @@ static uint8 balance_app_send_motor_target(float lever_angle_deg,
     if (0u == balance_app_begin_command(
         BALANCE_APP_COMMAND_MOVE,
         emm42_move_angle(BALANCE_APP_EMM42_ADDRESS, motor_deg,
-                         BALANCE_EMM42_MOVE_RPM,
+                         move_rpm,
                          BALANCE_EMM42_ACCELERATION,
                          EMM42_POSITION_ABSOLUTE, 0u),
         now_ms))
@@ -397,7 +398,8 @@ static uint8 balance_app_recovery_measurement_consistent(
     {
         return 1u;
     }
-    position_m = (float)measurement->position_dmm * 0.0001f;
+    position_m = (float)measurement->position_dmm * 0.0001f +
+        BALANCE_VISION_POSITION_OFFSET_M;
     if (0u == balance_recovery_candidate_valid)
     {
         balance_recovery_candidate_position_m = position_m;
@@ -529,6 +531,7 @@ static void balance_app_control_step(uint32 now_ms, uint8 update_output)
          (measurement_age <= BALANCE_VALID_MEASUREMENT_MS)) ? 1u : 0u;
     input.measured_position_m = (0u != new_measurement) ?
         (float)measurement.position_dmm * 0.0001f +
+        BALANCE_VISION_POSITION_OFFSET_M +
         (float)measurement.velocity_mm_s * 0.001f *
             (float)balance_last_measurement_latency_ms * 0.001f : 0.0f;
     input.measured_velocity_mps = (0u != new_measurement) ?
@@ -815,7 +818,8 @@ static void balance_app_process_startup(uint32 now_ms)
              (0u == balance_level_move_acked) &&
              (0u == balance_pending_command))
     {
-        (void)balance_app_send_motor_target(0.0f, now_ms);
+        (void)balance_app_send_motor_target(
+            0.0f, BALANCE_LEVEL_RETURN_RPM, now_ms);
     }
     if (BALANCE_APP_MOVE_LEVEL == balance_status.state)
     {
@@ -905,7 +909,8 @@ static void balance_app_process_active(uint32 now_ms)
             (balance_app_abs(command_angle - balance_last_sent_lever_deg) >=
              BALANCE_LEVER_COMMAND_DEADBAND_DEG))
         {
-            (void)balance_app_send_motor_target(command_angle, now_ms);
+            (void)balance_app_send_motor_target(
+                command_angle, BALANCE_EMM42_MOVE_RPM, now_ms);
         }
     }
 
