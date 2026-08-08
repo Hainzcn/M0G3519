@@ -14,8 +14,11 @@ typedef enum
 void motor_app_init(void);
 void motor_app_process(void);
 void motor_app_stop(void);
+void motor_app_brake(void);
 void motor_app_set_line_follow_enabled(uint8 enabled);
 void motor_app_set_base_rpm(float base_rpm);
+void motor_app_set_base_rpm_immediate(float base_rpm);
+void motor_app_set_rapid_brake_enabled(uint8 enabled);
 void motor_app_set_speed_test(float left_rpm, float right_rpm);
 void motor_app_set_right_circle_demo(float center_rpm);
 motor_app_mode_enum motor_app_get_mode(void);

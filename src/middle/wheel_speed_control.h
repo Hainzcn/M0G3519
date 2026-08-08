@@ -27,6 +27,7 @@ typedef struct
 void wheel_speed_control_init(void);
 void wheel_speed_control_reset(void);
 void wheel_speed_control_set_target(float left_rpm, float right_rpm);
+void wheel_speed_control_set_rapid_brake_enabled(uint8 enabled);
 void wheel_speed_control_update(uint32 period_ms, uint8 enabled);
 const wheel_speed_control_status_t *wheel_speed_control_get_status(void);
 

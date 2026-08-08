@@ -1,0 +1,386 @@
+#include <assert.h>
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "control_config.h"
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+#include "balance_simple_app.h"
+#endif
+#include "encoder.h"
+#include "grayscale.h"
+#include "line_control.h"
+#include "motor_app.h"
+#include "no_load_lap_app.h"
+
+static uint32 mock_now_ms;
+static uint8 mock_grayscale_online;
+static uint8 mock_grayscale_values[GRAYSCALE_CHANNELS];
+static int32 mock_left_count;
+static int32 mock_right_count;
+static line_control_output_t mock_line;
+static motor_app_mode_enum mock_motor_mode;
+static float mock_base_rpm;
+static uint32 mock_line_start_count;
+static uint32 mock_stop_count;
+static uint32 mock_brake_count;
+static uint8 mock_rapid_brake_enabled;
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+static uint32 mock_balance_disable_count;
+static uint32 mock_balance_start_count;
+#endif
+
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+void balance_simple_app_disable(void)
+{
+    mock_balance_disable_count++;
+}
+
+uint8 balance_simple_app_start(void)
+{
+    mock_balance_start_count++;
+    return 1u;
+}
+#endif
+
+uint32 heartbeat_get_ms(void)
+{
+    return mock_now_ms;
+}
+
+void heartbeat_hw_uart_send_string(const char *message)
+{
+    (void)message;
+}
+
+uint8 grayscale_is_online(void)
+{
+    return mock_grayscale_online;
+}
+
+const uint8 *grayscale_get_values(void)
+{
+    return mock_grayscale_values;
+}
+
+int32 encoder_get_left_total_count(void)
+{
+    return mock_left_count;
+}
+
+int32 encoder_get_right_total_count(void)
+{
+    return mock_right_count;
+}
+
+const line_control_output_t *line_control_get_output(void)
+{
+    return &mock_line;
+}
+
+motor_app_mode_enum motor_app_get_mode(void)
+{
+    return mock_motor_mode;
+}
+
+void motor_app_set_base_rpm(float base_rpm)
+{
+    mock_base_rpm = base_rpm;
+}
+
+void motor_app_set_base_rpm_immediate(float base_rpm)
+{
+    mock_base_rpm = base_rpm;
+}
+
+void motor_app_set_rapid_brake_enabled(uint8 enabled)
+{
+    mock_rapid_brake_enabled = enabled;
+}
+
+void motor_app_set_line_follow_enabled(uint8 enabled)
+{
+    if (0u != enabled)
+    {
+        mock_motor_mode = MOTOR_APP_MODE_LINE_FOLLOW;
+        mock_line_start_count++;
+    }
+    else
+    {
+        mock_motor_mode = MOTOR_APP_MODE_DISABLED;
+    }
+}
+
+void motor_app_stop(void)
+{
+    mock_motor_mode = MOTOR_APP_MODE_DISABLED;
+    mock_stop_count++;
+}
+
+void motor_app_brake(void)
+{
+    mock_motor_mode = MOTOR_APP_MODE_DISABLED;
+    mock_brake_count++;
+}
+
+static void set_distance(float distance_m)
+{
+    float counts = distance_m * (float)ENCODER_COUNTS_PER_WHEEL_REV /
+        (3.14159265f * CHASSIS_WHEEL_DIAMETER_M);
+
+    mock_left_count = (int32)counts;
+    mock_right_count = -(int32)counts;
+}
+
+static void advance_distance(float distance_m)
+{
+    int32 counts = (int32)(distance_m *
+        (float)ENCODER_COUNTS_PER_WHEEL_REV /
+        (3.14159265f * CHASSIS_WHEEL_DIAMETER_M));
+
+    mock_left_count += counts;
+    mock_right_count -= counts;
+}
+
+static void set_black_sensor_count(uint8 count)
+{
+    uint8 index;
+
+    memset(mock_grayscale_values, 0, sizeof(mock_grayscale_values));
+    for (index = 0u;
+         (index < count) && (index < GRAYSCALE_CHANNELS);
+         index++)
+    {
+        mock_grayscale_values[index] = LINE_BLACK_ACTIVE_LEVEL;
+    }
+}
+
+static void reset_mocks(void)
+{
+    mock_now_ms = 0u;
+    mock_grayscale_online = 1u;
+    memset(mock_grayscale_values, 0, sizeof(mock_grayscale_values));
+    mock_left_count = 0;
+    mock_right_count = 0;
+    mock_line.line_lost = 0u;
+    mock_line.marker_detected = 0u;
+    mock_line.active_count = 0u;
+    mock_motor_mode = MOTOR_APP_MODE_DISABLED;
+    mock_base_rpm = 0.0f;
+    mock_line_start_count = 0u;
+    mock_stop_count = 0u;
+    mock_brake_count = 0u;
+    mock_rapid_brake_enabled = 0u;
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    mock_balance_disable_count = 0u;
+    mock_balance_start_count = 0u;
+#endif
+    no_load_lap_app_init();
+}
+
+static void test_start_allows_sensor_warmup_but_requires_idle_chassis(void)
+{
+    const no_load_lap_status_t *status;
+
+    reset_mocks();
+    mock_grayscale_online = 0u;
+    assert(0u != no_load_lap_app_start());
+    mock_now_ms = 1u;
+    no_load_lap_app_process();
+    status = no_load_lap_app_get_status();
+    assert(status->state == NO_LOAD_LAP_RUNNING);
+    mock_grayscale_online = 1u;
+    mock_now_ms = 100u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_RUNNING);
+
+    reset_mocks();
+    mock_motor_mode = MOTOR_APP_MODE_SPEED_TEST;
+    assert(0u == no_load_lap_app_start());
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_disable_count == 0u);
+    assert(mock_balance_start_count == 0u);
+#endif
+
+    reset_mocks();
+    assert(0u != no_load_lap_app_start());
+    assert(mock_motor_mode == MOTOR_APP_MODE_LINE_FOLLOW);
+    assert(mock_line_start_count == 1u);
+    assert(fabsf(mock_base_rpm - NO_LOAD_LAP_CRUISE_RPM) < 0.001f);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_disable_count == 1u);
+    assert(mock_balance_start_count == 0u);
+#endif
+}
+
+static void test_first_marker_after_5m_stops_21cm_later(void)
+{
+    const no_load_lap_status_t *status;
+
+    reset_mocks();
+    set_black_sensor_count(NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT);
+    assert(0u != no_load_lap_app_start());
+    set_distance(NO_LOAD_LAP_MARKER_MIN_DISTANCE_M - 0.01f);
+    mock_now_ms = 20u;
+    no_load_lap_app_process();
+    status = no_load_lap_app_get_status();
+    assert(status->state == NO_LOAD_LAP_RUNNING);
+    assert(0u == status->finish_armed);
+    assert(0u == status->brake_active);
+
+    mock_now_ms += 10u;
+    no_load_lap_app_process();
+    assert(0u == status->brake_active);
+
+    set_black_sensor_count(0u);
+    set_distance(NO_LOAD_LAP_MARKER_MIN_DISTANCE_M + 0.01f);
+    mock_now_ms = 10000u;
+    no_load_lap_app_process();
+    assert(0u != status->finish_armed);
+
+    set_black_sensor_count(NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT);
+    mock_grayscale_online = 0u;
+    mock_now_ms = 10002u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_RUNNING);
+
+    mock_grayscale_online = 1u;
+    set_black_sensor_count(NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT - 1u);
+    mock_now_ms = 10005u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_RUNNING);
+
+    set_black_sensor_count(NO_LOAD_LAP_MARKER_MIN_ACTIVE_COUNT);
+    mock_now_ms = NO_LOAD_LAP_TIMEOUT_MS - 10u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_POST_MARKER);
+    assert(0u != status->brake_active);
+    assert(fabsf(status->marker_distance_m - status->distance_m) < 0.001f);
+    assert(status->brake_distance_m == 0.0f);
+    assert(mock_stop_count == 0u);
+    assert(mock_brake_count == 0u);
+    assert(0u != mock_rapid_brake_enabled);
+    assert(fabsf(mock_base_rpm - NO_LOAD_LAP_CRUISE_RPM) < 0.001f);
+
+    advance_distance(NO_LOAD_LAP_POST_MARKER_DISTANCE_M * 0.5f);
+    set_black_sensor_count(0u);
+    mock_now_ms += 10u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_POST_MARKER);
+    assert(status->elapsed_ms >= NO_LOAD_LAP_TIMEOUT_MS);
+    assert(status->brake_distance_m < NO_LOAD_LAP_POST_MARKER_DISTANCE_M);
+    assert(mock_stop_count == 0u);
+    assert(mock_brake_count == 0u);
+    assert(mock_base_rpm < NO_LOAD_LAP_CRUISE_RPM);
+    assert(mock_base_rpm > NO_LOAD_LAP_POST_MARKER_MIN_RPM);
+
+    advance_distance(NO_LOAD_LAP_POST_MARKER_DISTANCE_M * 0.5f - 0.01f);
+    mock_now_ms += 10u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_POST_MARKER);
+    assert(mock_base_rpm < 40.0f);
+    assert(mock_base_rpm >= NO_LOAD_LAP_POST_MARKER_MIN_RPM);
+
+    advance_distance(0.02f);
+    mock_now_ms += 10u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_COMPLETE);
+    assert(status->elapsed_ms == mock_now_ms);
+    assert(status->brake_distance_m >= NO_LOAD_LAP_POST_MARKER_DISTANCE_M);
+    assert(mock_stop_count == 0u);
+    assert(mock_brake_count == 1u);
+    assert(mock_motor_mode == MOTOR_APP_MODE_DISABLED);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+    no_load_lap_app_stop();
+    assert(mock_balance_start_count == 1u);
+#endif
+}
+
+static void test_timeout_line_loss_and_sensor_failure_stop(void)
+{
+    const no_load_lap_status_t *status;
+
+    reset_mocks();
+    assert(0u != no_load_lap_app_start());
+    mock_now_ms = NO_LOAD_LAP_TIMEOUT_MS;
+    no_load_lap_app_process();
+    status = no_load_lap_app_get_status();
+    assert(status->state == NO_LOAD_LAP_TIMEOUT);
+    assert(mock_stop_count == 1u);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+#endif
+
+    reset_mocks();
+    assert(0u != no_load_lap_app_start());
+    mock_line.line_lost = 1u;
+    mock_now_ms = 1u;
+    no_load_lap_app_process();
+    mock_now_ms = 1u + NO_LOAD_LAP_LINE_LOSS_TIMEOUT_MS;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_LINE_LOST);
+    assert(mock_stop_count == 1u);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+#endif
+
+    reset_mocks();
+    assert(0u != no_load_lap_app_start());
+    mock_grayscale_online = 0u;
+    mock_now_ms = 1u;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_RUNNING);
+    mock_now_ms = 1u + NO_LOAD_LAP_SENSOR_OFFLINE_TIMEOUT_MS;
+    no_load_lap_app_process();
+    assert(status->state == NO_LOAD_LAP_SENSOR_OFFLINE);
+    assert(mock_stop_count == 1u);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+#endif
+}
+
+static void test_user_stop(void)
+{
+    const no_load_lap_status_t *status;
+
+    reset_mocks();
+    assert(0u != no_load_lap_app_start());
+    mock_now_ms = 1234u;
+    no_load_lap_app_stop();
+    status = no_load_lap_app_get_status();
+    assert(status->state == NO_LOAD_LAP_USER_STOP);
+    assert(status->elapsed_ms == 1234u);
+    assert(mock_stop_count == 1u);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+#endif
+}
+
+static void test_chassis_stop_restores_balance(void)
+{
+    const no_load_lap_status_t *status;
+
+    reset_mocks();
+    assert(0u != no_load_lap_app_start());
+    mock_motor_mode = MOTOR_APP_MODE_DISABLED;
+    mock_now_ms = 25u;
+    no_load_lap_app_process();
+    status = no_load_lap_app_get_status();
+    assert(status->state == NO_LOAD_LAP_CHASSIS_STOPPED);
+    assert(mock_stop_count == 1u);
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    assert(mock_balance_start_count == 1u);
+#endif
+}
+
+int main(void)
+{
+    test_start_allows_sensor_warmup_but_requires_idle_chassis();
+    test_first_marker_after_5m_stops_21cm_later();
+    test_timeout_line_loss_and_sensor_failure_stop();
+    test_user_stop();
+    test_chassis_stop_restores_balance();
+    puts("no-load lap app tests passed");
+    return 0;
+}

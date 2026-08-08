@@ -18,6 +18,10 @@ void imu_app_init(void)
 {
     imu_init();
     imu_hw_rx_enable();
+    if (0u == imu_configure_active_stream())
+    {
+        heartbeat_hw_uart_send_string("[imu] stream config failed\r\n");
+    }
 
     imu_app_last_print_ms = 0u;
     imu_app_last_wait_print_ms = 0u;

@@ -397,7 +397,7 @@ RPM 换算：`rpm = Δcount × 60000 / (1320 × period_ms)`
 | --- | --- | --- |
 | `IMU_FLAG_ANGLE` | 0x01 | 姿态角就绪 |
 | `IMU_FLAG_ACCEL` | 0x02 | 加速度就绪 |
-| `IMU_STALE_TIMEOUT_MS` | 50 | 数据过期阈值 |
+| `IMU_STALE_TIMEOUT_MS` | 100 | 通用缓存数据过期阈值；摆杆前馈另用 25 ms |
 
 #### 数据结构
 
@@ -429,8 +429,8 @@ typedef struct {
 
 | 名称 | 值 | 说明 |
 | --- | --- | --- |
-| `IMU_HW_DMA_BLOCK_SIZE` | 64 | DMA 块大小 |
-| `IMU_HW_DMA_BLOCK_COUNT` | 4 | 块数量 |
+| `IMU_HW_DMA_BLOCK_SIZE` | 16 | DMA 块大小，115200 下最多约 1.4 ms 发布等待 |
+| `IMU_HW_DMA_BLOCK_COUNT` | 8 | 块数量 |
 | `IMU_HW_TX_TIMEOUT_CYCLES` | 8000000 | TX 超时 |
 
 | 函数 | 说明 |

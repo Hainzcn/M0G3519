@@ -41,6 +41,7 @@ static uint32 oled_app_last_gs_ms;
 static uint32 oled_app_last_text_ms;
 static uint32 oled_app_last_recovery_ms;
 static uint8  oled_app_was_ready;
+static uint8  oled_app_dashboard_enabled;
 
 static uint8  oled_app_gs_cache[GRAYSCALE_CHANNELS];
 static int32  oled_app_yaw_cache;
@@ -239,6 +240,7 @@ void oled_app_init(void)
     oled_app_last_text_ms = now_ms;
     oled_app_last_recovery_ms = now_ms;
     oled_app_was_ready = 0u;
+    oled_app_dashboard_enabled = 1u;
 
     memset(oled_app_gs_cache, 0xFF, GRAYSCALE_CHANNELS);
     oled_app_yaw_cache       = 0x7FFFFFFF;
@@ -284,6 +286,11 @@ void oled_app_process(void)
         oled_refresh();
     }
 
+    if (0u == oled_app_dashboard_enabled)
+    {
+        return;
+    }
+
     if (0u != oled_app_render_turn())
     {
         oled_refresh_pages(OLED_APP_PAGE_TURN,
@@ -317,4 +324,9 @@ void oled_app_process(void)
             oled_refresh_pages(OLED_APP_PAGE_GS, OLED_APP_PAGE_GS);
         }
     }
+}
+
+void oled_app_set_dashboard_enabled(uint8 enabled)
+{
+    oled_app_dashboard_enabled = (0u != enabled) ? 1u : 0u;
 }

@@ -2,6 +2,8 @@
 #define BALANCE_APP_H_
 
 #include "zf_common_typedef.h"
+#include "balance_control.h"
+#include "ball_motion_profile.h"
 
 typedef enum
 {
@@ -57,19 +59,49 @@ typedef struct
     uint8 phase;
     balance_app_fault_enum fault;
     uint8 flags;
+    uint16 control_flags;
+    uint8 vision_confidence;
+    uint8 vision_raw_flags;
+    uint8 vision_raw_confidence;
     uint16 vision_sequence;
     uint32 vision_age_ms;
-    uint8 vision_confidence;
-    float position_m;
-    float velocity_mps;
-    float remaining_m;
+    int16 vision_raw_position_dmm;
+    int16 vision_raw_velocity_mm_s;
+    float estimated_position_m;
+    float estimated_velocity_mps;
+    float predicted_position_m;
+    float predicted_velocity_mps;
+    float target_position_m;
+    float reference_position_m;
+    float reference_velocity_mps;
+    float reference_accel_mps2;
+    float position_error_m;
+    float velocity_command_mps;
+    float velocity_limit_mps;
     float brake_distance_m;
-    float lever_target_deg;
+    float feedforward_accel_mps2;
+    float feedback_accel_mps2;
+    float desired_ball_accel_mps2;
+    float car_encoder_speed_mps;
+    float car_encoder_accel_mps2;
+    float car_imu_accel_mps2;
+    float car_feedforward_accel_mps2;
+    float car_sync_lever_angle_deg;
+    uint32 car_imu_accel_age_ms;
+    uint8 car_imu_accel_valid;
+    float raw_lever_angle_deg;
+    float lever_angle_deg;
+    float actual_lever_angle_deg;
     float motor_target_deg;
     float motor_feedback_deg;
     uint32 sw1_elapsed_ms;
     uint16 command_error_count;
     uint16 emm42_rx_overflow_count;
+    uint32 sequence_elapsed_ms;
+    ball_motion_phase_enum motion_phase;
+    balance_control_phase_enum control_phase;
+    balance_friction_mode_enum friction_mode;
+    balance_app_sequence_state_enum sequence_state;
 } balance_app_status_t;
 
 void balance_app_init(void);

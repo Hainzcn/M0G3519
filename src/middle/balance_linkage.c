@@ -2,77 +2,68 @@
 
 #include <math.h>
 
-#define BALANCE_LINKAGE_CB_CM          (21.0f)
-#define BALANCE_LINKAGE_DX_CM          (15.5f)
-#define BALANCE_LINKAGE_DY_CM          (-0.5f)
-#define BALANCE_LINKAGE_DP_CM          (3.5f)
-#define BALANCE_LINKAGE_BP_CM          (4.6f)
-#define BALANCE_LINKAGE_BRANCH         (-1.0f)
-#define BALANCE_LINKAGE_PI             (3.14159265358979323846f)
-#define BALANCE_LINKAGE_DEG_TO_RAD     (BALANCE_LINKAGE_PI / 180.0f)
-#define BALANCE_LINKAGE_RAD_TO_DEG     (180.0f / BALANCE_LINKAGE_PI)
-uint8 balance_linkage_inverse_deg(float lever_angle_deg,
-                                  float *motor_angle_deg)
+/* Physical protractor angle to signed Emm42 absolute position. */
+#define BALANCE_LINKAGE_FIT_QUADRATIC   (-0.154232927f)
+#define BALANCE_LINKAGE_FIT_LINEAR      (-3.641589613f)
+#define BALANCE_LINKAGE_FIT_OFFSET      (-18.6f)
+/* Mechanically approved envelope. The fit above +2.76 deg is extrapolated. */
+#define BALANCE_LINKAGE_MIN_LEVER_DEG   (-7.0f)
+#define BALANCE_LINKAGE_MAX_LEVER_DEG   (7.0f)
+#define BALANCE_LINKAGE_RANGE_EPS_DEG   (0.001f)
+
+uint8 balance_linkage_motor_from_physical_lever_deg(float lever_angle_deg,
+                                                     float *motor_angle_deg)
 {
-    float alpha;
-    float db_x;
-    float db_y;
-    float rho_sq;
-    float rho;
-    float acos_arg;
-    float gamma;
-    float eta;
-
-    if (NULL == motor_angle_deg)
+    if ((NULL == motor_angle_deg) ||
+        (lever_angle_deg < BALANCE_LINKAGE_MIN_LEVER_DEG) ||
+        (lever_angle_deg > BALANCE_LINKAGE_MAX_LEVER_DEG))
     {
         return 0u;
     }
 
-    alpha = lever_angle_deg * BALANCE_LINKAGE_DEG_TO_RAD;
-    db_x = BALANCE_LINKAGE_CB_CM * cosf(alpha) - BALANCE_LINKAGE_DX_CM;
-    db_y = BALANCE_LINKAGE_CB_CM * sinf(alpha) - BALANCE_LINKAGE_DY_CM;
-    rho_sq = db_x * db_x + db_y * db_y;
-    rho = sqrtf(rho_sq);
-    if ((rho < fabsf(BALANCE_LINKAGE_DP_CM - BALANCE_LINKAGE_BP_CM)) ||
-        (rho > (BALANCE_LINKAGE_DP_CM + BALANCE_LINKAGE_BP_CM)))
-    {
-        return 0u;
-    }
-
-    acos_arg = (BALANCE_LINKAGE_DP_CM * BALANCE_LINKAGE_DP_CM + rho_sq -
-                BALANCE_LINKAGE_BP_CM * BALANCE_LINKAGE_BP_CM) /
-               (2.0f * BALANCE_LINKAGE_DP_CM * rho);
-    if (acos_arg > 1.0f)
-    {
-        acos_arg = 1.0f;
-    }
-    else if (acos_arg < -1.0f)
-    {
-        acos_arg = -1.0f;
-    }
-
-    gamma = atan2f(db_y, db_x);
-    eta = acosf(acos_arg);
     *motor_angle_deg =
-        (gamma + BALANCE_LINKAGE_BRANCH * eta) * BALANCE_LINKAGE_RAD_TO_DEG;
+        BALANCE_LINKAGE_FIT_QUADRATIC * lever_angle_deg * lever_angle_deg +
+        BALANCE_LINKAGE_FIT_LINEAR * lever_angle_deg +
+        BALANCE_LINKAGE_FIT_OFFSET;
     return 1u;
 }
 
-uint8 balance_linkage_relative_motor_deg(float reference_lever_angle_deg,
-                                         float target_lever_angle_deg,
-                                         float *relative_motor_deg)
+uint8 balance_linkage_physical_lever_from_motor_deg(float motor_angle_deg,
+                                                     float *lever_angle_deg)
 {
-    float reference_motor_deg;
-    float target_motor_deg;
+    float discriminant;
+    float physical_angle_deg;
 
-    if ((NULL == relative_motor_deg) ||
-        (0u == balance_linkage_inverse_deg(reference_lever_angle_deg,
-                                           &reference_motor_deg)) ||
-        (0u == balance_linkage_inverse_deg(target_lever_angle_deg,
-                                           &target_motor_deg)))
+    if (NULL == lever_angle_deg)
     {
         return 0u;
     }
-    *relative_motor_deg = target_motor_deg - reference_motor_deg;
+
+    discriminant = BALANCE_LINKAGE_FIT_LINEAR * BALANCE_LINKAGE_FIT_LINEAR -
+                   4.0f * BALANCE_LINKAGE_FIT_QUADRATIC *
+                       (BALANCE_LINKAGE_FIT_OFFSET - motor_angle_deg);
+    if (discriminant < 0.0f)
+    {
+        return 0u;
+    }
+
+    /* Select the root that is monotonic over the measured linkage travel. */
+    physical_angle_deg =
+        (-BALANCE_LINKAGE_FIT_LINEAR - sqrtf(discriminant)) /
+        (2.0f * BALANCE_LINKAGE_FIT_QUADRATIC);
+    if ((physical_angle_deg < BALANCE_LINKAGE_MIN_LEVER_DEG -
+                              BALANCE_LINKAGE_RANGE_EPS_DEG) ||
+        (physical_angle_deg > BALANCE_LINKAGE_MAX_LEVER_DEG +
+                              BALANCE_LINKAGE_RANGE_EPS_DEG))
+    {
+        return 0u;
+    }
+
+    if (physical_angle_deg < BALANCE_LINKAGE_MIN_LEVER_DEG)
+        physical_angle_deg = BALANCE_LINKAGE_MIN_LEVER_DEG;
+    else if (physical_angle_deg > BALANCE_LINKAGE_MAX_LEVER_DEG)
+        physical_angle_deg = BALANCE_LINKAGE_MAX_LEVER_DEG;
+
+    *lever_angle_deg = physical_angle_deg;
     return 1u;
 }

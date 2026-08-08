@@ -6,12 +6,12 @@
 /*
  * ATK-MS901M hardware layer: UART1, PA8 TX / PA9 RX, 115200-8-N-1.
  *
- * UART RX is moved into fixed blocks by DMA. The UART ISR only publishes a
- * completed block and rearms DMA; parsing remains in the main loop.
+ * UART RX is moved into small fixed blocks by DMA. At 115200 baud a 16-byte
+ * block adds at most about 1.4 ms before parsing; parsing stays in main loop.
  */
 
-#define IMU_HW_DMA_BLOCK_SIZE      (64u)
-#define IMU_HW_DMA_BLOCK_COUNT     (4u)
+#define IMU_HW_DMA_BLOCK_SIZE      (16u)
+#define IMU_HW_DMA_BLOCK_COUNT     (8u)
 #define IMU_HW_TX_TIMEOUT_CYCLES   (8000000u)
 
 void imu_hw_init(void);

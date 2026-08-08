@@ -1,31 +1,57 @@
 # MaixCAM2 与 MSPM0G3519 UART3 通信协议
 
-版本：视觉 V1 / 底盘遥测 V2 / 摆杆遥测 V2
+版本：视觉 V1 / 运行遥测 V1 / 调试遥测兼容
 
-日期：2026-07-31
+日期：2026-08-05
 
 ## 1. 接线和运行模式
 
 | MSPM0G3519 | MaixCAM2 | 正常模式方向 |
 | --- | --- | --- |
 | PB13 / UART3 RX | A19 / UART4 TX | Maix 视觉状态下发 |
-| PB12 / UART3 TX | A18 / UART4 RX | 静默，仅调试遥测使用 |
+| PB12 / UART3 TX | A18 / UART4 RX | MCU 运行遥测上报 |
 | GND | GND | 公共参考地 |
 
 两端均为 3.3V TTL、115200-8-N-1、无硬件流控。统一帧包络为
 `A5 5A + version + type + frame_len + payload + CRC16`，多字节整数均按小端发送，
 CRC 使用 CRC-16/CCITT-FALSE：`poly=0x1021, init=0xFFFF, xorout=0`。
 
-`control_config.h` 只通过 `UART3_MAIX_MODE` 选择以下互斥模式：
+`0x83` 运行遥测不受 `UART3_MAIX_MODE` 影响，上电后始终以 100Hz 发送。
+`control_config.h` 的模式选择只控制是否附加旧调试遥测：
 
 | 模式 | UART3 RX | UART3 TX | 用途 |
 | --- | --- | --- | --- |
-| `UART3_MAIX_MODE_NORMAL` | 视觉 V1 | 完全静默 | 正常工作，默认值 |
-| `UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG` | 视觉 V1 | `0x81` V2，100Hz | 底盘台架调试 |
-| `UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG` | 视觉 V1 | `0x82` V2，100Hz | 摆杆 Demo 或闭环调试 |
+| `UART3_MAIX_MODE_NORMAL` | 视觉 V1 | `0x83` V1，100Hz | 正常工作，默认值 |
+| `UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG` | 视觉 V1 | `0x83` + `0x81` V2 | 兼容底盘台架调试 |
+| `UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG` | 视觉 V1 | `0x83` + `0x82` | 兼容摆杆调试 |
 
-UART3 不发送启动、存活或诊断文本；所有人类可读诊断只走 UART0。`0x82` 的帧长
-由编译开关决定：运动 Demo 为 22 字节，闭环控制为 40 字节。
+UART3 不发送启动、存活或诊断文本；所有人类可读诊断只走 UART0。
+
+### 1.1 运行遥测 V1 固定 24 字节帧
+
+该帧只保留运行采集需要的按键、前向加速度和编码器转速。MaixCAM2 只需原样保存
+UART 字节流，不需要在线解析。
+
+| 偏移 | 长度 | 字段 | 定义 |
+| ---: | ---: | --- | --- |
+| 0 | 2 | `SOF` | `A5 5A` |
+| 2 | 1 | `version` | `01` |
+| 3 | 1 | `type` | `83`，运行遥测 |
+| 4 | 1 | `frame_len` | 24 (`18`) |
+| 5 | 1 | `flags` | bit0：IMU 加速度有效且新鲜 |
+| 6 | 1 | `last_button` | 最近一次按下的键：0 无、1..4 对应 SW1..SW4 |
+| 7 | 1 | `active_button` | 当前仍按住的键：0 无、1..4 对应 SW1..SW4 |
+| 8 | 2 | `button_sequence` | 每次新按键沿递增，uint16 回绕 |
+| 10 | 2 | `sequence` | 每帧递增，uint16 回绕 |
+| 12 | 4 | `mcu_ms` | MCU 上电毫秒计时，uint32 回绕 |
+| 16 | 2 | `forward_accel_mm_s2` | int16，车头正方向 mm/s²；无效为 `INT16_MIN` |
+| 18 | 2 | `left_encoder_rpm_x10` | int16，左轮前进为正，0.1RPM/LSB |
+| 20 | 2 | `right_encoder_rpm_x10` | int16，右轮前进为正，0.1RPM/LSB |
+| 22 | 2 | `crc16` | 对 0..21 计算，低字节先发 |
+
+`last_button` 与 `button_sequence` 在松键后继续保留，便于仅保存原始流时可靠定位短按；
+`active_button` 用于区分按住和已松开。IMU X 轴按
+`BALANCE_SIMPLE_CAR_ACCEL_SIGN` 统一到车头正方向，不扣静态零偏。
 
 ## 2. 视觉 V1 固定 24 字节帧
 

@@ -1,0 +1,63 @@
+raw_bytes: 282036
+valid_frames: 11750
+duration_s: 117.520
+crc_errors: 1
+header_errors: 0
+discarded_bytes: 35
+sequence_gaps: 3
+
+button_events:
+  t=9.780s SW3 sequence=7
+  t=10.910s SW3 sequence=8
+  t=30.680s SW4 sequence=9
+  t=32.090s SW1 sequence=10
+  t=33.070s SW3 sequence=11
+  t=35.100s SW3 sequence=12
+  t=74.330s SW4 sequence=13
+  t=76.040s SW3 sequence=14
+  t=79.241s SW3 sequence=15
+  t=115.380s SW4 sequence=16
+
+detected_motion_segments:
+  1: 11.110..19.340s duration=8.230s
+  2: 35.300..65.690s duration=30.390s
+  3: 79.420..109.840s duration=30.420s
+
+mode_3_trial_1:
+  source_time_s: 10.410..20.040
+  moving_time_s: 11.110..19.340
+  imu_baseline_mps2: 0.1830
+  peak_abs_speed_mps: 0.2018
+  peak_abs_imu_fit_mps2: 0.6304
+  peak_abs_encoder_fit_mps2: 0.5364
+  imu_fit_to_encoder_gain: 0.8299
+  imu_fit_to_encoder_bias_mps2: 0.0437
+  imu_encoder_fit_correlation: 0.9174
+  peak_fused_accel_mps2: 0.5515
+  peak_fused_braking_mps2: -0.3809
+
+mode_4_trial_1:
+  source_time_s: 34.600..66.390
+  moving_time_s: 35.300..65.690
+  imu_baseline_mps2: 0.1700
+  peak_abs_speed_mps: 0.2603
+  peak_abs_imu_fit_mps2: 0.7055
+  peak_abs_encoder_fit_mps2: 0.5763
+  imu_fit_to_encoder_gain: 0.5519
+  imu_fit_to_encoder_bias_mps2: 0.0569
+  imu_encoder_fit_correlation: 0.7161
+  peak_fused_accel_mps2: 0.5088
+  peak_fused_braking_mps2: -0.3273
+
+mode_4_trial_2:
+  source_time_s: 78.720..110.540
+  moving_time_s: 79.420..109.840
+  imu_baseline_mps2: 0.1990
+  peak_abs_speed_mps: 0.2587
+  peak_abs_imu_fit_mps2: 0.6575
+  peak_abs_encoder_fit_mps2: 0.5688
+  imu_fit_to_encoder_gain: 0.5398
+  imu_fit_to_encoder_bias_mps2: 0.0665
+  imu_encoder_fit_correlation: 0.6902
+  peak_fused_accel_mps2: 0.4951
+  peak_fused_braking_mps2: -0.3198

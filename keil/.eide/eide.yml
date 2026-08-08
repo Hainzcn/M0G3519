@@ -36,13 +36,23 @@ virtualFolder:
         - path: ../src/middle/hardware/heartbeat_hw.h
         - path: ../src/middle/hardware/button_hw.c
         - path: ../src/middle/hardware/button_hw.h
+        - path: ../src/middle/hardware/buzzer_hw.c
+        - path: ../src/middle/hardware/buzzer_hw.h
         - path: ../src/middle/hardware/oled_hw.c
         - path: ../src/middle/hardware/oled_hw.h
       folders: []
     - name: Middle
       files:
-        - path: ../src/middle/balance_config.c
-        - path: ../src/middle/balance_config.h
+        - path: ../src/middle/balance_actuator_trajectory.c
+        - path: ../src/middle/balance_actuator_trajectory.h
+        - path: ../src/middle/balance_control.c
+        - path: ../src/middle/balance_control.h
+        - path: ../src/middle/ball_state_observer.c
+        - path: ../src/middle/ball_state_observer.h
+        - path: ../src/middle/ball_velocity_controller.c
+        - path: ../src/middle/ball_velocity_controller.h
+        - path: ../src/middle/balance_velocity_actuator.c
+        - path: ../src/middle/balance_velocity_actuator.h
         - path: ../src/middle/balance_linkage.c
         - path: ../src/middle/balance_linkage.h
         - path: ../src/middle/control_config.h
@@ -60,6 +70,8 @@ virtualFolder:
         - path: ../src/middle/heartbeat.h
         - path: ../src/middle/button.c
         - path: ../src/middle/button.h
+        - path: ../src/middle/buzzer.c
+        - path: ../src/middle/buzzer.h
         - path: ../src/middle/imu.c
         - path: ../src/middle/imu.h
         - path: ../src/middle/lever_actuator.c
@@ -79,14 +91,26 @@ virtualFolder:
       folders: []
     - name: App
       files:
+        - path: ../src/app/ball_return_demo_app.c
+        - path: ../src/app/ball_return_demo_app.h
         - path: ../src/app/balance_app.c
         - path: ../src/app/balance_app.h
+        - path: ../src/app/balance_simple_app.c
+        - path: ../src/app/balance_simple_app.h
+        - path: ../src/app/ab_run_app.c
+        - path: ../src/app/ab_run_app.h
+        - path: ../src/app/drive_balance_demo_app.c
+        - path: ../src/app/drive_balance_demo_app.h
         - path: ../src/app/uart3_maix_app.c
         - path: ../src/app/uart3_maix_app.h
         - path: ../src/app/grayscale_app.c
         - path: ../src/app/grayscale_app.h
         - path: ../src/app/motor_app.c
         - path: ../src/app/motor_app.h
+        - path: ../src/app/no_load_lap_app.c
+        - path: ../src/app/no_load_lap_app.h
+        - path: ../src/app/stop_test_app.c
+        - path: ../src/app/stop_test_app.h
         - path: ../src/app/heartbeat_app.c
         - path: ../src/app/heartbeat_app.h
         - path: ../src/app/button_app.c

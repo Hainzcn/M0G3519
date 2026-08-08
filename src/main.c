@@ -1,13 +1,33 @@
 #include "button_app.h"
-#include "balance_app.h"
+#include "ab_run_app.h"
+#include "buzzer.h"
 #include "control_config.h"
+#if (BALANCE_CONTROL_ENABLE != 0u)
+#include "balance_app.h"
+#endif
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+#include "balance_simple_app.h"
+#endif
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+#include "drive_balance_demo_app.h"
+#endif
+#if (BALL_RETURN_DEMO_ENABLE != 0u)
+#include "ball_return_demo_app.h"
+#endif
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+#include "emm42_demo_app.h"
+#endif
 #include "uart3_maix_app.h"
 #include "grayscale_app.h"
 #include "heartbeat_app.h"
 #include "heartbeat_hw.h"
+#if (EMM42_BALANCE_DEMO_ENABLE == 0u)
 #include "imu_app.h"
+#endif
 #include "motor.h"
 #include "motor_app.h"
+#include "no_load_lap_app.h"
+#include "stop_test_app.h"
 #include "oled_app.h"
 #include "zf_common_clock.h"
 #include "vision_link.h"
@@ -19,8 +39,14 @@ int main(void)
     heartbeat_app_init();
     grayscale_app_init();
     motor_app_init();
+    ab_run_app_init();
+    no_load_lap_app_init();
+    stop_test_app_init();
+#if (EMM42_BALANCE_DEMO_ENABLE == 0u)
     imu_app_init();
+#endif
     oled_app_init();
+    buzzer_init();
     button_app_init();
     uart3_maix_app_init();
 
@@ -28,37 +54,94 @@ int main(void)
     heartbeat_hw_uart_flush_blocking();
     heartbeat_hw_uart_send_string(
         "[boot-mode] " __DATE__ " " __TIME__);
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" demo=1");
+#else
+    heartbeat_hw_uart_send_string(" demo=0");
+#endif
+#if (BALL_RETURN_DEMO_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" ball-return=1");
+#else
+    heartbeat_hw_uart_send_string(" ball-return=0");
+#endif
 #if (BALANCE_CONTROL_ENABLE != 0u)
     heartbeat_hw_uart_send_string(" balance=1");
 #else
     heartbeat_hw_uart_send_string(" balance=0");
+#endif
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" balance-simple=1");
+#else
+    heartbeat_hw_uart_send_string(" balance-simple=0");
+#endif
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" drive-balance=1");
+#else
+    heartbeat_hw_uart_send_string(" drive-balance=0");
+#endif
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+    heartbeat_hw_uart_send_string(" imu=0");
+#else
+    heartbeat_hw_uart_send_string(" imu=1");
 #endif
 #if (UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG)
     heartbeat_hw_uart_send_string(" uart3=balance-telemetry\r\n");
 #elif (UART3_MAIX_MODE == UART3_MAIX_MODE_CHASSIS_TELEMETRY_DEBUG)
     heartbeat_hw_uart_send_string(" uart3=chassis-telemetry\r\n");
 #else
-    heartbeat_hw_uart_send_string(" uart3=normal\r\n");
+    heartbeat_hw_uart_send_string(" uart3=operational-telemetry\r\n");
 #endif
     heartbeat_hw_uart_flush_blocking();
 #if (BALANCE_CONTROL_ENABLE != 0u)
     balance_app_init();
+#endif
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+    balance_simple_app_init();
+#endif
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+    drive_balance_demo_app_init();
+#endif
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+    emm42_demo_app_init();
+    heartbeat_hw_uart_flush_blocking();
+#endif
+#if (BALL_RETURN_DEMO_ENABLE != 0u)
+    ball_return_demo_app_init();
+    heartbeat_hw_uart_flush_blocking();
 #endif
 
     while (1)
     {
         motor_watchdog_kick();
         heartbeat_hw_uart_tx_pump();
+#if (EMM42_BALANCE_DEMO_ENABLE == 0u)
         imu_app_process();
+#endif
         grayscale_app_process();
         vision_link_process();
         motor_app_process();
+        no_load_lap_app_process();
+        ab_run_app_process();
+#if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
+        drive_balance_demo_app_process();
+#endif
 #if (BALANCE_CONTROL_ENABLE != 0u)
         balance_app_process();
 #endif
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+        balance_simple_app_process();
+#endif
+        stop_test_app_process();
         uart3_maix_app_process();
         heartbeat_app_process();
         button_app_process();
+        buzzer_process();
         oled_app_process();
+#if (EMM42_BALANCE_DEMO_ENABLE != 0u)
+        emm42_demo_app_process();
+#endif
+#if (BALL_RETURN_DEMO_ENABLE != 0u)
+        ball_return_demo_app_process();
+#endif
     }
 }

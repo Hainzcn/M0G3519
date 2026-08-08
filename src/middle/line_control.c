@@ -12,6 +12,12 @@ typedef struct
     int8 level;
 } line_pattern_entry_t;
 
+typedef struct
+{
+    float rpm;
+    float accel_rpm_s;
+} line_base_envelope_state_t;
+
 /* Bit i is one when grayscale channel i sees black. */
 static const line_pattern_entry_t line_pattern_table[] =
 {
@@ -42,6 +48,7 @@ static uint8 line_command_level_initialized;
 static uint8 line_reverse_hold_active;
 static uint32 line_reverse_hold_start_ms;
 static float line_applied_base_rpm;
+static float line_applied_base_accel_rpm_s;
 static float line_applied_turn_rpm;
 
 static float line_clamp(float value, float min_value, float max_value)
@@ -68,6 +75,59 @@ static float line_slew(float current, float target, float max_delta)
         return current - max_delta;
     }
     return target;
+}
+
+static void line_step_base_envelope(line_base_envelope_state_t *state,
+                                    float target_rpm, float dt_s)
+{
+    float error_rpm = target_rpm - state->rpm;
+    float direction = (error_rpm >= 0.0f) ? 1.0f : -1.0f;
+    float directed_accel_rpm_s =
+        state->accel_rpm_s * direction;
+    float stopping_delta_rpm = 0.0f;
+    float sample_lookahead_rpm = 0.0f;
+    float target_accel_rpm_s;
+    float next_rpm;
+
+    if (directed_accel_rpm_s > 0.0f)
+    {
+        stopping_delta_rpm =
+            directed_accel_rpm_s * directed_accel_rpm_s /
+            (2.0f * LINE_LOOKUP_BASE_JERK_RPM_PER_S2);
+        /* Start roll-off early enough for the two discrete boundary samples. */
+        sample_lookahead_rpm = 2.0f * directed_accel_rpm_s * dt_s;
+    }
+    target_accel_rpm_s =
+        ((direction * error_rpm) <=
+         (stopping_delta_rpm + sample_lookahead_rpm)) ? 0.0f :
+        direction * LINE_LOOKUP_BASE_START_SLEW_RPM_PER_S;
+    state->accel_rpm_s = line_slew(
+        state->accel_rpm_s,
+        target_accel_rpm_s,
+        LINE_LOOKUP_BASE_JERK_RPM_PER_S2 * dt_s);
+
+    next_rpm = state->rpm + state->accel_rpm_s * dt_s;
+    if (((error_rpm >= 0.0f) && (next_rpm >= target_rpm)) ||
+        ((error_rpm < 0.0f) && (next_rpm <= target_rpm)))
+    {
+        state->rpm = target_rpm;
+        state->accel_rpm_s = 0.0f;
+    }
+    else
+    {
+        state->rpm = next_rpm;
+    }
+}
+
+static void line_apply_base_envelope(float target_rpm, float dt_s)
+{
+    line_base_envelope_state_t state;
+
+    state.rpm = line_applied_base_rpm;
+    state.accel_rpm_s = line_applied_base_accel_rpm_s;
+    line_step_base_envelope(&state, target_rpm, dt_s);
+    line_applied_base_rpm = state.rpm;
+    line_applied_base_accel_rpm_s = state.accel_rpm_s;
 }
 
 static uint8 line_abs_level(int8 level)
@@ -366,11 +426,9 @@ static void line_apply_targets(float base_rpm, float phase_turn_rpm,
     float target_turn_rpm = line_clamp(phase_turn_rpm + lookup_turn_rpm,
         -LINE_LOOKUP_TURN_RPM_LIMIT * feedback_scale,
         LINE_LOOKUP_TURN_RPM_LIMIT * feedback_scale);
-    float max_base_delta = LINE_LOOKUP_BASE_START_SLEW_RPM_PER_S * dt_s;
     float max_turn_delta = LINE_LOOKUP_TURN_SLEW_RPM_PER_S * dt_s;
 
-    line_applied_base_rpm = line_slew(line_applied_base_rpm,
-        base_rpm, max_base_delta);
+    line_apply_base_envelope(base_rpm, dt_s);
     line_applied_turn_rpm = line_slew(line_applied_turn_rpm,
         target_turn_rpm, max_turn_delta);
 
@@ -427,6 +485,7 @@ void line_control_reset(void)
         LINE_TRACK_PHASE_RIGHT_ARC : LINE_TRACK_PHASE_STRAIGHT;
     line_output.line_valid = 0u;
     line_output.marker_detected = 0u;
+    line_output.wide_pattern_filtered = 0u;
     line_output.line_lost = 1u;
     line_level_filter_initialized = 0u;
     line_last_level = 0;
@@ -435,6 +494,7 @@ void line_control_reset(void)
     line_reverse_hold_active = 0u;
     line_reverse_hold_start_ms = 0u;
     line_applied_base_rpm = 0.0f;
+    line_applied_base_accel_rpm_s = 0.0f;
     line_applied_turn_rpm = 0.0f;
     line_has_valid = 0u;
     line_invalid_active = 0u;
@@ -447,7 +507,17 @@ void line_control_reset(void)
 void line_control_set_base_rpm(float base_rpm)
 {
     line_straight_base_rpm = line_clamp(base_rpm,
-        LINE_LOOKUP_SPEED_MIN_RPM, LINE_LOOKUP_SPEED_MAX_RPM);
+        0.0f, LINE_LOOKUP_SPEED_MAX_RPM);
+    line_output.speed_scale = line_speed_scale();
+    line_output.feedback_scale = line_feedback_scale();
+}
+
+void line_control_set_base_rpm_immediate(float base_rpm)
+{
+    line_straight_base_rpm = line_clamp(base_rpm,
+        0.0f, LINE_LOOKUP_SPEED_MAX_RPM);
+    line_applied_base_rpm = line_straight_base_rpm;
+    line_applied_base_accel_rpm_s = 0.0f;
     line_output.speed_scale = line_speed_scale();
     line_output.feedback_scale = line_feedback_scale();
 }
@@ -455,6 +525,29 @@ void line_control_set_base_rpm(float base_rpm)
 float line_control_get_base_rpm(void)
 {
     return line_straight_base_rpm;
+}
+
+float line_control_get_base_accel_rpm_s(void)
+{
+    return line_applied_base_accel_rpm_s;
+}
+
+float line_control_get_base_accel_preview_rpm_s(float preview_s)
+{
+    line_base_envelope_state_t state;
+    const float nominal_step_s =
+        (float)CHASSIS_CONTROL_PERIOD_MS * 0.001f;
+
+    state.rpm = line_applied_base_rpm;
+    state.accel_rpm_s = line_applied_base_accel_rpm_s;
+    while (preview_s > 0.000001f)
+    {
+        float step_s = (preview_s < nominal_step_s) ?
+            preview_s : nominal_step_s;
+        line_step_base_envelope(&state, line_straight_base_rpm, step_s);
+        preview_s -= step_s;
+    }
+    return state.accel_rpm_s;
 }
 
 void line_control_update(const uint8 values[GRAYSCALE_CHANNELS],
@@ -479,8 +572,20 @@ void line_control_update(const uint8 values[GRAYSCALE_CHANNELS],
     line_output.right_active_count = right_count;
     line_output.marker_detected =
         (black_count >= LINE_SENSOR_MARKER_MIN_COUNT) ? 1u : 0u;
-    pattern_valid = (0u == line_output.marker_detected) ?
-        line_lookup_level(mask, &raw_level) : 0u;
+    line_output.wide_pattern_filtered =
+        (black_count >= LINE_SENSOR_WIDE_PATTERN_MIN_COUNT) ? 1u : 0u;
+
+    /* Letters and transverse markers are observations, not steering input. */
+    if (0u != line_output.wide_pattern_filtered)
+    {
+        line_invalid_active = 0u;
+        line_output.line_valid = 0u;
+        line_output.line_lost = 0u;
+        line_apply_level(line_last_level, dt_s);
+        return;
+    }
+
+    pattern_valid = line_lookup_level(mask, &raw_level);
 
     if (0u != pattern_valid)
     {
@@ -534,6 +639,7 @@ void line_control_update(const uint8 values[GRAYSCALE_CHANNELS],
     line_output.curve_blend = 0.0f;
     line_output.line_lost = 1u;
     line_applied_base_rpm = 0.0f;
+    line_applied_base_accel_rpm_s = 0.0f;
     line_applied_turn_rpm = 0.0f;
 }
 

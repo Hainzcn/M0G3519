@@ -6,6 +6,7 @@
 #define VISION_LINK_FRAME_SIZE                 (24u)
 #define VISION_LINK_MEASUREMENT_TIMEOUT_MS     (80u)
 #define VISION_LINK_OFFLINE_TIMEOUT_MS         (100u)
+#define VISION_LINK_POSITION_OFFSET_LIMIT_M    (0.130f)
 
 #define VISION_LINK_FLAG_MEASURED_VALID        (0x01u)
 #define VISION_LINK_FLAG_PREDICT_ONLY          (0x02u)
@@ -55,6 +56,9 @@ void vision_link_process(void);
 uint8 vision_link_get_latest_snapshot(vision_link_snapshot_t *snapshot);
 uint8 vision_link_get_valid_measurement(vision_link_snapshot_t *snapshot);
 uint8 vision_link_take_new_valid_measurement(vision_link_snapshot_t *snapshot);
+void vision_link_set_position_offset_m(float offset_m);
+float vision_link_get_position_offset_m(void);
+float vision_link_correct_position_m(int16 position_dmm);
 void vision_link_get_status(vision_link_status_t *status);
 
 #endif
