@@ -23,6 +23,9 @@
 #define SIMPLE_COMMAND_VELOCITY_QUERY  (0x35u)
 #define SIMPLE_COMMAND_POSITION        (0x36u)
 #define SIMPLE_INVALID_AGE             (0xFFFFFFFFu)
+#define SIMPLE_CAR_FF_GAIN_MAX         (2.0f)
+#define SIMPLE_POSITION_GAIN_MAX       (10.0f)
+#define SIMPLE_VELOCITY_KV_MAX         (0.2f)
 #define SIMPLE_GRAVITY_MPS2             (9.80665f)
 #define SIMPLE_RAD_TO_DEG               (57.29577951308232f)
 #define SIMPLE_CONTROLLER_REVISION     "angle-pi-car-ff-v7"
@@ -95,6 +98,13 @@ static uint8 simple_feedforward_only;
 static uint8 simple_capture_hold;
 static float simple_fixed_beam_bias_deg =
     BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG;
+static float simple_car_ff_gain = BALANCE_SIMPLE_CAR_FF_GAIN;
+static float simple_position_kp_s_inv =
+    BALANCE_SIMPLE_POSITION_KP_S_INV;
+static float simple_position_ki_s2_inv =
+    BALANCE_SIMPLE_POSITION_KI_S2_INV;
+static float simple_velocity_kv_deg_per_mmps =
+    BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM;
 
 static float simple_abs(float value)
 {
@@ -129,15 +139,15 @@ static void simple_apply_control_mode(void)
     else
     {
         simple_controller.config.position_kp_s_inv =
-            BALANCE_SIMPLE_POSITION_KP_S_INV;
+            simple_position_kp_s_inv;
         simple_controller.config.position_ki_s2_inv =
-            BALANCE_SIMPLE_POSITION_KI_S2_INV;
+            simple_position_ki_s2_inv;
         simple_controller.config.max_target_velocity_mps =
             BALANCE_SIMPLE_MAX_TARGET_VELOCITY_MPS;
         simple_controller.config.braking_envelope_mps2 =
             BALANCE_SIMPLE_BRAKING_ENVELOPE_MPS2;
         simple_controller.config.velocity_kv_deg_per_mmps =
-            BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM;
+            simple_velocity_kv_deg_per_mmps;
         simple_controller.config.near_position_m =
             BALANCE_SIMPLE_NEAR_POSITION_M;
         simple_controller.config.near_gain = BALANCE_SIMPLE_NEAR_GAIN;
@@ -1114,10 +1124,10 @@ void balance_simple_app_init(void)
     observer_config.recovery_frames = BALANCE_SIMPLE_RECOVERY_FRAMES;
     ball_state_observer_init(&simple_observer, &observer_config);
 
-    controller_config.position_kp_s_inv = BALANCE_SIMPLE_POSITION_KP_S_INV;
-    controller_config.position_ki_s2_inv = BALANCE_SIMPLE_POSITION_KI_S2_INV;
+    controller_config.position_kp_s_inv = simple_position_kp_s_inv;
+    controller_config.position_ki_s2_inv = simple_position_ki_s2_inv;
     controller_config.velocity_kv_deg_per_mmps =
-        BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM;
+        simple_velocity_kv_deg_per_mmps;
     controller_config.acceleration_ka_deg_per_mps2 =
         BALANCE_SIMPLE_ACCELERATION_KA;
     controller_config.position_on_m = BALANCE_SIMPLE_POSITION_ON_M;
@@ -1555,7 +1565,7 @@ void balance_simple_app_set_vehicle_accel_components_mps2(
 
     if (0u != simple_vehicle_ff_active)
     {
-        angle_deg = -BALANCE_SIMPLE_CAR_FF_GAIN *
+        angle_deg = -simple_car_ff_gain *
             atan2f(effective_accel_mps2,
                    SIMPLE_GRAVITY_MPS2) * SIMPLE_RAD_TO_DEG;
         angle_deg = simple_clamp(angle_deg,
@@ -1598,6 +1608,65 @@ void balance_simple_app_set_fixed_beam_bias_deg(float bias_deg)
 float balance_simple_app_get_fixed_beam_bias_deg(void)
 {
     return simple_fixed_beam_bias_deg;
+}
+
+void balance_simple_app_set_car_ff_gain(float gain)
+{
+    simple_car_ff_gain = simple_clamp(gain, 0.0f,
+        SIMPLE_CAR_FF_GAIN_MAX);
+}
+
+float balance_simple_app_get_car_ff_gain(void)
+{
+    return simple_car_ff_gain;
+}
+
+void balance_simple_app_set_position_kp(float kp_s_inv)
+{
+    simple_position_kp_s_inv = simple_clamp(
+        kp_s_inv, 0.0f, SIMPLE_POSITION_GAIN_MAX);
+    if (0u == simple_stop_test_mode)
+    {
+        simple_controller.config.position_kp_s_inv =
+            simple_position_kp_s_inv;
+    }
+}
+
+float balance_simple_app_get_position_kp(void)
+{
+    return simple_position_kp_s_inv;
+}
+
+void balance_simple_app_set_position_ki(float ki_s2_inv)
+{
+    simple_position_ki_s2_inv = simple_clamp(
+        ki_s2_inv, 0.0f, SIMPLE_POSITION_GAIN_MAX);
+    if (0u == simple_stop_test_mode)
+    {
+        simple_controller.config.position_ki_s2_inv =
+            simple_position_ki_s2_inv;
+    }
+}
+
+float balance_simple_app_get_position_ki(void)
+{
+    return simple_position_ki_s2_inv;
+}
+
+void balance_simple_app_set_velocity_kv(float kv_deg_per_mmps)
+{
+    simple_velocity_kv_deg_per_mmps = simple_clamp(
+        kv_deg_per_mmps, 0.0f, SIMPLE_VELOCITY_KV_MAX);
+    if (0u == simple_stop_test_mode)
+    {
+        simple_controller.config.velocity_kv_deg_per_mmps =
+            simple_velocity_kv_deg_per_mmps;
+    }
+}
+
+float balance_simple_app_get_velocity_kv(void)
+{
+    return simple_velocity_kv_deg_per_mmps;
 }
 
 void balance_simple_app_disable(void)

@@ -23,7 +23,7 @@
 
 /* 赛道状态 2 / 赛题第 3 项：静止小车上小球 O -> +5 cm -> -5 cm */
 #define STOP_TEST_POSITIVE_TARGET_M                    (0.050f) /* 正端目标位置 */
-#define STOP_TEST_NEGATIVE_TARGET_M                   (-0.060f) /* 负端目标位置 */
+#define STOP_TEST_NEGATIVE_TARGET_M                   (-0.065f) /* 负端目标位置 */
 #define STOP_TEST_MAX_ENDPOINT_ERROR_M                 (0.010f) /* 正负端点最大允许误差 */
 #define STOP_TEST_ARRIVAL_TOLERANCE_M                  (0.010f) /* 状态机端点到位阈值 */
 #define STOP_TEST_VELOCITY_TOLERANCE_MPS               (0.030f) /* 到位时允许的最大球速 */
@@ -117,7 +117,7 @@
 #define BALANCE_SIMPLE_POSITION_ON_M                   (0.002f)  /* 启用位置回中控制的误差阈值，单位：米 */
 #define BALANCE_SIMPLE_POSITION_OFF_M                  (0.001f)  /* 关闭位置回中控制的误差阈值，单位：米 */
 #define BALANCE_SIMPLE_POSITION_KP_S_INV               (1.00f)   /* 位置比例增益，单位：每秒 */
-#define BALANCE_SIMPLE_POSITION_KI_S2_INV              (0.30f)   /* 位置积分增益，单位：每平方秒 */
+#define BALANCE_SIMPLE_POSITION_KI_S2_INV              (0.40f)   /* 位置积分增益，单位：每平方秒 */
 #define BALANCE_SIMPLE_MAX_TARGET_VELOCITY_MPS         (0.05f)  /* 最大目标球速，单位：米每秒 */
 #define BALANCE_SIMPLE_BRAKING_ENVELOPE_MPS2           (0.10f) /* 回中制动包络加速度，单位：米每平方秒 */
 #define BALANCE_SIMPLE_ACTUATOR_DELAY_S                (0.25f)   /* 含目标摆角爬升的等效执行延迟，单位：秒 */
@@ -145,9 +145,9 @@
 #define BALANCE_SIMPLE_CAR_FF_EXIT_MPS2                (0.01f)   /* 前馈退出加速度阈值 */
 #define BALANCE_SIMPLE_CAR_FF_ENTER_MS                 (10u)     /* 一个控制周期内启用预测前馈 */
 #define BALANCE_SIMPLE_CAR_FF_EXIT_MS                  (150u)    /* 前馈退出确认时间 */
-#define BALANCE_SIMPLE_CAR_FF_GAIN                     (1.05f)   /* 实车幅值修正：理论惯性补偿的 110% */
+#define BALANCE_SIMPLE_CAR_FF_GAIN                     (1.10f)   /* 实车幅值修正：理论惯性补偿的 110% */
 #define BALANCE_SIMPLE_CAR_FF_MAX_ANGLE_DEG            (4.5f)    /* 为 1.10~1.20 倍前馈保留调节余量 */
-#define BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS          (140u)    /* 启动前从零推进同长度的前馈时间轴 */
+#define BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS          (120u)    /* 启动前从零推进同长度的前馈时间轴 */
 #define BALANCE_SIMPLE_CAR_FF_PREVIEW_S                (0.001f * (float)BALANCE_SIMPLE_CAR_FF_PREACTUATION_MS)
 #define BALANCE_SIMPLE_CAR_FF_IMU_CORRECTION_GAIN      (0.50f)   /* IMU 对当前规划加速度残差的修正增益 */
 

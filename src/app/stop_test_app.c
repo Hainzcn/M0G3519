@@ -26,6 +26,8 @@ static uint32 stop_test_motion_start_ms;
 static uint32 stop_test_settle_start_ms;
 static uint32 stop_test_center_retry_ms;
 static uint8 stop_test_center_target_accepted;
+static float stop_test_positive_target_m = STOP_TEST_POSITIVE_TARGET_M;
+static float stop_test_negative_target_m = STOP_TEST_NEGATIVE_TARGET_M;
 
 static float stop_test_abs(float value)
 {
@@ -165,7 +167,7 @@ static void stop_test_finish(stop_test_state_enum state,
 
 static uint8 stop_test_begin_motion(uint32 now_ms)
 {
-    if (0u == stop_test_set_target(STOP_TEST_POSITIVE_TARGET_M))
+    if (0u == stop_test_set_target(stop_test_positive_target_m))
     {
         stop_test_finish(STOP_TEST_FAULT,
                          STOP_TEST_STOP_TARGET_REJECTED, 1u);
@@ -173,7 +175,7 @@ static uint8 stop_test_begin_motion(uint32 now_ms)
     }
     stop_test_motion_start_ms = now_ms;
     stop_test_status.elapsed_ms = 0u;
-    stop_test_status.target_position_m = STOP_TEST_POSITIVE_TARGET_M;
+    stop_test_status.target_position_m = stop_test_positive_target_m;
     stop_test_status.state = STOP_TEST_TO_POSITIVE;
     heartbeat_hw_uart_send_string("[stop-test] motion start\r\n");
     return 1u;
@@ -231,12 +233,12 @@ static void stop_test_process_center_return(uint32 now_ms)
 static void stop_test_update_positive(
     const stop_test_balance_snapshot_t *balance, uint32 now_ms)
 {
-    float error = stop_test_abs(STOP_TEST_POSITIVE_TARGET_M -
+    float error = stop_test_abs(stop_test_positive_target_m -
                                 balance->position_m);
 
     if (STOP_TEST_TO_POSITIVE == stop_test_status.state)
     {
-        if (0u != stop_test_arrived(balance, STOP_TEST_POSITIVE_TARGET_M))
+        if (0u != stop_test_arrived(balance, stop_test_positive_target_m))
         {
             stop_test_status.positive_max_abs_error_m = error;
             stop_test_settle_start_ms = now_ms;
@@ -244,7 +246,7 @@ static void stop_test_update_positive(
         }
         return;
     }
-    if (0u == stop_test_arrived(balance, STOP_TEST_POSITIVE_TARGET_M))
+    if (0u == stop_test_arrived(balance, stop_test_positive_target_m))
     {
         stop_test_status.state = STOP_TEST_TO_POSITIVE;
         return;
@@ -258,13 +260,13 @@ static void stop_test_update_positive(
         return;
     }
     stop_test_status.positive_reached = 1u;
-    if (0u == stop_test_set_target(STOP_TEST_NEGATIVE_TARGET_M))
+    if (0u == stop_test_set_target(stop_test_negative_target_m))
     {
         stop_test_finish(STOP_TEST_FAULT,
                          STOP_TEST_STOP_TARGET_REJECTED, 1u);
         return;
     }
-    stop_test_status.target_position_m = STOP_TEST_NEGATIVE_TARGET_M;
+    stop_test_status.target_position_m = stop_test_negative_target_m;
     stop_test_status.state = STOP_TEST_TO_NEGATIVE;
     heartbeat_hw_uart_send_string("[stop-test] positive reached; return\r\n");
 }
@@ -272,12 +274,12 @@ static void stop_test_update_positive(
 static void stop_test_update_negative(
     const stop_test_balance_snapshot_t *balance, uint32 now_ms)
 {
-    float error = stop_test_abs(STOP_TEST_NEGATIVE_TARGET_M -
+    float error = stop_test_abs(stop_test_negative_target_m -
                                 balance->position_m);
 
     if (STOP_TEST_TO_NEGATIVE == stop_test_status.state)
     {
-        if (0u != stop_test_arrived(balance, STOP_TEST_NEGATIVE_TARGET_M))
+        if (0u != stop_test_arrived(balance, stop_test_negative_target_m))
         {
             stop_test_status.negative_max_abs_error_m = error;
             stop_test_settle_start_ms = now_ms;
@@ -285,7 +287,7 @@ static void stop_test_update_negative(
         }
         return;
     }
-    if (0u == stop_test_arrived(balance, STOP_TEST_NEGATIVE_TARGET_M))
+    if (0u == stop_test_arrived(balance, stop_test_negative_target_m))
     {
         stop_test_status.state = STOP_TEST_TO_NEGATIVE;
         return;
@@ -454,6 +456,42 @@ void stop_test_app_stop(void)
 uint8 stop_test_app_is_running(void)
 {
     return stop_test_running();
+}
+
+void stop_test_app_set_positive_target_m(float target_m)
+{
+    if (target_m < 0.0f)
+    {
+        target_m = 0.0f;
+    }
+    else if (target_m > BALANCE_SIMPLE_VISIBLE_LIMIT_M)
+    {
+        target_m = BALANCE_SIMPLE_VISIBLE_LIMIT_M;
+    }
+    stop_test_positive_target_m = target_m;
+}
+
+float stop_test_app_get_positive_target_m(void)
+{
+    return stop_test_positive_target_m;
+}
+
+void stop_test_app_set_negative_target_m(float target_m)
+{
+    if (target_m > 0.0f)
+    {
+        target_m = 0.0f;
+    }
+    else if (target_m < -BALANCE_SIMPLE_VISIBLE_LIMIT_M)
+    {
+        target_m = -BALANCE_SIMPLE_VISIBLE_LIMIT_M;
+    }
+    stop_test_negative_target_m = target_m;
+}
+
+float stop_test_app_get_negative_target_m(void)
+{
+    return stop_test_negative_target_m;
 }
 
 const stop_test_status_t *stop_test_app_get_status(void)

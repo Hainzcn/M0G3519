@@ -36,6 +36,8 @@ virtualFolder:
         - path: ../src/middle/hardware/heartbeat_hw.h
         - path: ../src/middle/hardware/button_hw.c
         - path: ../src/middle/hardware/button_hw.h
+        - path: ../src/middle/hardware/buzzer_hw.c
+        - path: ../src/middle/hardware/buzzer_hw.h
         - path: ../src/middle/hardware/oled_hw.c
         - path: ../src/middle/hardware/oled_hw.h
       folders: []
@@ -70,6 +72,8 @@ virtualFolder:
         - path: ../src/middle/heartbeat.h
         - path: ../src/middle/button.c
         - path: ../src/middle/button.h
+        - path: ../src/middle/buzzer.c
+        - path: ../src/middle/buzzer.h
         - path: ../src/middle/imu.c
         - path: ../src/middle/imu.h
         - path: ../src/middle/line_control.c

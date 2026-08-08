@@ -1,6 +1,7 @@
 #include "button_app.h"
 
 #include "ab_run_app.h"
+#include "buzzer.h"
 #include "button.h"
 #include "control_config.h"
 #include "heartbeat.h"
@@ -25,6 +26,13 @@
 #define BUTTON_APP_MODE_FIRST_PAGE        (1u)
 #define BUTTON_APP_BIAS_STEP_DEG           (0.2f)
 #define BUTTON_APP_VISION_OFFSET_STEP_M    (0.002f)
+#define BUTTON_APP_CAR_FF_GAIN_STEP         (0.05f)
+#define BUTTON_APP_STOP_TARGET_STEP_M       (0.005f)
+#define BUTTON_APP_POSITION_KP_STEP         (0.1f)
+#define BUTTON_APP_POSITION_KI_STEP         (0.1f)
+#define BUTTON_APP_VELOCITY_KV_STEP         (0.005f)
+#define BUTTON_APP_SYSTEM_TUNING_ITEM_COUNT (5u)
+#define BUTTON_APP_CONTROL_TUNING_ITEM_COUNT (3u)
 
 typedef enum
 {
@@ -34,8 +42,8 @@ typedef enum
     BUTTON_APP_VIEW_RUNNING,
     BUTTON_APP_VIEW_REJECTED,
     BUTTON_APP_VIEW_RESULT,
-    BUTTON_APP_VIEW_BIAS_TUNING,
-    BUTTON_APP_VIEW_VISION_TUNING,
+    BUTTON_APP_VIEW_SYSTEM_TUNING,
+    BUTTON_APP_VIEW_CONTROLLER_TUNING,
 } button_app_view_enum;
 
 static const char *const button_app_mode_names[BUTTON_APP_MODE_COUNT] =
@@ -61,6 +69,7 @@ static uint8 button_app_long_press_handled;
 static uint16 button_app_last_tuning_boot_id;
 static uint16 button_app_last_tuning_sequence;
 static uint8 button_app_has_tuning_snapshot;
+static uint8 button_app_tuning_item;
 
 static uint8 button_app_mode_uses_vision(button_app_mode_enum mode)
 {
@@ -144,87 +153,170 @@ static void button_app_render_running(void)
 }
 
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-static int32 button_app_bias_tenths(void)
+static uint32 button_app_power10(uint8 exponent)
 {
-    float bias_deg = balance_simple_app_get_fixed_beam_bias_deg();
+    uint32 result = 1u;
 
-    return (int32)(bias_deg * 10.0f +
-        ((bias_deg >= 0.0f) ? 0.5f : -0.5f));
+    while (exponent > 0u)
+    {
+        result *= 10u;
+        exponent--;
+    }
+    return result;
 }
 
-static void button_app_render_bias_tuning(void)
+static uint8 button_app_digit_count(uint32 value)
 {
-    int32 bias_tenths = button_app_bias_tenths();
-    uint32 magnitude = (uint32)((bias_tenths < 0) ?
-        -bias_tenths : bias_tenths);
+    uint8 count = 1u;
 
-    oled_clear();
-    oled_show_string(0u, 0u, "BEAM BIAS TUNE", OLED_FONT_6X8);
-    oled_show_string(0u, 2u, "FIXED BEAM BIAS", OLED_FONT_6X8);
-    oled_show_char(24u, 4u, (bias_tenths < 0) ? '-' : '+', OLED_FONT_6X8);
-    oled_show_uint(30u, 4u, magnitude / 10u, OLED_FONT_6X8);
-    oled_show_char(36u, 4u, '.', OLED_FONT_6X8);
-    oled_show_uint(42u, 4u, magnitude % 10u, OLED_FONT_6X8);
-    oled_show_string(48u, 4u, " deg", OLED_FONT_6X8);
-    oled_show_string(0u, 6u, "SW1 -0.2  SW2 +0.2", OLED_FONT_6X8);
-    oled_show_string(0u, 7u, "SW4 BACK", OLED_FONT_6X8);
+    while (value >= 10u)
+    {
+        value /= 10u;
+        count++;
+    }
+    return count;
 }
-#endif
 
-static void button_app_show_signed_tenths(
-    uint8 x, uint8 page, int32 value, const char *unit)
+static uint8 button_app_show_fixed(
+    uint8 x, uint8 page, int32 value, uint8 decimals, uint8 show_sign)
 {
     uint32 magnitude = (uint32)((value < 0) ? -value : value);
-    uint8 integer_digits = ((magnitude / 10u) >= 10u) ? 2u : 1u;
-    uint8 decimal_x = (uint8)(x + 6u + integer_digits * 6u);
+    uint32 divisor = button_app_power10(decimals);
+    uint32 place;
+    uint32 integer_part = magnitude / divisor;
 
-    oled_show_char(x, page, (value < 0) ? '-' : '+', OLED_FONT_6X8);
-    oled_show_uint((uint8)(x + 6u), page, magnitude / 10u,
-                   OLED_FONT_6X8);
-    oled_show_char(decimal_x, page, '.', OLED_FONT_6X8);
-    oled_show_uint((uint8)(decimal_x + 6u), page, magnitude % 10u,
-                   OLED_FONT_6X8);
-    oled_show_string((uint8)(decimal_x + 12u), page, unit,
-                     OLED_FONT_6X8);
+    if (0u != show_sign)
+    {
+        oled_show_char(x, page, (value < 0) ? '-' : '+', OLED_FONT_6X8);
+        x = (uint8)(x + 6u);
+    }
+    oled_show_uint(x, page, integer_part, OLED_FONT_6X8);
+    x = (uint8)(x + button_app_digit_count(integer_part) * 6u);
+    if (0u == decimals)
+    {
+        return x;
+    }
+    oled_show_char(x, page, '.', OLED_FONT_6X8);
+    x = (uint8)(x + 6u);
+    place = divisor / 10u;
+    while (place > 0u)
+    {
+        oled_show_char(x, page,
+            (char)('0' + (char)((magnitude / place) % 10u)),
+            OLED_FONT_6X8);
+        x = (uint8)(x + 6u);
+        place /= 10u;
+    }
+    return x;
 }
 
-static int32 button_app_position_tenths_cm(float position_m)
+static int32 button_app_scale_float(float value, float scale)
 {
-    return (int32)(position_m * 1000.0f +
-        ((position_m >= 0.0f) ? 0.5f : -0.5f));
+    return (int32)(value * scale +
+        ((value >= 0.0f) ? 0.5f : -0.5f));
 }
 
-static void button_app_render_vision_tuning(void)
+static void button_app_show_tuning_marker(uint8 page, uint8 item)
+{
+    oled_show_char(0u, page,
+        (button_app_tuning_item == item) ? '>' : ' ', OLED_FONT_6X8);
+}
+
+static void button_app_render_system_tuning(void)
 {
     vision_link_snapshot_t snapshot;
+    uint8 x;
     float raw_position_m;
     float offset_m = vision_link_get_position_offset_m();
 
     oled_clear();
-    oled_show_string(0u, 0u, "VISION POS OFFSET", OLED_FONT_6X8);
-    if (0u != vision_link_get_latest_snapshot(&snapshot))
+    if ((1u == button_app_tuning_item) &&
+        (0u != vision_link_get_latest_snapshot(&snapshot)))
     {
         raw_position_m = (float)snapshot.position_dmm * 0.0001f;
-        oled_show_string(0u, 2u, "CAM:", OLED_FONT_6X8);
-        button_app_show_signed_tenths(
-            36u, 2u, button_app_position_tenths_cm(raw_position_m), " cm");
-        oled_show_string(0u, 3u, "CORR:", OLED_FONT_6X8);
-        button_app_show_signed_tenths(
-            36u, 3u,
-            button_app_position_tenths_cm(raw_position_m + offset_m),
-            " cm");
+        oled_show_string(0u, 0u, "CAM:", OLED_FONT_6X8);
+        (void)button_app_show_fixed(24u, 0u,
+            button_app_scale_float(raw_position_m, 1000.0f), 1u, 1u);
+        oled_show_string(66u, 0u, "C:", OLED_FONT_6X8);
+        (void)button_app_show_fixed(78u, 0u,
+            button_app_scale_float(raw_position_m + offset_m, 1000.0f),
+            1u, 1u);
     }
     else
     {
-        oled_show_string(0u, 2u, "CAM: --", OLED_FONT_6X8);
-        oled_show_string(0u, 3u, "CORR: --", OLED_FONT_6X8);
+        oled_show_string(0u, 0u, "SYSTEM TUNE", OLED_FONT_6X8);
     }
-    oled_show_string(0u, 4u, "OFFSET:", OLED_FONT_6X8);
-    button_app_show_signed_tenths(
-        48u, 4u, button_app_position_tenths_cm(offset_m), " cm");
-    oled_show_string(0u, 6u, "SW1 -0.2  SW2 +0.2", OLED_FONT_6X8);
-    oled_show_string(0u, 7u, "SW4 BACK", OLED_FONT_6X8);
+
+    button_app_show_tuning_marker(1u, 0u);
+    oled_show_string(6u, 1u, "BIAS:", OLED_FONT_6X8);
+    x = button_app_show_fixed(36u, 1u,
+        button_app_scale_float(
+            balance_simple_app_get_fixed_beam_bias_deg(), 10.0f),
+        1u, 1u);
+    oled_show_string(x, 1u, "D", OLED_FONT_6X8);
+
+    button_app_show_tuning_marker(2u, 1u);
+    oled_show_string(6u, 2u, "VIS:", OLED_FONT_6X8);
+    x = button_app_show_fixed(36u, 2u,
+        button_app_scale_float(offset_m, 1000.0f), 1u, 1u);
+    oled_show_string(x, 2u, "CM", OLED_FONT_6X8);
+
+    button_app_show_tuning_marker(3u, 2u);
+    oled_show_string(6u, 3u, "FF:", OLED_FONT_6X8);
+    (void)button_app_show_fixed(36u, 3u,
+        button_app_scale_float(
+            balance_simple_app_get_car_ff_gain(), 100.0f),
+        2u, 0u);
+
+    button_app_show_tuning_marker(4u, 3u);
+    oled_show_string(6u, 4u, "P+:", OLED_FONT_6X8);
+    x = button_app_show_fixed(36u, 4u,
+        button_app_scale_float(
+            stop_test_app_get_positive_target_m(), 1000.0f),
+        1u, 1u);
+    oled_show_string(x, 4u, "CM", OLED_FONT_6X8);
+
+    button_app_show_tuning_marker(5u, 4u);
+    oled_show_string(6u, 5u, "P-:", OLED_FONT_6X8);
+    x = button_app_show_fixed(36u, 5u,
+        button_app_scale_float(
+            stop_test_app_get_negative_target_m(), 1000.0f),
+        1u, 1u);
+    oled_show_string(x, 5u, "CM", OLED_FONT_6X8);
+    oled_show_string(0u, 6u, "SW1 -  SW2 +", OLED_FONT_6X8);
+    oled_show_string(0u, 7u, "SW3 NEXT SW4 BACK", OLED_FONT_6X8);
 }
+
+static void button_app_render_controller_tuning(void)
+{
+    oled_clear();
+    oled_show_string(0u, 0u, "CONTROL TUNE", OLED_FONT_6X8);
+
+    button_app_show_tuning_marker(2u, 0u);
+    oled_show_string(6u, 2u, "KP:", OLED_FONT_6X8);
+    (void)button_app_show_fixed(30u, 2u,
+        button_app_scale_float(
+            balance_simple_app_get_position_kp(), 100.0f),
+        2u, 0u);
+
+    button_app_show_tuning_marker(3u, 1u);
+    oled_show_string(6u, 3u, "KI:", OLED_FONT_6X8);
+    (void)button_app_show_fixed(30u, 3u,
+        button_app_scale_float(
+            balance_simple_app_get_position_ki(), 100.0f),
+        2u, 0u);
+
+    button_app_show_tuning_marker(4u, 2u);
+    oled_show_string(6u, 4u, "KV:", OLED_FONT_6X8);
+    (void)button_app_show_fixed(30u, 4u,
+        button_app_scale_float(
+            balance_simple_app_get_velocity_kv(), 1000.0f),
+        3u, 0u);
+
+    oled_show_string(0u, 6u, "SW1 -  SW2 +", OLED_FONT_6X8);
+    oled_show_string(0u, 7u, "SW3 NEXT SW4 BACK", OLED_FONT_6X8);
+}
+#endif
 
 #if (BALANCE_DRIVE_DEMO_ENABLE != 0u)
 static void button_app_render_capture(void)
@@ -273,7 +365,7 @@ static void button_app_check_tuning_snapshot(void)
 {
     vision_link_snapshot_t snapshot;
 
-    if (BUTTON_APP_VIEW_VISION_TUNING != button_app_view)
+    if (BUTTON_APP_VIEW_SYSTEM_TUNING != button_app_view)
     {
         button_app_has_tuning_snapshot = 0u;
         return;
@@ -503,15 +595,17 @@ static void button_app_render(void)
     {
         button_app_render_dialog("MODE NOT READY", "Check system state");
     }
-    else if (BUTTON_APP_VIEW_BIAS_TUNING == button_app_view)
+    else if (BUTTON_APP_VIEW_SYSTEM_TUNING == button_app_view)
     {
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-        button_app_render_bias_tuning();
+        button_app_render_system_tuning();
 #endif
     }
-    else if (BUTTON_APP_VIEW_VISION_TUNING == button_app_view)
+    else if (BUTTON_APP_VIEW_CONTROLLER_TUNING == button_app_view)
     {
-        button_app_render_vision_tuning();
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+        button_app_render_controller_tuning();
+#endif
     }
     else
     {
@@ -685,21 +779,50 @@ static void button_app_handle_press(button_id_t pressed)
         }
 #endif
     }
-    else if (BUTTON_APP_VIEW_BIAS_TUNING == button_app_view)
+    else if (BUTTON_APP_VIEW_SYSTEM_TUNING == button_app_view)
     {
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-        if (BUTTON_ID_SW1 == pressed)
+        float direction = (BUTTON_ID_SW1 == pressed) ? -1.0f : 1.0f;
+
+        if ((BUTTON_ID_SW1 == pressed) || (BUTTON_ID_SW2 == pressed))
         {
-            balance_simple_app_set_fixed_beam_bias_deg(
-                balance_simple_app_get_fixed_beam_bias_deg() -
-                BUTTON_APP_BIAS_STEP_DEG);
+            if (0u == button_app_tuning_item)
+            {
+                balance_simple_app_set_fixed_beam_bias_deg(
+                    balance_simple_app_get_fixed_beam_bias_deg() +
+                    direction * BUTTON_APP_BIAS_STEP_DEG);
+            }
+            else if (1u == button_app_tuning_item)
+            {
+                vision_link_set_position_offset_m(
+                    vision_link_get_position_offset_m() +
+                    direction * BUTTON_APP_VISION_OFFSET_STEP_M);
+            }
+            else if (2u == button_app_tuning_item)
+            {
+                balance_simple_app_set_car_ff_gain(
+                    balance_simple_app_get_car_ff_gain() +
+                    direction * BUTTON_APP_CAR_FF_GAIN_STEP);
+            }
+            else if (3u == button_app_tuning_item)
+            {
+                stop_test_app_set_positive_target_m(
+                    stop_test_app_get_positive_target_m() +
+                    direction * BUTTON_APP_STOP_TARGET_STEP_M);
+            }
+            else
+            {
+                stop_test_app_set_negative_target_m(
+                    stop_test_app_get_negative_target_m() +
+                    direction * BUTTON_APP_STOP_TARGET_STEP_M);
+            }
             view_changed = 1u;
         }
-        else if (BUTTON_ID_SW2 == pressed)
+        else if (BUTTON_ID_SW3 == pressed)
         {
-            balance_simple_app_set_fixed_beam_bias_deg(
-                balance_simple_app_get_fixed_beam_bias_deg() +
-                BUTTON_APP_BIAS_STEP_DEG);
+            button_app_tuning_item = (uint8)(
+                (button_app_tuning_item + 1u) %
+                BUTTON_APP_SYSTEM_TUNING_ITEM_COUNT);
             view_changed = 1u;
         }
         else if (BUTTON_ID_SW4 == pressed)
@@ -709,20 +832,38 @@ static void button_app_handle_press(button_id_t pressed)
         }
 #endif
     }
-    else if (BUTTON_APP_VIEW_VISION_TUNING == button_app_view)
+    else if (BUTTON_APP_VIEW_CONTROLLER_TUNING == button_app_view)
     {
-        if (BUTTON_ID_SW1 == pressed)
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
+        float direction = (BUTTON_ID_SW1 == pressed) ? -1.0f : 1.0f;
+
+        if ((BUTTON_ID_SW1 == pressed) || (BUTTON_ID_SW2 == pressed))
         {
-            vision_link_set_position_offset_m(
-                vision_link_get_position_offset_m() -
-                BUTTON_APP_VISION_OFFSET_STEP_M);
+            if (0u == button_app_tuning_item)
+            {
+                balance_simple_app_set_position_kp(
+                    balance_simple_app_get_position_kp() +
+                    direction * BUTTON_APP_POSITION_KP_STEP);
+            }
+            else if (1u == button_app_tuning_item)
+            {
+                balance_simple_app_set_position_ki(
+                    balance_simple_app_get_position_ki() +
+                    direction * BUTTON_APP_POSITION_KI_STEP);
+            }
+            else
+            {
+                balance_simple_app_set_velocity_kv(
+                    balance_simple_app_get_velocity_kv() +
+                    direction * BUTTON_APP_VELOCITY_KV_STEP);
+            }
             view_changed = 1u;
         }
-        else if (BUTTON_ID_SW2 == pressed)
+        else if (BUTTON_ID_SW3 == pressed)
         {
-            vision_link_set_position_offset_m(
-                vision_link_get_position_offset_m() +
-                BUTTON_APP_VISION_OFFSET_STEP_M);
+            button_app_tuning_item = (uint8)(
+                (button_app_tuning_item + 1u) %
+                BUTTON_APP_CONTROL_TUNING_ITEM_COUNT);
             view_changed = 1u;
         }
         else if (BUTTON_ID_SW4 == pressed)
@@ -730,6 +871,7 @@ static void button_app_handle_press(button_id_t pressed)
             button_app_view = BUTTON_APP_VIEW_MENU;
             view_changed = 1u;
         }
+#endif
     }
     else if ((BUTTON_APP_VIEW_RUNNING == button_app_view) &&
              (BUTTON_ID_SW4 == pressed))
@@ -771,6 +913,10 @@ static void button_app_check_mode_completion(void)
         (BUTTON_APP_MODE_STOP_TEST == button_app_running_mode) &&
         (0u == stop_test_app_is_running()))
     {
+        if (STOP_TEST_COMPLETE == stop_test_app_get_status()->state)
+        {
+            buzzer_play_completion();
+        }
         button_app_view = BUTTON_APP_VIEW_RESULT;
         button_app_force_render = 1u;
         heartbeat_hw_uart_send_string("[mode] stop test ended\r\n");
@@ -780,6 +926,10 @@ static void button_app_check_mode_completion(void)
         (BUTTON_APP_MODE_AB == button_app_running_mode) &&
         (0u == ab_run_app_is_running()))
     {
+        if (AB_RUN_COMPLETE == ab_run_app_get_status()->state)
+        {
+            buzzer_play_completion();
+        }
         button_app_view = BUTTON_APP_VIEW_RESULT;
         button_app_force_render = 1u;
         heartbeat_hw_uart_send_string("[mode] AB ended\r\n");
@@ -789,6 +939,10 @@ static void button_app_check_mode_completion(void)
         (BUTTON_APP_MODE_NO_LOAD == button_app_running_mode) &&
         (0u == no_load_lap_app_is_running()))
     {
+        if (NO_LOAD_LAP_COMPLETE == no_load_lap_app_get_status()->state)
+        {
+            buzzer_play_completion();
+        }
         button_app_view = BUTTON_APP_VIEW_RESULT;
         button_app_force_render = 1u;
         heartbeat_hw_uart_send_string("[mode] lap ended\r\n");
@@ -800,6 +954,11 @@ static void button_app_check_mode_completion(void)
          (BUTTON_APP_MODE_ARBITRARY == button_app_running_mode)) &&
         (0u == drive_balance_demo_app_is_running()))
     {
+        if (DRIVE_BALANCE_DEMO_COMPLETE ==
+            drive_balance_demo_app_get_status()->state)
+        {
+            buzzer_play_completion();
+        }
         button_app_view = BUTTON_APP_VIEW_RESULT;
         button_app_force_render = 1u;
         heartbeat_hw_uart_send_string("[mode] completed\r\n");
@@ -824,6 +983,7 @@ void button_app_init(void)
     button_app_last_tuning_boot_id = 0u;
     button_app_last_tuning_sequence = 0u;
     button_app_has_tuning_snapshot = 0u;
+    button_app_tuning_item = 0u;
     oled_app_set_dashboard_enabled(0u);
 }
 
@@ -839,46 +999,41 @@ void button_app_process(void)
     {
         button_app_press_start_ms = now_ms;
         button_app_long_press_handled = 0u;
-        if (!((BUTTON_APP_VIEW_MENU == button_app_view) &&
-              ((BUTTON_ID_SW2 == active)
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-               || (BUTTON_ID_SW1 == active)
+        if (!((BUTTON_APP_VIEW_MENU == button_app_view) &&
+              ((BUTTON_ID_SW1 == active) || (BUTTON_ID_SW2 == active))))
 #endif
-              )))
         {
             button_app_handle_press(active);
         }
     }
+#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     else if ((BUTTON_ID_NONE == active) &&
              (BUTTON_APP_VIEW_MENU == button_app_view) &&
              (0u == button_app_long_press_handled) &&
-             ((BUTTON_ID_SW2 == button_app_previous)
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-              || (BUTTON_ID_SW1 == button_app_previous)
-#endif
-             ))
+             ((BUTTON_ID_SW1 == button_app_previous) ||
+              (BUTTON_ID_SW2 == button_app_previous)))
     {
         button_app_handle_press(button_app_previous);
     }
-    else if (((BUTTON_ID_SW2 == active)
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-              || (BUTTON_ID_SW1 == active)
-#endif
-             ) &&
+    else if (((BUTTON_ID_SW1 == active) || (BUTTON_ID_SW2 == active)) &&
              (BUTTON_APP_VIEW_MENU == button_app_view) &&
              (0u == button_app_long_press_handled) &&
              ((now_ms - button_app_press_start_ms) >=
               BUTTON_APP_TUNING_LONG_PRESS_MS))
     {
         button_app_long_press_handled = 1u;
+        button_app_tuning_item = 0u;
         button_app_view = (BUTTON_ID_SW2 == active) ?
-            BUTTON_APP_VIEW_VISION_TUNING : BUTTON_APP_VIEW_BIAS_TUNING;
+            BUTTON_APP_VIEW_CONTROLLER_TUNING :
+            BUTTON_APP_VIEW_SYSTEM_TUNING;
         button_app_force_render = 1u;
         heartbeat_hw_uart_send_string(
             (BUTTON_ID_SW2 == active) ?
-            "[mode] vision position tuning\r\n" :
-            "[mode] beam bias tuning\r\n");
+            "[mode] controller tuning\r\n" :
+            "[mode] system tuning\r\n");
     }
+#endif
     button_app_previous = active;
     button_app_check_mode_completion();
     button_app_check_no_load_status();

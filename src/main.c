@@ -1,5 +1,6 @@
 #include "button_app.h"
 #include "ab_run_app.h"
+#include "buzzer.h"
 #include "control_config.h"
 #if (BALANCE_CONTROL_ENABLE != 0u)
 #include "balance_app.h"
@@ -45,6 +46,7 @@ int main(void)
     imu_app_init();
 #endif
     oled_app_init();
+    buzzer_init();
     button_app_init();
     uart3_maix_app_init();
 
@@ -133,6 +135,7 @@ int main(void)
         uart3_maix_app_process();
         heartbeat_app_process();
         button_app_process();
+        buzzer_process();
         oled_app_process();
 #if (EMM42_BALANCE_DEMO_ENABLE != 0u)
         emm42_demo_app_process();

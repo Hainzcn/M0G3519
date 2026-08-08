@@ -313,6 +313,29 @@ static void test_rejects_balance_start_failure(void)
     assert(mock_stop_test_mode_disable_count == 0u);
 }
 
+static void test_runtime_endpoint_targets_are_used(void)
+{
+    reset_mocks();
+    stop_test_app_set_positive_target_m(0.040f);
+    stop_test_app_set_negative_target_m(-0.060f);
+    assert(stop_test_app_get_positive_target_m() == 0.040f);
+    assert(stop_test_app_get_negative_target_m() == -0.060f);
+
+    assert(0u != stop_test_app_start());
+    assert(fabsf(mock_targets[0] - 0.040f) < 0.0001f);
+    mock_now_ms = 1000u;
+    mock_balance.estimated_position_m = 0.040f;
+    mock_balance.estimated_velocity_mps = 0.0f;
+    stop_test_app_process();
+    mock_now_ms += STOP_TEST_ENDPOINT_SETTLE_MS;
+    stop_test_app_process();
+    assert(mock_target_count == 2u);
+    assert(fabsf(mock_targets[1] - (-0.060f)) < 0.0001f);
+
+    stop_test_app_set_positive_target_m(STOP_TEST_POSITIVE_TARGET_M);
+    stop_test_app_set_negative_target_m(STOP_TEST_NEGATIVE_TARGET_M);
+}
+
 int main(void)
 {
     test_start_enables_stop_test_tuning_after_balance_init_order();
@@ -324,6 +347,7 @@ int main(void)
     test_completion_at_exactly_five_seconds_is_allowed();
     test_user_stop_and_balance_fault();
     test_rejects_balance_start_failure();
+    test_runtime_endpoint_targets_are_used();
     puts("stop test app tests passed");
     return 0;
 }

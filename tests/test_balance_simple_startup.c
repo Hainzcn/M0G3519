@@ -345,12 +345,20 @@ static void test_wait_vision_accepts_feedforward_only_mode(void)
     assert(0u == (status->flags & BALANCE_SIMPLE_FLAG_FEEDFORWARD_ONLY));
 }
 
-static void test_fixed_beam_bias_tuning_is_retained_and_limited(void)
+static void test_runtime_tuning_is_retained_and_limited(void)
 {
     balance_simple_app_set_fixed_beam_bias_deg(1.7f);
+    balance_simple_app_set_car_ff_gain(1.25f);
+    balance_simple_app_set_position_kp(1.4f);
+    balance_simple_app_set_position_ki(0.6f);
+    balance_simple_app_set_velocity_kv(0.035f);
     balance_simple_app_init();
     assert(fabsf(balance_simple_app_get_fixed_beam_bias_deg() - 1.7f) <
            0.0001f);
+    assert(fabsf(balance_simple_app_get_car_ff_gain() - 1.25f) < 0.0001f);
+    assert(fabsf(balance_simple_app_get_position_kp() - 1.4f) < 0.0001f);
+    assert(fabsf(balance_simple_app_get_position_ki() - 0.6f) < 0.0001f);
+    assert(fabsf(balance_simple_app_get_velocity_kv() - 0.035f) < 0.0001f);
 
     balance_simple_app_set_fixed_beam_bias_deg(100.0f);
     assert(balance_simple_app_get_fixed_beam_bias_deg() ==
@@ -358,9 +366,22 @@ static void test_fixed_beam_bias_tuning_is_retained_and_limited(void)
     balance_simple_app_set_fixed_beam_bias_deg(-100.0f);
     assert(balance_simple_app_get_fixed_beam_bias_deg() ==
            -BALANCE_SIMPLE_MAX_TARGET_BEAM_ANGLE_DEG);
+    balance_simple_app_set_car_ff_gain(-1.0f);
+    balance_simple_app_set_position_kp(-1.0f);
+    balance_simple_app_set_position_ki(-1.0f);
+    balance_simple_app_set_velocity_kv(-1.0f);
+    assert(balance_simple_app_get_car_ff_gain() == 0.0f);
+    assert(balance_simple_app_get_position_kp() == 0.0f);
+    assert(balance_simple_app_get_position_ki() == 0.0f);
+    assert(balance_simple_app_get_velocity_kv() == 0.0f);
 
     balance_simple_app_set_fixed_beam_bias_deg(
         BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG);
+    balance_simple_app_set_car_ff_gain(BALANCE_SIMPLE_CAR_FF_GAIN);
+    balance_simple_app_set_position_kp(BALANCE_SIMPLE_POSITION_KP_S_INV);
+    balance_simple_app_set_position_ki(BALANCE_SIMPLE_POSITION_KI_S2_INV);
+    balance_simple_app_set_velocity_kv(
+        BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM);
 }
 
 int main(void)
@@ -370,7 +391,7 @@ int main(void)
     test_capture_level_stops_before_absolute_move_and_holds_position();
     test_planned_feedforward_is_immediate_and_imu_is_correction();
     test_wait_vision_accepts_feedforward_only_mode();
-    test_fixed_beam_bias_tuning_is_retained_and_limited();
+    test_runtime_tuning_is_retained_and_limited();
     puts("balance simple startup fallback tests passed");
     return 0;
 }

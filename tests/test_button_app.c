@@ -5,6 +5,7 @@
 #include "ab_run_app.h"
 #include "balance_app.h"
 #include "balance_simple_app.h"
+#include "buzzer.h"
 #include "button.h"
 #include "button_app.h"
 #include "control_config.h"
@@ -52,10 +53,17 @@ static uint32 mock_ab_start_count;
 static uint32 mock_ab_stop_count;
 static uint32 mock_stop_test_start_count;
 static uint32 mock_stop_test_stop_count;
+static uint32 mock_buzzer_completion_count;
 static uint8 mock_vision_online;
 static uint8 mock_oled_vision_off;
 static uint8 mock_oled_post_marker;
 static float mock_fixed_beam_bias_deg;
+static float mock_car_ff_gain;
+static float mock_position_kp;
+static float mock_position_ki;
+static float mock_velocity_kv;
+static float mock_stop_positive_target_m;
+static float mock_stop_negative_target_m;
 static float mock_vision_position_offset_m;
 static uint8 mock_vision_has_snapshot;
 static vision_link_snapshot_t mock_vision_snapshot;
@@ -244,6 +252,51 @@ float balance_simple_app_get_fixed_beam_bias_deg(void)
     return mock_fixed_beam_bias_deg;
 }
 
+void buzzer_play_completion(void)
+{
+    mock_buzzer_completion_count++;
+}
+
+void balance_simple_app_set_car_ff_gain(float gain)
+{
+    mock_car_ff_gain = gain;
+}
+
+float balance_simple_app_get_car_ff_gain(void)
+{
+    return mock_car_ff_gain;
+}
+
+void balance_simple_app_set_position_kp(float kp_s_inv)
+{
+    mock_position_kp = kp_s_inv;
+}
+
+float balance_simple_app_get_position_kp(void)
+{
+    return mock_position_kp;
+}
+
+void balance_simple_app_set_position_ki(float ki_s2_inv)
+{
+    mock_position_ki = ki_s2_inv;
+}
+
+float balance_simple_app_get_position_ki(void)
+{
+    return mock_position_ki;
+}
+
+void balance_simple_app_set_velocity_kv(float kv_deg_per_mmps)
+{
+    mock_velocity_kv = kv_deg_per_mmps;
+}
+
+float balance_simple_app_get_velocity_kv(void)
+{
+    return mock_velocity_kv;
+}
+
 void drive_balance_demo_app_stop(void)
 {
     mock_drive_stop_count++;
@@ -323,6 +376,26 @@ const stop_test_status_t *stop_test_app_get_status(void)
     return &mock_stop_test_status;
 }
 
+void stop_test_app_set_positive_target_m(float target_m)
+{
+    mock_stop_positive_target_m = target_m;
+}
+
+float stop_test_app_get_positive_target_m(void)
+{
+    return mock_stop_positive_target_m;
+}
+
+void stop_test_app_set_negative_target_m(float target_m)
+{
+    mock_stop_negative_target_m = target_m;
+}
+
+float stop_test_app_get_negative_target_m(void)
+{
+    return mock_stop_negative_target_m;
+}
+
 uint8 ab_run_app_start(void)
 {
     mock_ab_start_count++;
@@ -390,10 +463,17 @@ static void reset_mocks(void)
     mock_ab_stop_count = 0u;
     mock_stop_test_start_count = 0u;
     mock_stop_test_stop_count = 0u;
+    mock_buzzer_completion_count = 0u;
     mock_vision_online = 1u;
     mock_oled_vision_off = 0u;
     mock_oled_post_marker = 0u;
     mock_fixed_beam_bias_deg = BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG;
+    mock_car_ff_gain = BALANCE_SIMPLE_CAR_FF_GAIN;
+    mock_position_kp = BALANCE_SIMPLE_POSITION_KP_S_INV;
+    mock_position_ki = BALANCE_SIMPLE_POSITION_KI_S2_INV;
+    mock_velocity_kv = BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM;
+    mock_stop_positive_target_m = STOP_TEST_POSITIVE_TARGET_M;
+    mock_stop_negative_target_m = STOP_TEST_NEGATIVE_TARGET_M;
     mock_vision_position_offset_m = BALANCE_VISION_POSITION_OFFSET_M;
     mock_vision_has_snapshot = 0u;
     memset(&mock_vision_snapshot, 0, sizeof(mock_vision_snapshot));
@@ -441,6 +521,7 @@ static void test_no_load_start_and_stop(void)
     press_button(BUTTON_ID_SW4);
     assert(0u == button_app_is_running());
     assert(mock_no_load_stop_count == 1u);
+    assert(mock_buzzer_completion_count == 0u);
 }
 
 static void test_no_load_completion_holds_result_page(void)
@@ -454,6 +535,7 @@ static void test_no_load_completion_holds_result_page(void)
     button_app_process();
     assert(0u == button_app_is_running());
     assert(0 == strcmp(mock_oled_title, "LAP COMPLETE"));
+    assert(mock_buzzer_completion_count == 1u);
 
     press_button(BUTTON_ID_SW4);
     assert(0 == strcmp(mock_oled_title, "TRACK MODE SELECT"));
@@ -481,6 +563,7 @@ static void test_ab_start_and_completion(void)
     button_app_process();
     assert(0u == button_app_is_running());
     assert(0 == strcmp(mock_oled_title, "AB COMPLETE"));
+    assert(mock_buzzer_completion_count == 1u);
     press_button(BUTTON_ID_SW4);
     assert(button_app_get_selected_mode() == BUTTON_APP_MODE_AB);
 }
@@ -504,6 +587,7 @@ static void test_stop_test_start_completion_and_stop(void)
     button_app_process();
     assert(0u == button_app_is_running());
     assert(0 == strcmp(mock_oled_title, "STOP TEST OK"));
+    assert(mock_buzzer_completion_count == 1u);
     press_button(BUTTON_ID_SW4);
     assert(mock_stop_test_stop_count == 1u);
 
@@ -514,14 +598,14 @@ static void test_stop_test_start_completion_and_stop(void)
 }
 
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-static void test_long_sw1_opens_and_adjusts_bias(void)
+static void test_long_sw1_adjusts_system_parameters(void)
 {
     reset_mocks();
     mock_button = BUTTON_ID_SW1;
     button_app_process();
     mock_now_ms = BUTTON_APP_TUNING_LONG_PRESS_MS;
     button_app_process();
-    assert(0 == strcmp(mock_oled_title, "BEAM BIAS TUNE"));
+    assert(0 == strcmp(mock_oled_title, "SYSTEM TUNE"));
     assert(button_app_get_selected_mode() == BUTTON_APP_MODE_NO_LOAD);
 
     mock_button = BUTTON_ID_NONE;
@@ -529,41 +613,57 @@ static void test_long_sw1_opens_and_adjusts_bias(void)
     press_button(BUTTON_ID_SW1);
     assert(mock_fixed_beam_bias_deg ==
            BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG - 0.2f);
+    press_button(BUTTON_ID_SW3);
+    press_button(BUTTON_ID_SW1);
+    assert(mock_vision_position_offset_m ==
+           BALANCE_VISION_POSITION_OFFSET_M - 0.002f);
+
+    press_button(BUTTON_ID_SW3);
     press_button(BUTTON_ID_SW2);
+    assert(mock_car_ff_gain == BALANCE_SIMPLE_CAR_FF_GAIN + 0.05f);
+
+    press_button(BUTTON_ID_SW3);
     press_button(BUTTON_ID_SW2);
-    assert(mock_fixed_beam_bias_deg ==
-           BALANCE_SIMPLE_FIXED_BEAM_BIAS_DEG + 0.2f);
+    assert(mock_stop_positive_target_m ==
+           STOP_TEST_POSITIVE_TARGET_M + 0.005f);
+
+    press_button(BUTTON_ID_SW3);
+    press_button(BUTTON_ID_SW1);
+    assert(mock_stop_negative_target_m ==
+           STOP_TEST_NEGATIVE_TARGET_M - 0.005f);
 
     press_button(BUTTON_ID_SW4);
     assert(0 == strcmp(mock_oled_title, "TRACK MODE SELECT"));
 }
-#endif
 
-static void test_long_sw2_opens_and_adjusts_vision_offset(void)
+static void test_long_sw2_adjusts_controller_parameters(void)
 {
     reset_mocks();
-    mock_vision_has_snapshot = 1u;
-    mock_vision_snapshot.position_dmm = 80;
     mock_button = BUTTON_ID_SW2;
     button_app_process();
     mock_now_ms = BUTTON_APP_TUNING_LONG_PRESS_MS;
     button_app_process();
-    assert(0 == strcmp(mock_oled_title, "VISION POS OFFSET"));
+    assert(0 == strcmp(mock_oled_title, "CONTROL TUNE"));
     assert(button_app_get_selected_mode() == BUTTON_APP_MODE_NO_LOAD);
 
     mock_button = BUTTON_ID_NONE;
     button_app_process();
     press_button(BUTTON_ID_SW1);
-    assert(mock_vision_position_offset_m ==
-           BALANCE_VISION_POSITION_OFFSET_M - 0.002f);
+    assert(mock_position_kp == BALANCE_SIMPLE_POSITION_KP_S_INV - 0.1f);
+
+    press_button(BUTTON_ID_SW3);
     press_button(BUTTON_ID_SW2);
+    assert(mock_position_ki == BALANCE_SIMPLE_POSITION_KI_S2_INV + 0.1f);
+
+    press_button(BUTTON_ID_SW3);
     press_button(BUTTON_ID_SW2);
-    assert(mock_vision_position_offset_m ==
-           BALANCE_VISION_POSITION_OFFSET_M + 0.002f);
+    assert(mock_velocity_kv ==
+           BALANCE_SIMPLE_VELOCITY_KV_DEG_PER_MM + 0.005f);
 
     press_button(BUTTON_ID_SW4);
     assert(0 == strcmp(mock_oled_title, "TRACK MODE SELECT"));
 }
+#endif
 
 static void test_no_load_marker_state_refreshes_running_page(void)
 {
@@ -611,6 +711,7 @@ static void test_drive_mode_completion_shows_result(void)
     button_app_process();
     assert(0u == button_app_is_running());
     assert(0 == strcmp(mock_oled_title, "BALL LAP OK"));
+    assert(mock_buzzer_completion_count == 1u);
 
     press_button(BUTTON_ID_SW4);
     assert(mock_motor_stop_count == 1u);
@@ -639,9 +740,9 @@ static void test_drive_mode_completion_shows_result(void)
 int main(void)
 {
     test_navigation_wraps();
-    test_long_sw2_opens_and_adjusts_vision_offset();
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
-    test_long_sw1_opens_and_adjusts_bias();
+    test_long_sw1_adjusts_system_parameters();
+    test_long_sw2_adjusts_controller_parameters();
 #endif
     test_no_load_start_and_stop();
     test_no_load_completion_holds_result_page();

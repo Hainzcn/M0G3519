@@ -97,6 +97,14 @@ void balance_simple_app_set_vehicle_accel_components_mps2(
 void balance_simple_app_set_vehicle_accel_mps2(float accel_mps2, uint8 valid);
 void balance_simple_app_set_fixed_beam_bias_deg(float bias_deg);
 float balance_simple_app_get_fixed_beam_bias_deg(void);
+void balance_simple_app_set_car_ff_gain(float gain);
+float balance_simple_app_get_car_ff_gain(void);
+void balance_simple_app_set_position_kp(float kp_s_inv);
+float balance_simple_app_get_position_kp(void);
+void balance_simple_app_set_position_ki(float ki_s2_inv);
+float balance_simple_app_get_position_ki(void);
+void balance_simple_app_set_velocity_kv(float kv_deg_per_mmps);
+float balance_simple_app_get_velocity_kv(void);
 void balance_simple_app_disable(void);
 const balance_simple_status_t *balance_simple_app_get_status(void);
 

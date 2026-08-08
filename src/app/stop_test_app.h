@@ -50,6 +50,10 @@ void stop_test_app_process(void);
 uint8 stop_test_app_start(void);
 void stop_test_app_stop(void);
 uint8 stop_test_app_is_running(void);
+void stop_test_app_set_positive_target_m(float target_m);
+float stop_test_app_get_positive_target_m(void);
+void stop_test_app_set_negative_target_m(float target_m);
+float stop_test_app_get_negative_target_m(void);
 const stop_test_status_t *stop_test_app_get_status(void);
 
 #endif

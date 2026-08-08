@@ -23,6 +23,8 @@ function Invoke-CTest {
 
 Push-Location $RepoDir
 try {
+    Invoke-CTest "test_buzzer" @(
+        "tests/test_buzzer.c", "src/middle/buzzer.c")
     Invoke-CTest "test_wheel_speed_control" @(
         "tests/test_wheel_speed_control.c", "src/middle/wheel_speed_control.c",
         "src/middle/control_pid.c")
