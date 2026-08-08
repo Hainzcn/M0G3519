@@ -64,28 +64,11 @@
 #define BALANCE_VISION_POSITION_OFFSET_M               (0.000f) /* 单位：米；正值将坐标向正方向平移 */
 #endif
 
-#ifndef BALL_RETURN_DEMO_ENABLE
-#define BALL_RETURN_DEMO_ENABLE                       (0u)     /* 开环回球演示：0=关闭，1=开启 */
-#endif
-#ifndef EMM42_BALANCE_DEMO_ENABLE
-#define EMM42_BALANCE_DEMO_ENABLE                     (0u)     /* EMM42 标定演示：0=关闭，1=开启 */
-#endif
-#ifndef BALANCE_CONTROL_ENABLE
-#define BALANCE_CONTROL_ENABLE                        (0u)     /* 旧版轨迹控制器：0=关闭，1=开启 */
-#endif
 #ifndef BALANCE_SIMPLE_CONTROL_ENABLE
-#if ((BALANCE_CONTROL_ENABLE == 0u) && \
-     (EMM42_BALANCE_DEMO_ENABLE == 0u) && \
-     (BALL_RETURN_DEMO_ENABLE == 0u))
-#define BALANCE_SIMPLE_CONTROL_ENABLE                 (1u)     /* 简化速度控制器：其他摆杆模式关闭时默认开启 */
-#else
-#define BALANCE_SIMPLE_CONTROL_ENABLE                 (0u)     /* 简化速度控制器：存在互斥模式时关闭 */
-#endif
+#define BALANCE_SIMPLE_CONTROL_ENABLE                 (1u)     /* 简化速度控制器：始终启用 */
 #endif
 #ifndef BALANCE_DRIVE_DEMO_ENABLE
-#define BALANCE_DRIVE_DEMO_ENABLE                     \
-    ((BALANCE_CONTROL_ENABLE != 0u) || \
-     (BALANCE_SIMPLE_CONTROL_ENABLE != 0u))           /* 带球循迹一圈：支持两套摆杆控制器 */
+#define BALANCE_DRIVE_DEMO_ENABLE                     (1u)     /* 带球循迹一圈：始终启用 */
 #endif
 
 /* 摆杆执行器通用上电参数 */
@@ -156,6 +139,10 @@
 #define BALANCE_DRIVE_DEMO_APPROACH_DISTANCE_M         (5.6f)    /* 进站减速里程 */
 #define BALANCE_DRIVE_DEMO_POST_MARKER_DISTANCE_M      (0.230f)  /* 识别启停线后匀速循迹距离 */
 #define BALANCE_DRIVE_DEMO_MAX_ERROR_M                 (0.010f)  /* 全程最大允许中心误差 */
+#define BALANCE_DRIVE_DEMO_TIMEOUT_MS                 (30000u) /* 行驶演示总超时，单位：毫秒 */
+#define BALANCE_DRIVE_DEMO_LINE_LOSS_TIMEOUT_MS        (500u)   /* 丢线故障超时，单位：毫秒 */
+#define BALANCE_DRIVE_DEMO_IMU_LOSS_TIMEOUT_MS         (100u)   /* IMU 丢失故障超时，单位：毫秒 */
+#define BALANCE_TARGET_POSITION_LIMIT_M                (0.090f) /* 目标位置绝对值上限，单位：米 */
 
 /* 当前简化速度控制器：执行器 */
 #define BALANCE_SIMPLE_MOTOR_SIGN                      (-1.0f)  /* 摆杆正向角速度对应电机位置减小 */
@@ -269,25 +256,11 @@
      (UART3_MAIX_MODE != UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG))
 #error "UART3_MAIX_MODE is invalid"
 #endif
-#if ((EMM42_BALANCE_DEMO_ENABLE != 0u) && (EMM42_BALANCE_DEMO_ENABLE != 1u))
-#error "EMM42_BALANCE_DEMO_ENABLE must be 0 or 1"
-#endif
-#if ((BALL_RETURN_DEMO_ENABLE != 0u) && (BALL_RETURN_DEMO_ENABLE != 1u))
-#error "BALL_RETURN_DEMO_ENABLE must be 0 or 1"
-#endif
-#if ((BALANCE_CONTROL_ENABLE != 0u) && (BALANCE_CONTROL_ENABLE != 1u))
-#error "BALANCE_CONTROL_ENABLE must be 0 or 1"
-#endif
 #if ((BALANCE_SIMPLE_CONTROL_ENABLE != 0u) && (BALANCE_SIMPLE_CONTROL_ENABLE != 1u))
 #error "BALANCE_SIMPLE_CONTROL_ENABLE must be 0 or 1"
 #endif
 #if ((BALANCE_DRIVE_DEMO_ENABLE != 0u) && (BALANCE_DRIVE_DEMO_ENABLE != 1u))
 #error "BALANCE_DRIVE_DEMO_ENABLE must be 0 or 1"
-#endif
-#if ((BALANCE_DRIVE_DEMO_ENABLE != 0u) && \
-     (BALANCE_CONTROL_ENABLE == 0u) && \
-     (BALANCE_SIMPLE_CONTROL_ENABLE == 0u))
-#error "Balance drive demo requires a balance controller"
 #endif
 #if ((BALANCE_STARTUP_CALIBRATED != 0u) && (BALANCE_STARTUP_CALIBRATED != 1u))
 #error "BALANCE_STARTUP_CALIBRATED must be 0 or 1"
@@ -299,15 +272,6 @@
 #if ((BALANCE_SIMPLE_STARTUP_ACK_FALLBACK_ENABLE != 0u) && \
      (BALANCE_SIMPLE_STARTUP_ACK_FALLBACK_ENABLE != 1u))
 #error "BALANCE_SIMPLE_STARTUP_ACK_FALLBACK_ENABLE must be 0 or 1"
-#endif
-#if ((BALANCE_CONTROL_ENABLE + BALANCE_SIMPLE_CONTROL_ENABLE + \
-      EMM42_BALANCE_DEMO_ENABLE + BALL_RETURN_DEMO_ENABLE) > 1u)
-#error "Balance controller and actuator demos are mutually exclusive"
-#endif
-#if ((UART3_MAIX_MODE == UART3_MAIX_MODE_BALANCE_TELEMETRY_DEBUG) && \
-     (BALANCE_CONTROL_ENABLE == 0u) && (EMM42_BALANCE_DEMO_ENABLE == 0u) && \
-     (BALL_RETURN_DEMO_ENABLE == 0u) && (BALANCE_SIMPLE_CONTROL_ENABLE == 0u))
-#error "Balance telemetry mode requires balance control or an actuator demo"
 #endif
 #if ((MOTOR_OUTPUT_SWAP_LEFT_RIGHT != 0u) && (MOTOR_OUTPUT_SWAP_LEFT_RIGHT != 1u))
 #error "MOTOR_OUTPUT_SWAP_LEFT_RIGHT must be 0 or 1"

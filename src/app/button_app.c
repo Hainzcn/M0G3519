@@ -12,9 +12,6 @@
 #include "oled_app.h"
 #include "stop_test_app.h"
 #include "vision_link.h"
-#if (BALANCE_CONTROL_ENABLE != 0u)
-#include "balance_app.h"
-#endif
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
 #include "balance_simple_app.h"
 #endif
@@ -629,9 +626,6 @@ static uint8 button_app_start_selected_mode(void)
     switch (button_app_selected_mode)
     {
         case BUTTON_APP_MODE_NO_LOAD:
-#if (BALANCE_CONTROL_ENABLE != 0u)
-            balance_app_cancel_motion();
-#endif
             return no_load_lap_app_start();
 
         case BUTTON_APP_MODE_STOP_TEST:
@@ -685,9 +679,6 @@ static void button_app_stop_running_mode(void)
     }
 #endif
     motor_app_stop();
-#if (BALANCE_CONTROL_ENABLE != 0u)
-    balance_app_cancel_motion();
-#endif
 }
 
 static void button_app_handle_press(button_id_t pressed)

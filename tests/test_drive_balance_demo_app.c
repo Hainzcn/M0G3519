@@ -4,7 +4,6 @@
 
 #include "balance_simple_app.h"
 #include "control_config.h"
-#include "control_config_legacy.h"
 #include "drive_balance_demo_app.h"
 #include "encoder.h"
 #include "grayscale.h"

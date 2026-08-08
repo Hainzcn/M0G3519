@@ -3,7 +3,6 @@
 #include <string.h>
 
 #include "ab_run_app.h"
-#include "balance_app.h"
 #include "balance_simple_app.h"
 #include "buzzer.h"
 #include "button.h"
@@ -19,7 +18,6 @@
 static button_id_t mock_button;
 static uint32 mock_now_ms;
 static uint8 mock_oled_ready;
-static uint8 mock_balance_start_result;
 static uint8 mock_balance_simple_start_result;
 static uint8 mock_drive_start_result;
 static uint8 mock_drive_running;
@@ -38,8 +36,6 @@ static uint32 mock_dashboard_disable_count;
 static uint32 mock_refresh_count;
 static uint32 mock_motor_line_start_count;
 static uint32 mock_motor_stop_count;
-static uint32 mock_balance_start_count;
-static uint32 mock_balance_cancel_count;
 static uint32 mock_balance_simple_start_count;
 static uint32 mock_balance_simple_disable_count;
 static uint32 mock_drive_center_start_count;
@@ -197,16 +193,6 @@ void motor_app_stop(void)
     mock_motor_stop_count++;
 }
 
-uint8 balance_app_start_sequence(void)
-{
-    mock_balance_start_count++;
-    return mock_balance_start_result;
-}
-
-void balance_app_cancel_motion(void)
-{
-    mock_balance_cancel_count++;
-}
 
 uint8 balance_simple_app_start(void)
 {
@@ -427,7 +413,6 @@ static void reset_mocks(void)
     mock_button = BUTTON_ID_NONE;
     mock_now_ms = 0u;
     mock_oled_ready = 1u;
-    mock_balance_start_result = 1u;
     mock_balance_simple_start_result = 1u;
     mock_drive_start_result = 1u;
     mock_drive_running = 0u;
@@ -448,8 +433,6 @@ static void reset_mocks(void)
     mock_refresh_count = 0u;
     mock_motor_line_start_count = 0u;
     mock_motor_stop_count = 0u;
-    mock_balance_start_count = 0u;
-    mock_balance_cancel_count = 0u;
     mock_balance_simple_start_count = 0u;
     mock_balance_simple_disable_count = 0u;
     mock_drive_center_start_count = 0u;
@@ -512,9 +495,6 @@ static void test_no_load_start_and_stop(void)
     confirm_selected_mode();
     assert(0u != button_app_is_running());
     assert(mock_no_load_start_count == 1u);
-#if (BALANCE_CONTROL_ENABLE != 0u)
-    assert(mock_balance_cancel_count == 1u);
-#endif
 #if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     assert(mock_balance_simple_disable_count == 0u);
 #endif
@@ -575,7 +555,6 @@ static void test_stop_test_start_completion_and_stop(void)
     confirm_selected_mode();
     assert(0u != button_app_is_running());
     assert(mock_stop_test_start_count == 1u);
-    assert(mock_balance_start_count == 0u);
     assert(mock_balance_simple_start_count == 0u);
 
     mock_stop_test_running = 0u;

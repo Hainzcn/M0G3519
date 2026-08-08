@@ -6,11 +6,7 @@
 #include "heartbeat.h"
 #include "heartbeat_hw.h"
 #include "motor_app.h"
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
 #include "balance_simple_app.h"
-#else
-#include "balance_app.h"
-#endif
 
 typedef struct
 {
@@ -45,7 +41,6 @@ static uint8 stop_test_running(void)
 
 static void stop_test_read_balance(stop_test_balance_snapshot_t *snapshot)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     const balance_simple_status_t *balance = balance_simple_app_get_status();
     uint16 required_flags = BALANCE_SIMPLE_FLAG_OBSERVER_VALID |
                             BALANCE_SIMPLE_FLAG_MOTOR_POSITION_VALID;
@@ -59,60 +54,26 @@ static void stop_test_read_balance(stop_test_balance_snapshot_t *snapshot)
     snapshot->failed = ((BALANCE_SIMPLE_FAULT == balance->state) ||
                         (BALANCE_SIMPLE_SAFE_RETURN == balance->state) ||
                         (BALANCE_SIMPLE_DISABLED == balance->state)) ? 1u : 0u;
-#else
-    const balance_app_status_t *balance = balance_app_get_status();
-
-    snapshot->position_m = balance->estimated_position_m;
-    snapshot->velocity_mps = balance->estimated_velocity_mps;
-    snapshot->ready = ((BALANCE_APP_ACTIVE == balance->state) &&
-        (0u == (balance->flags & BALANCE_APP_FLAG_SEQUENCE_ACTIVE))) ? 1u : 0u;
-    snapshot->failed = ((BALANCE_APP_FAULT == balance->state) ||
-                        (BALANCE_APP_UNCONFIGURED == balance->state)) ? 1u : 0u;
-#endif
 }
 
 static uint8 stop_test_prepare_balance(void)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     return balance_simple_app_start();
-#else
-    const balance_app_status_t *balance = balance_app_get_status();
-
-    if ((BALANCE_APP_FAULT == balance->state) ||
-        (BALANCE_APP_UNCONFIGURED == balance->state))
-    {
-        return 0u;
-    }
-    balance_app_cancel_motion();
-    return 1u;
-#endif
 }
 
 static uint8 stop_test_set_target(float target_position_m)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     return balance_simple_app_set_target_position_m(target_position_m);
-#else
-    return balance_app_set_target_position_m(target_position_m);
-#endif
 }
 
 static void stop_test_return_to_center(void)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     (void)balance_simple_app_set_target_position_m(0.0f);
-#else
-    balance_app_cancel_motion();
-#endif
 }
 
 static void stop_test_set_control_mode(uint8 enabled)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     balance_simple_app_set_stop_test_mode(enabled);
-#else
-    (void)enabled;
-#endif
 }
 
 static void stop_test_log_result(void)

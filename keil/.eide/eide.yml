@@ -88,6 +88,7 @@ virtualFolder:
         - path: ../src/middle/vision_link.h
         - path: ../src/middle/wheel_speed_control.c
         - path: ../src/middle/wheel_speed_control.h
+        - path: ../src/middle/zf_assert_stub.c
       folders: []
     - name: App
       files:
@@ -123,8 +124,6 @@ virtualFolder:
     - name: Libraries
       files:
         - path: ../src/MSPM0G3519_Library/zf_common/zf_common_clock.c
-        - path: ../src/MSPM0G3519_Library/zf_common/zf_common_debug.c
-        - path: ../src/MSPM0G3519_Library/zf_common/zf_common_fifo.c
         - path: ../src/MSPM0G3519_Library/zf_common/zf_common_font.c
         - path: ../src/MSPM0G3519_Library/zf_common/zf_common_interrupt.c
         - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_delay.c
@@ -133,7 +132,6 @@ virtualFolder:
         - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_gpio.c
         - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_pwm.c
         - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_timer.c
-        - path: ../src/MSPM0G3519_Library/zf_driver/zf_driver_uart.c
       folders: []
 dependenceList: []
 outDir: build

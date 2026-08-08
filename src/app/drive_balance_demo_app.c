@@ -3,7 +3,6 @@
 #include <stdio.h>
 
 #include "control_config.h"
-#include "control_config_legacy.h"
 #include "encoder.h"
 #include "grayscale.h"
 #include "heartbeat.h"
@@ -11,12 +10,8 @@
 #include "imu.h"
 #include "line_control.h"
 #include "motor_app.h"
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
 #include "balance_simple_app.h"
 #include "wheel_speed_control.h"
-#else
-#include "balance_app.h"
-#endif
 
 #define DRIVE_BALANCE_PI (3.14159265358979323846f)
 
@@ -42,7 +37,6 @@ static uint8 drive_demo_feedforward_only;
 static uint8 drive_demo_prestart_active;
 static uint32 drive_demo_prestart_start_ms;
 
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
 static void drive_demo_get_planned_accel(uint32 now_ms,
                                          float *planned_accel_mps2,
                                          float *preview_accel_mps2)
@@ -76,7 +70,6 @@ static void drive_demo_get_planned_accel(uint32 now_ms,
     *preview_accel_mps2 = line_control_get_base_accel_preview_rpm_s(
         BALANCE_SIMPLE_CAR_FF_PREVIEW_S) * rpm_s_to_mps2;
 }
-#endif
 
 static float drive_demo_abs(float value)
 {
@@ -94,16 +87,13 @@ static uint8 drive_demo_running(void)
 
 static void drive_demo_clear_feedforward(void)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     balance_simple_app_set_vehicle_accel_components_mps2(
         0.0f, 0.0f, 0.0f, 0u);
-#endif
 }
 
 static void drive_demo_read_balance(uint32 now_ms,
                                     drive_demo_balance_snapshot_t *snapshot)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     const balance_simple_status_t *balance =
         balance_simple_app_get_status();
     uint8 capture_ready =
@@ -147,24 +137,11 @@ static void drive_demo_read_balance(uint32 now_ms,
     {
         drive_demo_clear_feedforward();
     }
-#else
-    const balance_app_status_t *balance = balance_app_get_status();
-    (void)now_ms;
-    snapshot->position_m = balance->estimated_position_m;
-    snapshot->vision_ready = ((BALANCE_APP_ACTIVE == balance->state) &&
-        (0u == (balance->flags & BALANCE_APP_FLAG_SEQUENCE_ACTIVE))) ? 1u : 0u;
-    snapshot->feedforward_only_ready = 0u;
-    snapshot->imu_valid = balance->car_imu_accel_valid;
-#endif
 }
 
 static uint8 drive_demo_set_target(float target_position_m)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     return balance_simple_app_set_target_position_m(target_position_m);
-#else
-    return balance_app_set_target_position_m(target_position_m);
-#endif
 }
 
 static void drive_demo_update_distance(void)
@@ -220,13 +197,11 @@ static void drive_demo_stop(drive_balance_demo_state_enum state,
     }
     drive_demo_clear_feedforward();
     (void)drive_demo_set_target(0.0f);
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     if (0u != drive_demo_feedforward_only)
     {
         (void)balance_simple_app_set_feedforward_only(0u);
         drive_demo_feedforward_only = 0u;
     }
-#endif
     if (0u == drive_demo_status.passed_a)
     {
         drive_demo_status.elapsed_ms = now_ms - drive_demo_start_ms;
@@ -250,14 +225,12 @@ static uint8 drive_demo_start(uint8 capture_current, float line_follow_rpm,
 
     drive_demo_read_balance(now_ms, &balance);
     drive_demo_feedforward_only = 0u;
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     if ((0u == balance.vision_ready) &&
         (0u != balance.feedforward_only_ready))
     {
         drive_demo_feedforward_only =
             balance_simple_app_set_feedforward_only(1u);
     }
-#endif
     if ((0u != capture_current) && (0u != balance.vision_ready))
     {
         target_position_m = balance.position_m;
@@ -273,13 +246,11 @@ static uint8 drive_demo_start(uint8 capture_current, float line_follow_rpm,
         (0u == drive_demo_set_target(target_position_m)))
     {
         drive_demo_clear_feedforward();
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
         if (0u != drive_demo_feedforward_only)
         {
             (void)balance_simple_app_set_feedforward_only(0u);
             drive_demo_feedforward_only = 0u;
         }
-#endif
         drive_demo_status.state = (0u != capture_current) ?
             DRIVE_BALANCE_DEMO_PREPARING_CAPTURE :
             DRIVE_BALANCE_DEMO_IDLE;
@@ -525,7 +496,6 @@ uint8 drive_balance_demo_app_start_center(void)
 
 uint8 drive_balance_demo_app_prepare_captured(void)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     if ((0u != drive_demo_running()) ||
         (MOTOR_APP_MODE_DISABLED != motor_app_get_mode()) ||
         (0u == balance_simple_app_prepare_capture()))
@@ -544,22 +514,13 @@ uint8 drive_balance_demo_app_prepare_captured(void)
     heartbeat_hw_uart_send_string(
         "[drive-balance] mode 5 level; waiting SW3 capture\r\n");
     return 1u;
-#else
-    heartbeat_hw_uart_send_string(
-        "[drive-balance] mode 5 capture requires simple controller\r\n");
-    return 0u;
-#endif
 }
 
 uint8 drive_balance_demo_app_capture_ready(void)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     return ((DRIVE_BALANCE_DEMO_PREPARING_CAPTURE ==
              drive_demo_status.state) &&
             (0u != balance_simple_app_capture_ready())) ? 1u : 0u;
-#else
-    return 0u;
-#endif
 }
 
 uint8 drive_balance_demo_app_start_captured(void)
@@ -576,7 +537,6 @@ uint8 drive_balance_demo_app_start_captured(void)
 
 void drive_balance_demo_app_stop(void)
 {
-#if (BALANCE_SIMPLE_CONTROL_ENABLE != 0u)
     if (DRIVE_BALANCE_DEMO_PREPARING_CAPTURE == drive_demo_status.state)
     {
         balance_simple_app_cancel_capture();
@@ -584,7 +544,6 @@ void drive_balance_demo_app_stop(void)
         drive_demo_status.stop_reason = DRIVE_BALANCE_STOP_USER;
         return;
     }
-#endif
     if (0u != drive_demo_running())
     {
         drive_demo_stop(DRIVE_BALANCE_DEMO_ABORTED,
